@@ -1,13 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { api } from '@/trpc/client';
-import { CreateProjectDialog } from '@/components/projects/create-project-dialog';
-import { ProjectCard } from '@/components/projects/project-card';
-import { StatusFilter } from '@/components/projects/status-filter';
+import { useState } from "react";
+import type { ProjectStatus } from "@prisma/client";
+import { api } from "@/trpc/client";
+import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
+import { ProjectCard } from "@/components/projects/project-card";
+import { StatusFilter } from "@/components/projects/status-filter";
 
 export function ProjectsClient() {
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<ProjectStatus | null>(null);
   const { data, isLoading } = api.project.list.useQuery(
     status ? { status } : undefined,
   );

@@ -1,13 +1,15 @@
 'use client';
 
-import { projectStatusEnum } from '@/lib/validations/project';
+import type { ProjectStatus } from "@prisma/client";
+import { projectStatusEnum } from "@/lib/validations/project";
 
 type Props = {
-  value: string | null;
-  onChange: (status: string | null) => void;
+  value: ProjectStatus | null;
+  onChange: (status: ProjectStatus | null) => void;
 };
 
-const statuses = ["ALL", ...projectStatusEnum.options];
+const STATUS_VALUES = projectStatusEnum.options as unknown as ProjectStatus[];
+const statuses: (ProjectStatus | "ALL")[] = ["ALL", ...STATUS_VALUES];
 
 export function StatusFilter({ value, onChange }: Props) {
   return (

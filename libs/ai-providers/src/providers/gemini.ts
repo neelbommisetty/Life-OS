@@ -88,7 +88,7 @@ const toGeminiResponseSchema = (schema: GeminiSchemaInput): ResponseSchema | und
     return undefined;
   }
 
-  const base: ResponseSchema = {};
+  const base = {} as ResponseSchema;
   const schemaRecord = schema as Record<string, unknown>;
 
   const type = toSchemaType(schemaRecord.type);

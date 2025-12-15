@@ -11,8 +11,9 @@ type Props = {
 };
 
 export default async function ProjectDetailPage({ params }: Props) {
-  const caller = serverCaller();
-  const project = await caller.project.getById({ id: params.id }).catch(() => null);
+  const project = await serverCaller()
+    .project.getById({ id: params.id })
+    .catch(() => null);
 
   if (!project) {
     notFound();
@@ -29,7 +30,9 @@ export default async function ProjectDetailPage({ params }: Props) {
         overview={
           <div className="space-y-6 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold text-zinc-900">Description</h2>
+              <h2 className="text-lg font-semibold text-zinc-900">
+                Description
+              </h2>
               <p className="text-sm text-zinc-700">
                 {project.description || "No description yet."}
               </p>
@@ -96,4 +99,3 @@ function PlaceholderCard({
     </div>
   );
 }
-

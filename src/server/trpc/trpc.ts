@@ -1,18 +1,17 @@
 import { initTRPC } from "@trpc/server";
-import superjson from "superjson";
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
-import type { NextRequest } from "next/server";
+import superjson from "superjson";
 import { prisma } from "@/server/db";
 
 export type Context = {
   prisma: typeof prisma;
-  req: NextRequest | null;
+  req: Request | null;
 };
 
-export const createTRPCContext = ({
-  req,
-}: FetchCreateContextFnOptions): Context => {
-  return { prisma, req: req as NextRequest };
+export const createTRPCContext = (
+  opts?: FetchCreateContextFnOptions
+): Context => {
+  return { prisma, req: opts?.req ?? null };
 };
 
 const t = initTRPC.context<Context>().create({
@@ -24,4 +23,3 @@ export const publicProcedure = t.procedure;
 export const middleware = t.middleware;
 export const mergeRouters = t.mergeRouters;
 export const createCallerFactory = t.createCallerFactory;
-

@@ -1,8 +1,8 @@
+import "server-only";
 import { appRouter } from "./root";
-import { prisma } from "../db";
-import { createCallerFactory } from "./trpc";
+import { createCallerFactory, createTRPCContext } from "./trpc";
 
 const createCaller = createCallerFactory(appRouter);
 
-export const serverCaller = () => createCaller({ prisma, req: null });
+export const serverCaller = () => createCaller(createTRPCContext());
 

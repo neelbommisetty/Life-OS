@@ -27,6 +27,7 @@ export async function callJson<TSchema extends z.ZodTypeAny>(
   }
 
   const { prompt, schema, ...rest } = params;
+  // @ts-expect-error zod-to-json-schema types lag behind zod@4; safe at runtime
   const jsonSchema = zodToJsonSchema(schema);
 
   const start = Date.now();
