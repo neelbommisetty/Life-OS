@@ -1,0 +1,42 @@
+
+
+> @writers-block/ai-core@0.1.0 test /Users/neel/products/WritersBlock/libs/ai-core
+> vitest run --config vitest.config.ts
+
+[?25l
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90m/Users/neel/products/WritersBlock/libs/ai-core[39m
+
+[?2026h
+[1m[33m ❯ [39m[22msrc/__tests__/core.test.ts[2m [queued][22m
+
+[2m Test Files [22m[1m[32m0 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m[1m[32m0 passed[39m[22m[90m (0)[39m
+[2m   Start at [22m14:15:21
+[2m   Duration [22m735ms
+[?2026l[?2026h[K[1A[K[1A[K[1A[K[1A[K[1A[K[1A[K[1A[K
+[1m[33m ❯ [39m[22msrc/__tests__/core.test.ts[2m 1/12[22m
+
+[2m Test Files [22m[1m[32m0 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m[1m[32m1 passed[39m[22m[90m (12)[39m
+[2m   Start at [22m14:15:21
+[2m   Duration [22m943ms
+[?2026l[K[1A[K[1A[K[1A[K[1A[K[1A[K[1A[K[1A[K [32m✓[39m src/__tests__/core.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 27[2mms[22m[39m
+   [32m✓[39m applyMiddleware[2m > [22mcomposes middleware in declaration order[32m 1[2mms[22m[39m
+   [32m✓[39m applyMiddleware[2m > [22mretains capability metadata on wrapped models[32m 0[2mms[22m[39m
+   [32m✓[39m withRetry[2m > [22mretries the configured number of times before succeeding[32m 0[2mms[22m[39m
+   [32m✓[39m withRetry[2m > [22mstops retrying when the predicate returns false[32m 16[2mms[22m[39m
+   [32m✓[39m withTimeout[2m > [22mresolves when the call finishes before the timeout[32m 2[2mms[22m[39m
+   [32m✓[39m withTimeout[2m > [22mrejects with TimeoutError when the timeout elapses first[32m 2[2mms[22m[39m
+   [32m✓[39m withLogging[2m > [22mlogs start and success events[32m 1[2mms[22m[39m
+   [32m✓[39m withLogging[2m > [22mlogs failures via the error logger[32m 1[2mms[22m[39m
+   [32m✓[39m callJson[2m > [22minvokes the model in json mode and validates the response[32m 1[2mms[22m[39m
+   [32m✓[39m callJson[2m > [22mthrows when the model response is not valid JSON[32m 0[2mms[22m[39m
+   [32m✓[39m callJson[2m > [22mpropagates schema validation errors[32m 0[2mms[22m[39m
+   [32m✓[39m callJson[2m > [22mthrows when the model does not support json mode[32m 0[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m12 passed[39m[22m[90m (12)[39m
+[2m   Start at [22m 14:15:21
+[2m   Duration [22m 980ms[2m (transform 56ms, setup 0ms, collect 81ms, tests 27ms, environment 0ms, prepare 172ms)[22m
+
+[?25h

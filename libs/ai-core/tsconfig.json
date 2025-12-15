@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "paths": {
+      "@writers-block/ai-core": ["./src/index.ts"],
+      "@writers-block/logger": ["libs/logger/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../logger" }
+  ]
+}

@@ -1,0 +1,5 @@
+
+
+> @writers-block/ai-core@0.1.0 typecheck /Users/neel/products/WritersBlock/libs/ai-core
+> tsc --noEmit -p tsconfig.build.json
+

@@ -1,0 +1,46 @@
+## Framework and language
+
+- Next.js App Router with TypeScript only. Keep server actions/server components preferred where possible.
+- Use Bun for install/dev scripts; match package.json scripts (avoid npm/yarn commands).
+- Keep minimal polyfills; no Node-only APIs in the client.
+
+## Styling and UI
+
+- Tailwind is primary styling; prefer utility classes. Co-locate component-specific styles via className.
+- Use shadcn/ui primitives when building forms, dialogs, tables, etc.; match existing tokens and variants.
+- Avoid custom design systems unless required; extend shadcn/ui variants before adding new components.
+
+## Data and API layer
+
+- Use tRPC for API routes; avoid raw fetch/REST unless integrating third parties.
+- Prefer end-to-end types: derive client inputs from tRPC router schemas (zod).
+- Database: Prisma with Postgres; allow SQLite only for local fallback. Keep schema in `prisma/schema.prisma`.
+- Run migrations via Bun scripts (e.g., `bun prisma migrate dev`) and keep generated types committed if already tracked.
+
+## State and data fetching
+
+- Default to server components. Use client components only for interactivity.
+- For server data, prefer tRPC procedures invoked via server helpers. For client hydration, use tRPC React hooks/providers.
+- Cache boundaries: use React cache/Next.js revalidation when safe; avoid unnecessary `no-store`.
+
+## Drag and drop (Kanban)
+
+- Use `@dnd-kit` for drag/drop. Keep sensors, collision detection, and sortable contexts in dedicated hooks/components.
+- Maintain accessible drag handles and keyboard interaction where feasible.
+
+## Testing and quality
+
+- Type-first: add zod validation at tRPC boundaries. Avoid `any`.
+- Keep components small and reusable; lift shared logic into hooks/utilities.
+- Prefer ESLint/TypeScript fixes over disabling rules; if disabling, justify inline.
+
+## Performance and DX
+
+- Co-locate server-only code away from client bundles; guard with `use server`/`use client` as needed.
+- Avoid long-running work in request handlers; offload to background jobs where applicable.
+- Keep imports absolute per tsconfig paths if configured; avoid deep relative paths.
+
+## Misc
+
+- Environment variables: document in `.env.example` and access via Next.js env conventions.
+- Keep accessibility in mind: aria labels for inputs/interactive elements; keyboard support for dialogs/menus.

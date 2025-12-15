@@ -1,0 +1,5 @@
+
+
+> @writers-block/logger@0.1.0 typecheck /Users/neel/products/WritersBlock/libs/logger
+> tsc --noEmit -p tsconfig.build.json
+

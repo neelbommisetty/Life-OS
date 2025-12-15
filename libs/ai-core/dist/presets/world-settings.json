@@ -1,0 +1,232 @@
+{
+  "worldSettings": [
+    {
+      "id": "small_coastal_town",
+      "worldTime": "Modern",
+      "scale": "Community / City",
+      "worldType": "Realistic",
+      "novelty": "traditional",
+      "name": "Small Coastal Town",
+      "description": "Tight-knit community with scenic beaches and seasonal tourists; secrets ripple beneath calm waters."
+    },
+    {
+      "id": "big_city_neighborhood",
+      "worldTime": "Modern",
+      "scale": "Community / City",
+      "worldType": "Realistic",
+      "novelty": "traditional",
+      "name": "Big City Neighborhood",
+      "description": "Dense, diverse urban micro-world where lives intersect in apartments, caf\u00e9s, and late-night streets."
+    },
+    {
+      "id": "elite_university_campus",
+      "worldTime": "Modern",
+      "scale": "Community / City",
+      "worldType": "Realistic",
+      "novelty": "traditional",
+      "name": "Elite University Campus",
+      "description": "Libraries, lecture halls, and old societies; ambition and secrecy flourish after dark.",
+      "texture": [
+        "hushed",
+        "shadowed",
+        "orderly"
+      ],
+      "placeKeywords": [
+        "quad",
+        "archive",
+        "faculty row",
+        "ivy"
+      ],
+      "worldRulesBlurb": "Status counts as currency; silence costs extra."
+    },
+    {
+      "id": "isolated_vacation_home",
+      "worldTime": "Modern",
+      "scale": "Individual / Group",
+      "worldType": "Realistic",
+      "novelty": "traditional",
+      "name": "Isolated Vacation Home",
+      "description": "A picturesque getaway far from help; beautiful by day, claustrophobic by night."
+    },
+    {
+      "id": "suburban_cul_de_sac",
+      "worldTime": "Modern",
+      "scale": "Community",
+      "worldType": "Realistic",
+      "novelty": "traditional",
+      "name": "Suburban Cul-de-sac",
+      "description": "Manicured lawns and HOA rules; perfect fa\u00e7ades conceal complicated lives."
+    },
+    {
+      "id": "modern_workplace",
+      "worldTime": "Modern",
+      "scale": "Group / Community",
+      "worldType": "Realistic",
+      "novelty": "traditional",
+      "name": "Modern Workplace (Startup / Newsroom / Hospital)",
+      "description": "High-pressure spaces where deadlines and ethics collide with personal ambition."
+    },
+    {
+      "id": "medieval_kingdom",
+      "worldTime": "Medieval",
+      "scale": "Regional / Kingdom",
+      "worldType": "Realistic with Fantastical Elements",
+      "novelty": "traditional",
+      "name": "Medieval Kingdom",
+      "description": "Castles, trade routes, and shifting alliances; survival depends on oaths and steel."
+    },
+    {
+      "id": "enchanted_forest",
+      "worldTime": "Timeless / Mythic",
+      "scale": "Local",
+      "worldType": "Magical / Fantastical",
+      "novelty": "traditional",
+      "name": "Enchanted Forest",
+      "description": "Old magic, living groves, and bargains with things older than maps."
+    },
+    {
+      "id": "myth_steeped_mediterranean_port",
+      "worldTime": "Ancient / Mythic",
+      "scale": "City / Regional",
+      "worldType": "Magical / Spiritual",
+      "novelty": "traditional",
+      "name": "Myth-Steeped Mediterranean Port",
+      "description": "Sun-bleached harbors where gods, heroes, and mortals cross paths."
+    },
+    {
+      "id": "victorian_metropolis",
+      "worldTime": "Industrial / Victorian",
+      "scale": "City / Regional",
+      "worldType": "Realistic (optionally Clockwork/Steampunk)",
+      "novelty": "traditional",
+      "name": "Victorian Metropolis",
+      "description": "Gaslight, factories, and social clubs; innovation and inequality hand in hand."
+    },
+    {
+      "id": "post_apocalyptic_heartland",
+      "worldTime": "Post-Apocalyptic",
+      "scale": "Regional / World",
+      "worldType": "Realistic / Survivalist",
+      "novelty": "traditional",
+      "name": "Post-Apocalyptic Heartland",
+      "description": "Collapsed supply chains and found-family caravans; hope stitched from salvage."
+    },
+    {
+      "id": "space_station_frontier",
+      "worldTime": "Futuristic / Space Age",
+      "scale": "Station / Solar System",
+      "worldType": "Science-Fiction (Hard/Soft)",
+      "novelty": "traditional",
+      "name": "Space Station Frontier",
+      "description": "A rotating tin can of politics and trade at the edge of mapped space."
+    },
+    {
+      "id": "habitable_exoplanet_colony",
+      "worldTime": "Futuristic / Space Age",
+      "scale": "Settlement / World",
+      "worldType": "Science-Fiction",
+      "novelty": "traditional",
+      "name": "Colony on a Habitable Exoplanet",
+      "description": "New biosphere, new rules; pioneers reckon with alien ecologies and fragile settlements."
+    },
+    {
+      "id": "cyberpunk_megacity",
+      "worldTime": "Near-Future / Cyberpunk",
+      "scale": "City / Regional",
+      "worldType": "Super-Advanced Technology",
+      "novelty": "traditional",
+      "name": "Cyberpunk Megacity",
+      "description": "Neon canyons, corporate enclaves, and black-market clinics; data is power."
+    },
+    {
+      "id": "modern_city_hidden_magic",
+      "worldTime": "Modern",
+      "scale": "City",
+      "worldType": "Magical / Urban Fantastical",
+      "novelty": "traditional",
+      "name": "Modern City with Hidden Magic",
+      "description": "Transit lines and warded alleys; the supernatural hums behind glass and concrete."
+    },
+    {
+      "id": "royal_court_by_the_sea",
+      "worldTime": "Medieval / Early Modern",
+      "scale": "Court / Regional",
+      "worldType": "Realistic with Fantastical Elements",
+      "novelty": "traditional",
+      "name": "Royal Court by the Sea",
+      "description": "Salt-sprayed ramparts, maritime trade, and palace intrigue under shifting tides."
+    },
+    {
+      "id": "cozy_village_bookshop",
+      "worldTime": "Modern",
+      "scale": "Local / Community",
+      "worldType": "Realistic (optionally Low-Magic)",
+      "novelty": "traditional",
+      "name": "Cozy Village Bookshop",
+      "description": "Shelves, scones, and serendipity; strangers become fixtures and mysteries begin between stacks."
+    },
+    {
+      "id": "solarpunk_terraced_ecocity",
+      "worldTime": "Near-Future",
+      "scale": "City / Regional",
+      "worldType": "Advanced Tech with Eco-Utopian Ethos",
+      "novelty": "novel",
+      "name": "Solarpunk Terraced Ecocity",
+      "description": "Vertical farms, gentle tech, and civic rituals; climate-positive design guides daily life."
+    },
+    {
+      "id": "time_reversed_archipelago",
+      "worldTime": "Alternate Reality",
+      "scale": "Regional",
+      "worldType": "Fantastical / Metaphysical",
+      "novelty": "novel",
+      "name": "Time-Reversed Archipelago",
+      "description": "Islands where cause follows effect; letters arrive before they\u2019re written."
+    },
+    {
+      "id": "sentient_city_state",
+      "worldTime": "Near-Future / Alternate",
+      "scale": "City",
+      "worldType": "Magical Realism or AI-Animist Hybrid",
+      "novelty": "novel",
+      "name": "Sentient City State",
+      "description": "The city thinks, votes, and remembers; citizens bargain with their home itself."
+    },
+    {
+      "id": "submerged_oceanic_arcology",
+      "worldTime": "Near-Future / Futuristic",
+      "scale": "City / Regional",
+      "worldType": "Advanced Tech / Bio-Tech",
+      "novelty": "novel",
+      "name": "Submerged Oceanic Arcology",
+      "description": "Pressure domes and kelp thoroughfares; society adapts to life under the waves."
+    },
+    {
+      "id": "endless_library_between_worlds",
+      "worldTime": "Timeless",
+      "scale": "Multiversal",
+      "worldType": "Fantastical / Magical",
+      "novelty": "novel",
+      "name": "Endless Library Between Worlds",
+      "description": "A labyrinth of living books with doors into other realities; knowledge demands a price."
+    },
+    {
+      "id": "generation_ship_interior",
+      "worldTime": "Futuristic / Space Age",
+      "scale": "Ship / Solar System",
+      "worldType": "Science-Fiction",
+      "novelty": "novel",
+      "name": "Generation Ship Interior",
+      "description": "Centuries-long voyage whose compartments evolved into distinct cultures."
+    },
+    {
+      "id": "dream_brokered_metropolis",
+      "worldTime": "Alternate Modern",
+      "scale": "City",
+      "worldType": "Fantastical / Surreal",
+      "novelty": "novel",
+      "name": "Dream-Brokered Metropolis",
+      "description": "Commerce runs on traded dreams and negotiated sleep; reality flexes with the market."
+    }
+  ]
+}

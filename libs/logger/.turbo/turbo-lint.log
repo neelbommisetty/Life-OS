@@ -1,0 +1,14 @@
+
+> @writers-block/logger@0.1.0 lint /Users/neel/products/WritersBlock/libs/logger
+> eslint "src/**/*.{ts}" --max-warnings=0
+
+
+Oops! Something went wrong! :(
+
+ESLint: 9.38.0
+
+No files matching the pattern "src/**/*.{ts}" were found.
+Please check for typing mistakes in the pattern.
+
+ ELIFECYCLE  Command failed with exit code 2.
+ WARN   Local package.json exists, but node_modules missing, did you mean to install?

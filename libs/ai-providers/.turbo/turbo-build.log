@@ -1,0 +1,11 @@
+
+
+> @writers-block/ai-providers@0.1.0 build /Users/neel/products/WritersBlock/libs/ai-providers
+> rollup -c
+
+[36m
+[1m/Users/neel/products/WritersBlock/libs/ai-providers/src/index.ts[22m → [1mdist[22m...[39m
+[32mcreated [1mdist[22m in [1m763ms[22m[39m
+[36m
+[1m/Users/neel/products/WritersBlock/libs/ai-providers/src/index.ts[22m → [1mdist[22m...[39m
+[32mcreated [1mdist[22m in [1m443ms[22m[39m

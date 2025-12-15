@@ -1,0 +1,11 @@
+ WARN  Unsupported engine: wanted: {"node":">=22.0.0 <23"} (current: {"node":"v18.12.1","pnpm":"10.18.0"})
+
+> @writers-block/ai-core@0.1.0 build /Users/neel/products/WritersBlock/libs/ai-core
+> rollup -c
+
+[36m
+[1m/Users/neel/products/WritersBlock/libs/ai-core/src/index.ts[22m → [1mdist[22m...[39m
+[32mcreated [1mdist[22m in [1m851ms[22m[39m
+[36m
+[1m/Users/neel/products/WritersBlock/libs/ai-core/src/index.ts[22m → [1mdist[22m...[39m
+[32mcreated [1mdist[22m in [1m847ms[22m[39m

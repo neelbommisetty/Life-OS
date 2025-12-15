@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "noEmit": false,
+    "rootDir": ".."
+  },
+  "include": [
+    "src/**/*",
+    "../ai-core/src/**/*",
+    "../logger/src/**/*"
+  ]
+}
