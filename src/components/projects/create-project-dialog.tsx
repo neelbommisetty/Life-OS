@@ -68,7 +68,7 @@ export function CreateProjectDialog() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800"
+        className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition hover:bg-foreground/90"
       >
         + Create Project
       </button>
@@ -83,7 +83,7 @@ export function CreateProjectDialog() {
             leaveFrom="opacity-100"
             leaveTo="opacity-0"
           >
-            <div className="fixed inset-0 bg-black/30" />
+            <div className="fixed inset-0 bg-black/40" />
           </Transition.Child>
 
           <div className="fixed inset-0 flex items-center justify-center p-4">
@@ -95,26 +95,26 @@ export function CreateProjectDialog() {
               leaveFrom="opacity-100 scale-100"
               leaveTo="opacity-0 scale-95"
             >
-              <DialogPanel className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
-                <DialogTitle className="text-lg font-semibold">
+              <DialogPanel className="w-full max-w-lg rounded-xl border border-border bg-card p-6 text-foreground shadow-xl">
+                <DialogTitle className="text-lg font-semibold text-foreground">
                   Create Project
                 </DialogTitle>
                 <form className="mt-4 space-y-4" onSubmit={handleSubmit}>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-zinc-700">
+                    <label className="text-sm font-medium text-foreground">
                       Name
                     </label>
                     <input
                       required
                       value={form.name}
                       onChange={(e) => handleChange('name', e.target.value)}
-                      className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                       placeholder="Project name"
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-zinc-700">
+                    <label className="text-sm font-medium text-foreground">
                       Description
                     </label>
                     <textarea
@@ -122,7 +122,7 @@ export function CreateProjectDialog() {
                       onChange={(e) =>
                         handleChange('description', e.target.value)
                       }
-                      className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                       placeholder="Brief summary"
                       rows={3}
                     />
@@ -130,13 +130,13 @@ export function CreateProjectDialog() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-700">
+                      <label className="text-sm font-medium text-foreground">
                         Status
                       </label>
                       <select
                         value={form.status}
                         onChange={(e) => handleChange('status', e.target.value)}
-                        className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                       >
                         {projectStatusEnum.options.map((status) => (
                           <option key={status} value={status}>
@@ -146,7 +146,7 @@ export function CreateProjectDialog() {
                       </select>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-700">
+                      <label className="text-sm font-medium text-foreground">
                         Priority
                       </label>
                       <select
@@ -154,7 +154,7 @@ export function CreateProjectDialog() {
                         onChange={(e) =>
                           handleChange('priority', e.target.value)
                         }
-                        className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                       >
                         {priorityEnum.options.map((priority) => (
                           <option key={priority} value={priority}>
@@ -167,49 +167,49 @@ export function CreateProjectDialog() {
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-700">
+                      <label className="text-sm font-medium text-foreground">
                         Tags (comma separated)
                       </label>
                       <input
                         value={form.tags}
                         onChange={(e) => handleChange('tags', e.target.value)}
-                        className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                         placeholder="design, research"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-700">
+                      <label className="text-sm font-medium text-foreground">
                         Due date
                       </label>
                       <input
                         type="date"
                         value={form.dueDate}
                         onChange={(e) => handleChange('dueDate', e.target.value)}
-                        className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                       />
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-700">
+                      <label className="text-sm font-medium text-foreground">
                         Color token
                       </label>
                       <input
                         value={form.color}
                         onChange={(e) => handleChange('color', e.target.value)}
-                        className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                         placeholder="#2563eb"
                       />
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-700">
+                      <label className="text-sm font-medium text-foreground">
                         Icon (emoji)
                       </label>
                       <input
                         value={form.icon}
                         onChange={(e) => handleChange('icon', e.target.value)}
-                        className="w-full rounded-md border border-zinc-200 px-3 py-2 text-sm focus:border-black focus:outline-none focus:ring-1 focus:ring-black"
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                         placeholder="🚀"
                       />
                     </div>
@@ -223,14 +223,14 @@ export function CreateProjectDialog() {
                     <button
                       type="button"
                       onClick={() => setOpen(false)}
-                      className="rounded-md border border-zinc-200 px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+                      className="rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={isPending}
-                      className="rounded-md bg-black px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-md bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition hover:bg-foreground/90 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isPending ? "Creating..." : "Create"}
                     </button>

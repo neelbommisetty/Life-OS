@@ -7,8 +7,6 @@
 ## Styling and UI
 
 - Tailwind is primary styling; prefer utility classes. Co-locate component-specific styles via className.
-- Use shadcn/ui primitives when building forms, dialogs, tables, etc.; match existing tokens and variants.
-- Avoid custom design systems unless required; extend shadcn/ui variants before adding new components.
 
 ## Data and API layer
 

@@ -3,20 +3,60 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --card: #ffffff;
+  --card-foreground: #171717;
+  --muted: #f4f4f5; /* zinc-100 */
+  --muted-foreground: #71717a; /* zinc-500 */
+  --border: #e4e4e7; /* zinc-200 */
+  --input: #e4e4e7; /* zinc-200 */
+  --ring: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --card: #121212;
+    --card-foreground: #ededed;
+    --muted: #18181b; /* zinc-900 */
+    --muted-foreground: #a1a1aa; /* zinc-400 */
+    --border: #27272a; /* zinc-800 */
+    --input: #27272a; /* zinc-800 */
+    --ring: #ededed;
+    color-scheme: dark;
   }
+}
+
+:root.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #121212;
+  --card-foreground: #ededed;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #ededed;
+  color-scheme: dark;
+}
+
+:root.light {
+  color-scheme: light;
 }
 
 body {

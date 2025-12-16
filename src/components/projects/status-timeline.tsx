@@ -8,21 +8,21 @@ type Props = {
 export function StatusTimeline({ history }: Props) {
   if (history.length === 0) {
     return (
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-muted-foreground">
         No status changes yet. Updates will appear here.
       </p>
     );
   }
 
   return (
-    <ol className="relative space-y-4 border-l border-zinc-200 pl-4">
+    <ol className="relative space-y-4 border-l border-border pl-4">
       {history.map((item) => (
         <li key={item.id} className="space-y-1">
-          <div className="absolute -left-[7px] h-3 w-3 rounded-full border border-white bg-zinc-400 shadow" />
-          <p className="text-sm font-semibold text-zinc-800">
+          <div className="absolute -left-[7px] h-3 w-3 rounded-full border border-background bg-muted-foreground shadow" />
+          <p className="text-sm font-semibold text-foreground">
             {STATUS_LABELS[item.status]}
           </p>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-muted-foreground">
             {formatDate(item.timestamp)}
           </p>
         </li>

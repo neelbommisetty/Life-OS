@@ -28,37 +28,37 @@ export default async function ProjectDetailPage({ params }: Props) {
 
       <ProjectTabs
         overview={
-          <div className="space-y-6 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-sm">
             <div className="space-y-2">
-              <h2 className="text-lg font-semibold text-zinc-900">
+              <h2 className="text-lg font-semibold text-foreground">
                 Description
               </h2>
-              <p className="text-sm text-zinc-700">
+              <p className="text-sm text-muted-foreground">
                 {project.description || "No description yet."}
               </p>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-1 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-zinc-500">
+              <div className="space-y-1 rounded-lg border border-border bg-muted p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
                   Created
                 </p>
-                <p className="text-sm text-zinc-800">
+                <p className="text-sm text-foreground">
                   {formatDate(project.createdAt)}
                 </p>
               </div>
-              <div className="space-y-1 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
-                <p className="text-xs uppercase tracking-wide text-zinc-500">
+              <div className="space-y-1 rounded-lg border border-border bg-muted p-4">
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
                   Last updated
                 </p>
-                <p className="text-sm text-zinc-800">
+                <p className="text-sm text-foreground">
                   {formatDate(project.updatedAt)}
                 </p>
               </div>
             </div>
 
             <div className="space-y-3">
-              <h3 className="text-base font-semibold text-zinc-900">
+              <h3 className="text-base font-semibold text-foreground">
                 Status history
               </h3>
               <StatusTimeline history={project.statusHistory} />
@@ -93,8 +93,8 @@ function PlaceholderCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-dashed border-zinc-200 bg-white p-8 text-center text-sm text-zinc-600 shadow-sm">
-      <h3 className="mb-2 text-base font-semibold text-zinc-900">{title}</h3>
+    <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
+      <h3 className="mb-2 text-base font-semibold text-foreground">{title}</h3>
       <p>{children}</p>
     </div>
   );

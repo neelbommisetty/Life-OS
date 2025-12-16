@@ -22,8 +22,8 @@ export function StatusFilter({ value, onChange }: Props) {
             onClick={() => onChange(status === "ALL" ? null : status)}
             className={`rounded-full border px-3 py-1 text-sm font-medium transition hover:-translate-y-0.5 hover:shadow ${
               isActive
-                ? "border-blue-500 bg-blue-100 text-blue-700"
-                : "border-zinc-200 bg-white text-zinc-700"
+                ? "border-blue-500 bg-blue-100 text-blue-700 dark:border-blue-700 dark:bg-blue-900/30 dark:text-blue-200"
+                : "border-border bg-card text-foreground hover:bg-muted"
             }`}
           >
             {status === "ALL" ? "All" : status.replace("_", " ")}

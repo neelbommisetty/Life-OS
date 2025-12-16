@@ -10,13 +10,13 @@ type Props = {
 
 export function ProjectHeader({ project, actions }: Props) {
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm">
+    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           {project.icon ? <span className="text-2xl">{project.icon}</span> : null}
           <div>
-            <h1 className="text-2xl font-bold text-zinc-900">{project.name}</h1>
-            <p className="text-sm text-zinc-600">
+            <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
+            <p className="text-sm text-muted-foreground">
               Last updated {formatDate(project.updatedAt)}
             </p>
           </div>
@@ -28,24 +28,24 @@ export function ProjectHeader({ project, actions }: Props) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-sm text-zinc-700">
+      <div className="flex flex-wrap items-center gap-3 text-sm text-foreground">
         {project.tags?.map((tag) => (
           <span
             key={tag}
-            className="rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700"
+            className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground"
           >
             #{tag}
           </span>
         ))}
         {project.dueDate ? (
-          <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700">
+          <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
             Due {formatDate(project.dueDate)}
           </span>
         ) : null}
         {project.color ? (
-          <span className="flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700">
+          <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground">
             <span
-              className="h-3 w-3 rounded-full border border-zinc-200"
+              className="h-3 w-3 rounded-full border border-border"
               style={{ backgroundColor: project.color }}
             />
             {project.color}

@@ -17,8 +17,8 @@ export function ProjectsClient() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900">Projects</h1>
-          <p className="text-sm text-zinc-600">
+          <h1 className="text-2xl font-bold text-foreground">Projects</h1>
+          <p className="text-sm text-muted-foreground">
             Track project lifecycle, quick status changes, and last updates.
           </p>
         </div>
@@ -32,7 +32,7 @@ export function ProjectsClient() {
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={i}
-              className="h-40 rounded-xl border border-zinc-200 bg-zinc-50 animate-pulse"
+              className="h-40 animate-pulse rounded-xl border border-border bg-muted"
             />
           ))}
         </div>
@@ -43,8 +43,8 @@ export function ProjectsClient() {
           ))}
         </div>
       ) : (
-        <div className="rounded-xl border border-dashed border-zinc-200 bg-white p-10 text-center">
-          <p className="text-sm text-zinc-600">
+        <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center">
+          <p className="text-sm text-muted-foreground">
             No projects yet. Create your first project to get started.
           </p>
         </div>

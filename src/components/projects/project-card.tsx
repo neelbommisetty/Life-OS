@@ -29,21 +29,21 @@ export function ProjectCard({ project }: Props) {
   const statusOptions = useMemo(() => projectStatusEnum.options, []);
 
   return (
-    <div className="flex h-full flex-col rounded-xl border border-zinc-200 bg-white p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <div className="flex h-full flex-col rounded-xl border border-border bg-card p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2">
           {project.icon ? <span className="text-lg">{project.icon}</span> : null}
-          <h3 className="text-lg font-semibold text-zinc-900">{project.name}</h3>
+          <h3 className="text-lg font-semibold text-foreground">{project.name}</h3>
         </div>
         <StatusBadge status={project.status} />
       </div>
 
       {project.description ? (
-        <p className="mt-2 text-sm text-zinc-600 line-clamp-3">
+        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
           {project.description}
         </p>
       ) : (
-        <p className="mt-2 text-sm text-zinc-400">No description yet.</p>
+        <p className="mt-2 text-sm text-muted-foreground">No description yet.</p>
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -51,14 +51,14 @@ export function ProjectCard({ project }: Props) {
         {project.tags?.map((tag) => (
           <span
             key={tag}
-            className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-1 text-xs font-medium text-zinc-700"
+            className="inline-flex items-center rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground"
           >
             #{tag}
           </span>
         ))}
       </div>
 
-      <div className="mt-4 flex items-center justify-between text-xs text-zinc-500">
+      <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
         <span>Last updated {formatDate(project.updatedAt)}</span>
         {project.dueDate ? <span>Due {formatDate(project.dueDate)}</span> : null}
       </div>
@@ -71,15 +71,15 @@ export function ProjectCard({ project }: Props) {
           }
         >
           <div className="relative w-full">
-            <ListboxButton className="relative w-full rounded-md border border-zinc-200 bg-white px-3 py-2 text-left text-sm font-medium text-zinc-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-black">
+            <ListboxButton className="relative w-full rounded-md border border-input bg-background px-3 py-2 text-left text-sm font-medium text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30">
               Quick status
             </ListboxButton>
-            <ListboxOptions className="absolute z-20 mt-2 w-full rounded-md border border-zinc-200 bg-white shadow-lg focus:outline-none">
+            <ListboxOptions className="absolute z-20 mt-2 w-full rounded-md border border-border bg-card shadow-lg focus:outline-none">
               {statusOptions.map((status) => (
                 <ListboxOption
                   key={status}
                   value={status}
-                  className="cursor-pointer px-3 py-2 text-sm text-zinc-700 hover:bg-zinc-50 ui-selected:bg-zinc-100 ui-selected:font-semibold"
+                  className="cursor-pointer px-3 py-2 text-sm text-foreground hover:bg-muted ui-selected:bg-muted ui-selected:font-semibold"
                 >
                   {STATUS_LABELS[status]}
                 </ListboxOption>
@@ -90,7 +90,7 @@ export function ProjectCard({ project }: Props) {
 
         <Link
           href={`/projects/${project.id}`}
-          className="shrink-0 rounded-md border border-zinc-200 px-3 py-2 text-sm font-semibold text-zinc-800 hover:bg-zinc-50"
+          className="shrink-0 rounded-md border border-border bg-card px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted"
         >
           Open
         </Link>
