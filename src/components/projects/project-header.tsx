@@ -2,6 +2,8 @@ import type { Project } from "@prisma/client";
 import { formatDate } from "@/lib/project-utils";
 import { PriorityBadge } from "./priority-badge";
 import { StatusBadge } from "./status-badge";
+import { Calendar, Tag, Palette } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Props = {
   project: Project;
@@ -10,49 +12,62 @@ type Props = {
 
 export function ProjectHeader({ project, actions }: Props) {
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card p-6 shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex items-center gap-2">
-          {project.icon ? <span className="text-2xl">{project.icon}</span> : null}
-          <div>
+    <div className="flex flex-col gap-6 rounded-xl border border-border bg-card p-6 shadow-sm">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex items-start gap-4">
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-muted text-3xl">
+            {project.icon || "🚀"}
+          </div>
+          <div className="space-y-1">
             <h1 className="text-2xl font-bold text-foreground">{project.name}</h1>
             <p className="text-sm text-muted-foreground">
               Last updated {formatDate(project.updatedAt)}
             </p>
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <StatusBadge status={project.status} />
+              <PriorityBadge priority={project.priority} />
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <StatusBadge status={project.status} />
-          <PriorityBadge priority={project.priority} />
+        <div className="flex items-center gap-2 self-end sm:self-auto">
           {actions}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 text-sm text-foreground">
-        {project.tags?.map((tag) => (
-          <span
-            key={tag}
-            className="rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground"
-          >
-            #{tag}
-          </span>
-        ))}
-        {project.dueDate ? (
-          <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
-            Due {formatDate(project.dueDate)}
-          </span>
-        ) : null}
-        {project.color ? (
-          <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground">
-            <span
-              className="h-3 w-3 rounded-full border border-border"
-              style={{ backgroundColor: project.color }}
-            />
-            {project.color}
-          </span>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-4 border-t border-border pt-4 text-sm text-muted-foreground">
+        {project.dueDate && (
+          <div className="flex items-center gap-1.5">
+            <Calendar className="h-4 w-4" />
+            <span>Due {formatDate(project.dueDate)}</span>
+          </div>
+        )}
+
+        {project.tags && project.tags.length > 0 && (
+          <div className="flex items-center gap-1.5">
+            <Tag className="h-4 w-4" />
+            <div className="flex gap-1">
+              {project.tags.map((tag) => (
+                <span key={tag} className="rounded-md bg-secondary px-1.5 py-0.5 text-xs text-secondary-foreground">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {project.color && (
+          <div className="flex items-center gap-1.5">
+            <Palette className="h-4 w-4" />
+            <div className="flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+              <span
+                className="h-2 w-2 rounded-full ring-1 ring-border"
+                style={{ backgroundColor: project.color }}
+              />
+              {project.color}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-

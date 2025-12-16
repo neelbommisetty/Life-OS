@@ -2,6 +2,9 @@
 
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
 import type { ReactNode } from 'react';
+import { motion } from 'framer-motion';
+import { cn } from '@/lib/utils';
+import { Fragment } from 'react';
 
 type Props = {
   overview: ReactNode;
@@ -20,23 +23,34 @@ const tabs = [
 export function ProjectTabs({ overview, tasks, brainstorm, artifacts }: Props) {
   return (
     <TabGroup>
-      <TabList className="flex gap-2 rounded-lg bg-muted p-1 text-sm font-semibold text-muted-foreground">
+      <TabList className="relative flex w-full border-b border-border bg-background">
         {tabs.map((tab) => (
-          <Tab
-            key={tab.key}
-            className="flex-1 rounded-md px-3 py-2 ui-selected:bg-card ui-selected:text-foreground ui-selected:shadow-sm focus:outline-none focus:ring-2 focus:ring-ring/30"
-          >
-            {tab.label}
+          <Tab as={Fragment} key={tab.key}>
+            {({ selected }) => (
+              <button
+                className={cn(
+                  "relative px-4 py-3 text-sm font-medium transition-colors focus:outline-none",
+                  selected ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {tab.label}
+                {selected && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
+                  />
+                )}
+              </button>
+            )}
           </Tab>
         ))}
       </TabList>
-      <TabPanels className="mt-4">
-        <TabPanel>{overview}</TabPanel>
-        <TabPanel>{tasks}</TabPanel>
-        <TabPanel>{brainstorm}</TabPanel>
-        <TabPanel>{artifacts}</TabPanel>
+      <TabPanels className="mt-6">
+        <TabPanel className="focus:outline-none">{overview}</TabPanel>
+        <TabPanel className="focus:outline-none">{tasks}</TabPanel>
+        <TabPanel className="focus:outline-none">{brainstorm}</TabPanel>
+        <TabPanel className="focus:outline-none">{artifacts}</TabPanel>
       </TabPanels>
     </TabGroup>
   );
 }
-

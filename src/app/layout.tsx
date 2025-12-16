@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
+import { Navbar } from "@/components/layout/navbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} min-h-screen bg-background font-sans antialiased`}
       >
         <script
           // Avoid theme flash by applying saved preference before React hydrates.
@@ -43,10 +43,10 @@ export default function RootLayout({
           }}
         />
         <Providers>
-          <div className="fixed right-4 top-4 z-50">
-            <ThemeToggle />
+          <div className="relative flex min-h-screen flex-col">
+            <Navbar />
+            <div className="flex-1">{children}</div>
           </div>
-          {children}
         </Providers>
       </body>
     </html>

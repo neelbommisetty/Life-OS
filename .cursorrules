@@ -7,6 +7,9 @@
 ## Styling and UI
 
 - Tailwind is primary styling; prefer utility classes. Co-locate component-specific styles via className.
+- **Headless UI**: Use `@headlessui/react` for all interactive components (menus, dialogs, tabs, listboxes) to ensure accessibility and consistent behavior.
+- **Icons**: Use `lucide-react` for all icons.
+- **Animations**: Use `framer-motion` for complex animations; CSS transitions for simple hover states.
 
 ## Data and API layer
 
