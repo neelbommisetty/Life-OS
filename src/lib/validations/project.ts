@@ -18,7 +18,7 @@ export const createProjectSchema = z.object({
   status: projectStatusEnum.default("IDEA"),
   priority: priorityEnum.default("MEDIUM").optional(),
   tags: z.array(z.string().trim()).default([]),
-  color: z.string().optional(),
+  color: z.string().regex(/^#([0-9A-F]{3}){1,2}$/i, "Must be a valid hex color code (e.g. #000000)").optional(),
   icon: z.string().optional(),
   dueDate: z.string().datetime().optional(),
 });

@@ -5,6 +5,8 @@ import type { Project } from '@prisma/client';
 import { useState } from 'react';
 import { projectStatusEnum, priorityEnum } from '@/lib/validations/project';
 import { api } from '@/trpc/client';
+import { ProjectColorPicker } from './project-color-picker';
+import { ProjectEmojiPicker } from './project-emoji-picker';
 
 type Props = {
   project: Project;
@@ -191,22 +193,18 @@ export function EditProjectDialog({ project }: Props) {
                       <label className="text-sm font-medium text-foreground">
                         Color token
                       </label>
-                      <input
+                      <ProjectColorPicker
                         value={form.color}
-                        onChange={(e) => handleChange('color', e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
-                        placeholder="#2563eb"
+                        onChange={(val) => handleChange('color', val)}
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">
                         Icon (emoji)
                       </label>
-                      <input
+                      <ProjectEmojiPicker
                         value={form.icon}
-                        onChange={(e) => handleChange('icon', e.target.value)}
-                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
-                        placeholder="🚀"
+                        onChange={(val) => handleChange('icon', val)}
                       />
                     </div>
                   </div>
@@ -240,4 +238,3 @@ export function EditProjectDialog({ project }: Props) {
     </>
   );
 }
-

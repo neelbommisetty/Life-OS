@@ -5,12 +5,14 @@ import { useState, Fragment } from 'react';
 import { api } from '@/trpc/client';
 import { projectStatusEnum, priorityEnum } from '@/lib/validations/project';
 import {
-  Plus, X, Calendar, Hash, Palette, Smile,
+  Plus, X, Calendar, Hash,
   Lightbulb, Play, Rocket, CheckCircle, Archive, Clock, XCircle,
   ArrowDown, Minus, ArrowUp, AlertOctagon, Check, ChevronsUpDown
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { STATUS_LABELS, PRIORITY_LABELS } from '@/lib/project-utils';
+import { ProjectColorPicker } from './project-color-picker';
+import { ProjectEmojiPicker } from './project-emoji-picker';
 
 const STATUS_ICONS = {
   IDEA: Lightbulb,
@@ -111,7 +113,7 @@ export function CreateProjectDialog() {
                 leaveFrom="opacity-100 scale-100"
                 leaveTo="opacity-0 scale-95"
               >
-                <DialogPanel className="w-full max-w-2xl transform overflow-hidden rounded-2xl border border-border bg-card p-6 text-left align-middle shadow-xl transition-all">
+                <DialogPanel className="w-full max-w-2xl transform rounded-2xl border border-border bg-card p-6 text-left align-middle shadow-xl transition-all">
                   <div className="flex items-center justify-between mb-6">
                     <DialogTitle className="text-xl font-semibold leading-6 text-foreground">
                       Create New Project
@@ -312,28 +314,18 @@ export function CreateProjectDialog() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <label className="text-sm font-medium leading-none">Theme Color</label>
-                        <div className="relative">
-                          <Palette className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <input
-                            value={form.color}
-                            onChange={(e) => handleChange('color', e.target.value)}
-                            className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            placeholder="#000000"
-                          />
-                        </div>
+                        <ProjectColorPicker
+                          value={form.color}
+                          onChange={(val) => handleChange('color', val)}
+                        />
                       </div>
 
                       <div className="space-y-2">
                         <label className="text-sm font-medium leading-none">Icon</label>
-                        <div className="relative">
-                          <Smile className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                          <input
-                            value={form.icon}
-                            onChange={(e) => handleChange('icon', e.target.value)}
-                            className="flex h-10 w-full rounded-md border border-input bg-background pl-9 pr-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                            placeholder="🚀"
-                          />
-                        </div>
+                        <ProjectEmojiPicker
+                          value={form.icon}
+                          onChange={(val) => handleChange('icon', val)}
+                        />
                       </div>
                     </div>
 
