@@ -4,9 +4,16 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "dotenv -e .env.development.local -e .env.local -- prisma migrate deploy && dotenv -e .env.development.local -e .env.local -- prisma generate",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "migrate:dev": "dotenv -e .env.development.local -e .env.local -- prisma migrate dev",
+    "migrate:deploy": "dotenv -e .env.development.local -e .env.local -- prisma migrate deploy",
+    "migrate:reset": "dotenv -e .env.development.local -e .env.local -- prisma migrate reset",
+    "migrate:status": "dotenv -e .env.development.local -e .env.local -- prisma migrate status",
+    "db:push": "dotenv -e .env.development.local -e .env.local -- prisma db push",
+    "db:studio": "dotenv -e .env.development.local -e .env.local -- prisma studio"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
@@ -37,6 +44,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.0.10",
     "tailwindcss": "^4",
