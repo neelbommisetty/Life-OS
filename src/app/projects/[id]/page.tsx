@@ -28,6 +28,7 @@ export default async function ProjectDetailPage({ params }: Props) {
       />
 
       <ProjectTabs
+        accentColor={project.color}
         overview={
           <div className="space-y-6 rounded-xl border border-border bg-card p-6 shadow-sm">
             <div className="space-y-2">
@@ -62,7 +63,10 @@ export default async function ProjectDetailPage({ params }: Props) {
               <h3 className="text-base font-semibold text-foreground">
                 Status history
               </h3>
-              <StatusTimeline history={project.statusHistory} />
+              <StatusTimeline
+                history={project.statusHistory}
+                accentColor={project.color}
+              />
             </div>
           </div>
         }

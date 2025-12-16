@@ -12,6 +12,7 @@ import { StatusBadge } from './status-badge';
 import { ChevronDown, ExternalLink, Calendar, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { getProjectTheme } from '@/lib/project-theme';
 
 type Props = {
   project: Project;
@@ -30,18 +31,33 @@ export function ProjectCard({ project }: Props) {
   });
 
   const statusOptions = useMemo(() => projectStatusEnum.options, []);
+  const themeStyle = getProjectTheme(project.color);
+  const hasColor = !!project.color;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4, transition: { duration: 0.2 } }}
-      className="flex h-full flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md hover:border-primary/20"
+      style={themeStyle}
+      className={cn(
+        "group flex h-full flex-col justify-between rounded-xl border border-border bg-card p-5 shadow-sm transition-all hover:shadow-md",
+        hasColor
+          ? "hover:border-[rgb(var(--project-accent)/0.5)]"
+          : "hover:border-primary/20"
+      )}
     >
       <div>
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-xl">
+            <div
+              className={cn(
+                "flex h-10 w-10 items-center justify-center rounded-lg text-xl transition-colors",
+                hasColor
+                  ? "bg-[rgb(var(--project-accent)/0.1)] text-[rgb(var(--project-accent))]"
+                  : "bg-muted"
+              )}
+            >
               {project.icon || "🚀"}
             </div>
             <div>

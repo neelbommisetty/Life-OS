@@ -4,6 +4,7 @@ import { PriorityBadge } from "./priority-badge";
 import { StatusBadge } from "./status-badge";
 import { Calendar, Tag, Palette } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getProjectTheme } from "@/lib/project-theme";
 
 type Props = {
   project: Project;
@@ -11,11 +12,27 @@ type Props = {
 };
 
 export function ProjectHeader({ project, actions }: Props) {
+  const themeStyle = getProjectTheme(project.color);
+  const hasColor = !!project.color;
+
   return (
-    <div className="flex flex-col gap-6 rounded-xl border border-border bg-card p-6 shadow-sm">
+    <div
+      style={themeStyle}
+      className={cn(
+        "flex flex-col gap-6 rounded-xl border border-border bg-card p-6 shadow-sm",
+        hasColor && "border-l-4 border-l-[rgb(var(--project-accent))]"
+      )}
+    >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-muted text-3xl">
+          <div
+            className={cn(
+              "flex h-16 w-16 shrink-0 items-center justify-center rounded-xl text-3xl",
+              hasColor
+                ? "bg-[rgb(var(--project-accent)/0.1)] text-[rgb(var(--project-accent))]"
+                : "bg-muted"
+            )}
+          >
             {project.icon || "🚀"}
           </div>
           <div className="space-y-1">
