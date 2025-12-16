@@ -7,12 +7,13 @@ import { formatDate } from "@/lib/project-utils";
 import { serverCaller } from "@/server/trpc/server";
 
 type Props = {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 };
 
 export default async function ProjectDetailPage({ params }: Props) {
+  const { id } = await params;
   const project = await serverCaller()
-    .project.getById({ id: params.id })
+    .project.getById({ id })
     .catch(() => null);
 
   if (!project) {
