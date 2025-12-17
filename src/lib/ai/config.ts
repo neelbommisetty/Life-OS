@@ -4,10 +4,16 @@
  * This file manages environment variables for AI providers.
  * Add your API keys to .env.local or .env.development.local:
  *
- * OPENAI_API_KEY=sk-...
- * ANTHROPIC_API_KEY=sk-ant-...
- * GOOGLE_AI_API_KEY=AI...
+ * OPENAI_API_KEY=sk-... (optional)
+ * ANTHROPIC_API_KEY=sk-ant-... (optional)
+ * GOOGLE_AI_API_KEY=AI... (optional)
  */
+
+import {
+  setOpenAIDefaults,
+  setAnthropicDefaults,
+  setGeminiDefaults,
+} from "./providers/config";
 
 export const aiConfig = {
   openai: {
@@ -24,7 +30,9 @@ export const aiConfig = {
 /**
  * Check if a provider is configured with an API key.
  */
-export const isProviderConfigured = (provider: keyof typeof aiConfig): boolean => {
+export const isProviderConfigured = (
+  provider: keyof typeof aiConfig
+): boolean => {
   return Boolean(aiConfig[provider].apiKey);
 };
 
@@ -32,6 +40,40 @@ export const isProviderConfigured = (provider: keyof typeof aiConfig): boolean =
  * Get a list of all configured providers.
  */
 export const getConfiguredProviders = (): (keyof typeof aiConfig)[] => {
-  return (Object.keys(aiConfig) as (keyof typeof aiConfig)[]).filter(isProviderConfigured);
+  return (Object.keys(aiConfig) as (keyof typeof aiConfig)[]).filter(
+    isProviderConfigured
+  );
 };
 
+/**
+ * Initialize AI providers with environment variables.
+ *
+ * This function reads API keys from environment variables and configures
+ * the provider defaults. Only providers with API keys present will be configured.
+ *
+ * This function is idempotent and safe to call multiple times.
+ *
+ * @example
+ * ```ts
+ * import { initializeProviders } from '@/lib/ai/config';
+ *
+ * // Initialize providers at application startup
+ * initializeProviders();
+ * ```
+ */
+export function initializeProviders(): void {
+  // Initialize OpenAI if API key is present
+  if (aiConfig.openai.apiKey) {
+    setOpenAIDefaults({ apiKey: aiConfig.openai.apiKey });
+  }
+
+  // Initialize Anthropic if API key is present
+  if (aiConfig.anthropic.apiKey) {
+    setAnthropicDefaults({ apiKey: aiConfig.anthropic.apiKey });
+  }
+
+  // Initialize Gemini if API key is present
+  if (aiConfig.gemini.apiKey) {
+    setGeminiDefaults({ apiKey: aiConfig.gemini.apiKey });
+  }
+}
