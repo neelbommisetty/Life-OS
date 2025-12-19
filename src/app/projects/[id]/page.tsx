@@ -4,6 +4,7 @@ import { ProjectHeader } from "@/components/projects/project-header";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { StatusTimeline } from "@/components/projects/status-timeline";
 import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
+import { ProjectChat } from "@/components/projects/project-chat";
 import { formatDate } from "@/lib/project-utils";
 import { serverCaller } from "@/server/trpc/server";
 
@@ -20,6 +21,14 @@ export default async function ProjectDetailPage({ params }: Props) {
   if (!project) {
     notFound();
   }
+
+  // Ensure chat thread exists for this project (create if it doesn't)
+  await serverCaller()
+    .chat.getThread({ projectId: id })
+    .catch((error) => {
+      // Log error but don't block page render if thread creation fails
+      console.error("Failed to initialize chat thread:", error);
+    });
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 space-y-6">
@@ -72,11 +81,7 @@ export default async function ProjectDetailPage({ params }: Props) {
           </div>
         }
         tasks={<ProjectTasksBoard projectId={project.id} accentColor={project.color} />}
-        brainstorm={
-          <PlaceholderCard title="Brainstorm">
-            Capture notes, ideas, and research artifacts for this project.
-          </PlaceholderCard>
-        }
+        brainstorm={<ProjectChat projectId={project.id} accentColor={project.color} />}
         artifacts={
           <PlaceholderCard title="Artifacts">
             Store links to docs, designs, and deliverables in one place.

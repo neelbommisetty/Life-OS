@@ -31,6 +31,7 @@
 
 ## Testing and quality
 
+- **Testing**: Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Run tests with `bun test` or `bun run test`. No external test frameworks (Vitest, Jest, etc.).
 - Type-first: add zod validation at tRPC boundaries. Avoid `any`.
 - Keep components small and reusable; lift shared logic into hooks/utilities.
 - Prefer ESLint/TypeScript fixes over disabling rules; if disabling, justify inline.

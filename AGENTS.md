@@ -14,16 +14,16 @@ Use this reference when building features for Project OS so contributions stay c
 - `bun run build` / `bun run start` – generate and serve the optimized app.
 - `bun run lint` – executes ESLint per `eslint.config.mjs`; resolve issues instead of silencing rules.
 - Database helpers: `bun run migrate:dev`, `bun run migrate:deploy`, `bun run migrate:reset`, `bun run db:studio`.
-- Tests: `bun x vitest` (watch) or `bun x vitest run --coverage` for CI.
+- Tests: `bun test` (runs all tests) or `bun test --watch` (watch mode). Use Bun's built-in test runner; import from `bun:test`.
 
 ## Coding Style & Naming Conventions
 Stick to TypeScript, avoid `any`, and prefer server components plus server actions. Use absolute imports configured in `tsconfig`. Components are `PascalCase`, hooks/functions `camelCase`, env vars `SCREAMING_SNAKE_CASE`. Keep two-space indentation and deterministic Tailwind ordering (layout → spacing → typography → state). Headless UI handles interactive patterns; lucide icons only; framer-motion reserved for complex transitions. Place server-only modules outside client bundles and gate via `use server` / `use client` directives.
 
 ## Testing Guidelines
-Vitest covers units and hooks. Mirror source paths (`src/lib/foo.test.ts`, `src/components/foo.test.tsx`) and favor descriptive suites like `describe("project router > list")`. Each tRPC procedure needs zod validation tests plus both success and failure paths. Validate drag-and-drop helpers with integration-style tests when logic is non-trivial. Run `bun x vitest run --coverage` before merging and call out any intentional gaps in the PR body.
+Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Mirror source paths (`src/lib/foo.test.ts`, `src/components/foo.test.tsx`) and favor descriptive suites like `describe("project router > list")`. Each tRPC procedure needs zod validation tests plus both success and failure paths. Validate drag-and-drop helpers with integration-style tests when logic is non-trivial. Run `bun test` before merging and call out any intentional gaps in the PR body.
 
 ## Commit & Pull Request Guidelines
-History follows Conventional Commits (`feat:`, `fix:`, `chore:`). Keep PRs focused, reference issues, and include: summary, screenshots or recordings for UI work, schema/env changes, and rollout notes for AI provider toggles. Confirm `bun run lint`, `bun x vitest run --coverage`, and relevant migration commands pass locally. Request review before merge—even for small fixes.
+History follows Conventional Commits (`feat:`, `fix:`, `chore:`). Keep PRs focused, reference issues, and include: summary, screenshots or recordings for UI work, schema/env changes, and rollout notes for AI provider toggles. Confirm `bun run lint`, `bun test`, and relevant migration commands pass locally. Request review before merge—even for small fixes.
 
 ## Security & Configuration Tips
 Document required env vars in `.env.example` and never commit real secrets. Prisma + AI SDKs read credentials via dotenv; rotate keys when experimenting. Point `DATABASE_URL` to disposable instances while testing migrations. Feature-flag experimental AI endpoints inside `src/server`, and ensure background jobs handle any long-running calls rather than request handlers.
