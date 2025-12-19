@@ -41,13 +41,14 @@ export function initializeChatServices(): void {
     });
 
     // Register project_chat service route
-    // Uses failover strategy: try GPT-4o-mini first, then Claude Haiku, then Gemini Flash
+    // Uses failover strategy: try GPT-5-mini first, then Claude Haiku 4.5, then Gemini Flash Lite, with GPT-4o-mini as final fallback
     registerServiceRoute("project_chat", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
-        ModelKeyName.OpenAIGpt4oMini,
-        ModelKeyName.AnthropicClaude35HaikuLatest,
+        ModelKeyName.OpenAIGpt5Mini,
+        ModelKeyName.AnthropicClaudeHaiku45,
         ModelKeyName.GoogleGemini25FlashLite,
+        ModelKeyName.OpenAIGpt4oMini,
       ],
       retry: { retries: 2, delayMs: 500 },
       logging: {},
@@ -60,9 +61,9 @@ export function initializeChatServices(): void {
     registerServiceRoute("project_chat_summary", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
-        ModelKeyName.OpenAIGpt4oMini,
+        ModelKeyName.OpenAIGpt5Nano,
         ModelKeyName.GoogleGemini25FlashLite,
-        ModelKeyName.AnthropicClaude35HaikuLatest,
+        ModelKeyName.AnthropicClaudeHaiku45,
       ],
       retry: { retries: 2, delayMs: 500 },
       logging: {},

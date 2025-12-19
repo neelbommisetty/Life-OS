@@ -23,20 +23,26 @@ export enum CostTier {
  * Canonical identifiers for the default model definitions in the registry.
  */
 export enum ModelKeyName {
+  // OpenAI models
+  OpenAIGpt52 = 'openai.gpt-5.2',
+  OpenAIGpt52Pro = 'openai.gpt-5.2-pro',
   OpenAIGpt5Mini = 'openai.gpt-5-mini',
+  OpenAIGpt5Nano = 'openai.gpt-5-nano',
   OpenAIGpt5 = 'openai.gpt-5',
-  OpenAIGpt5Pro = 'openai.gpt-5-pro',
-  OpenAIGpt41Mini = 'openai.gpt-4.1-mini',
-  OpenAIGpt4oMini = 'openai.gpt-4o-mini',
+  OpenAIGpt41 = 'openai.gpt-4.1',
   OpenAIGpt4o = 'openai.gpt-4o',
-  AnthropicClaude35HaikuLatest = 'anthropic.claude-3.5-haiku-latest',
-  AnthropicClaude37SonnetLatest = 'anthropic.claude-3.7-sonnet-latest',
-  AnthropicClaude4SonnetLatest = 'anthropic.claude-4-sonnet-latest',
-  GoogleGemini20Flash = 'google.gemini-2.0-flash',
-  GoogleGemini20FlashLite = 'google.gemini-2.0-flash-lite',
+  OpenAIGpt4oMini = 'openai.gpt-4o-mini',
+  // Anthropic Claude models
+  AnthropicClaudeHaiku45 = 'anthropic.claude-haiku-4-5',
+  AnthropicClaudeSonnet45 = 'anthropic.claude-sonnet-4-5',
+  AnthropicClaudeOpus45 = 'anthropic.claude-opus-4-5',
+  // Google Gemini models
+  GoogleGemini3ProPreview = 'google.gemini-3-pro-preview',
+  GoogleGemini3FlashPreview = 'google.gemini-3-flash-preview',
+  GoogleGemini25Pro = 'google.gemini-2.5-pro',
   GoogleGemini25Flash = 'google.gemini-2.5-flash',
   GoogleGemini25FlashLite = 'google.gemini-2.5-flash-lite',
-  GoogleGemini25Pro = 'google.gemini-2.5-pro',
+  GoogleGemini20Flash = 'google.gemini-2.0-flash',
 }
 
 /**

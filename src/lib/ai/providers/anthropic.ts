@@ -302,40 +302,40 @@ const createAnthropicModelDefinition = (
 
 const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[] = [
   {
-    key: ModelKeyName.AnthropicClaude35HaikuLatest,
-    modelId: 'claude-3-5-haiku-latest',
-    label: 'Anthropic Claude 3.5 Haiku',
+    key: ModelKeyName.AnthropicClaudeHaiku45,
+    modelId: 'claude-haiku-4-5',
+    label: 'Anthropic Claude Haiku 4.5',
     description:
-      'Latest Claude 3.5 Haiku release offering fast, cost-efficient responses with full 200K token context.',
+      'Latest cost-efficient Claude Haiku 4.5 model delivering near-frontier performance at one-third the cost and more than twice the speed of Sonnet 4.',
     releaseStage: 'ga',
     maxOutputTokens: 8192,
     contextWindow: 200000,
     costTier: CostTier.Economy,
-    tags: ['claude', 'haiku', 'responses', 'economy'],
+    tags: ['claude', 'haiku', '4.5', 'responses', 'economy'],
   },
   {
-    key: ModelKeyName.AnthropicClaude37SonnetLatest,
-    modelId: 'claude-3-7-sonnet-latest',
-    label: 'Anthropic Claude 3.7 Sonnet',
+    key: ModelKeyName.AnthropicClaudeSonnet45,
+    modelId: 'claude-sonnet-4-5',
+    label: 'Anthropic Claude Sonnet 4.5',
     description:
-      'Latest Claude 3.7 Sonnet release balancing quality reasoning, coding assistance, and long-context orchestration.',
+      'Latest Claude Sonnet 4.5 release balancing quality reasoning, coding assistance, and long-context orchestration. Supports 1M token context window when using the context-1m-2025-08-07 beta header.',
     releaseStage: 'ga',
     maxOutputTokens: 8192,
     contextWindow: 200000,
     costTier: CostTier.Standard,
-    tags: ['claude', 'sonnet', 'responses', 'standard'],
+    tags: ['claude', 'sonnet', '4.5', 'responses', 'standard'],
   },
   {
-    key: ModelKeyName.AnthropicClaude4SonnetLatest,
-    modelId: 'claude-4-sonnet-latest',
-    label: 'Anthropic Claude 4 Sonnet',
+    key: ModelKeyName.AnthropicClaudeOpus45,
+    modelId: 'claude-opus-4-5',
+    label: 'Anthropic Claude Opus 4.5',
     description:
-      'Flagship Claude 4 Sonnet tier delivering premium reasoning depth, reliability, and tool-use orchestration.',
-    releaseStage: 'beta',
+      'Flagship Claude Opus 4.5 tier delivering premium reasoning depth, reliability, and tool-use orchestration. Excels in complex reasoning, programming, and agentic tasks.',
+    releaseStage: 'ga',
     maxOutputTokens: 8192,
     contextWindow: 200000,
     costTier: CostTier.Premium,
-    tags: ['claude', 'sonnet', 'responses', 'premium', 'next-gen'],
+    tags: ['claude', 'opus', '4.5', 'responses', 'premium'],
   },
 ];
 

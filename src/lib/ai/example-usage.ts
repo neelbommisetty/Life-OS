@@ -82,7 +82,7 @@ export function registerAllModels() {
  */
 export async function directModelUsage() {
   // Create a model instance
-  const model = modelRegistry.create(ModelKeyName.OpenAIGpt4oMini);
+  const model = modelRegistry.create(ModelKeyName.OpenAIGpt5Mini);
 
   // Call with text mode (default)
   const textResult = await model.call({
@@ -113,7 +113,7 @@ export async function directModelUsage() {
  * Use callJson for type-safe JSON responses with automatic validation.
  */
 export async function zodJsonUsage() {
-  const model = modelRegistry.create(ModelKeyName.AnthropicClaude35HaikuLatest);
+  const model = modelRegistry.create(ModelKeyName.AnthropicClaudeHaiku45);
 
   // Define a Zod schema
   const TaskSchema = z.object({
@@ -168,7 +168,7 @@ export function setupServiceRoutes() {
   // Static route: Always use the same model
   registerServiceRoute('simple-chat', {
     strategy: ServiceRouteStrategy.Static,
-    model: ModelKeyName.OpenAIGpt4oMini,
+    model: ModelKeyName.OpenAIGpt5Mini,
     retry: 2,
   });
 
@@ -176,8 +176,8 @@ export function setupServiceRoutes() {
   registerServiceRoute('reliable-generation', {
     strategy: ServiceRouteStrategy.Failover,
     models: [
-      ModelKeyName.OpenAIGpt4oMini,
-      ModelKeyName.AnthropicClaude35HaikuLatest,
+      ModelKeyName.OpenAIGpt5Mini,
+      ModelKeyName.AnthropicClaudeHaiku45,
       ModelKeyName.GoogleGemini25FlashLite,
     ],
     retry: { retries: 2, delayMs: 500 },
@@ -187,8 +187,8 @@ export function setupServiceRoutes() {
   registerServiceRoute('load-balanced', {
     strategy: ServiceRouteStrategy.RoundRobin,
     models: [
-      ModelKeyName.OpenAIGpt4oMini,
-      ModelKeyName.AnthropicClaude35HaikuLatest,
+      ModelKeyName.OpenAIGpt5Mini,
+      ModelKeyName.AnthropicClaudeHaiku45,
     ],
   });
 
@@ -197,7 +197,7 @@ export function setupServiceRoutes() {
     strategy: ServiceRouteStrategy.RotatingFailover,
     models: [
       ModelKeyName.OpenAIGpt4o,
-      ModelKeyName.AnthropicClaude37SonnetLatest,
+      ModelKeyName.AnthropicClaudeSonnet45,
       ModelKeyName.GoogleGemini25Flash,
     ],
     retry: 2,
