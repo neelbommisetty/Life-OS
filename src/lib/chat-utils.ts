@@ -19,7 +19,31 @@ Project Details:
 - Description: ${project.description || "No description"}
 ${project.tags.length > 0 ? `- Tags: ${project.tags.join(", ")}` : ""}
 
-Your role is to help brainstorm ideas, answer questions, and provide guidance related to this project. Be concise, helpful, and creative.`;
+Your role is to help brainstorm ideas, answer questions, and provide guidance related to this project. Be concise, helpful, and creative.
+
+You can also propose creating tasks for this project. If you suggest creating tasks (one or multiple), you MUST ask for user approval first.
+When proposing tasks, output them in a STRICT JSON block format at the end of your message, wrapped in \`\`\`json\`\`\` code fences with the structure below.
+DO NOT create tasks without this structure.
+
+Example format:
+\`\`\`json
+{
+  "tasks": [
+    {
+      "title": "Task title",
+      "description": "Task description (optional)",
+      "priority": "MEDIUM",
+      "status": "BACKLOG",
+      "dueDate": "2024-12-31" (optional, ISO date)
+    }
+  ]
+}
+\`\`\`
+
+Valid priorities: LOW, MEDIUM, HIGH, URGENT
+Valid statuses: BACKLOG, TODO, IN_PROGRESS, WAITING, DONE (Default: BACKLOG)
+
+Ground your answers in the latest project details provided above. If the project description changes, adapt your suggestions accordingly.`;
 }
 
 /**
@@ -68,3 +92,35 @@ export function buildSummarizationPrompt(messages: ChatMessage[]): string {
   return prompt;
 }
 
+/**
+ * Extract task proposals from message content
+ */
+export function extractTasksFromMessage(content: string): any[] | null {
+  try {
+    const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
+    if (!jsonMatch) return null;
+
+    const data = JSON.parse(jsonMatch[1]);
+    if (data && Array.isArray(data.tasks)) {
+      return data.tasks;
+    }
+    return null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Check if user message is an approval
+ */
+export function isApproval(content: string): boolean {
+  const normalized = content.trim().toLowerCase();
+  const approvalPatterns = [
+    /^(yes|yeah|yep|sure|ok|okay|do it|go ahead|proceed|approve|confirm|please do)$/,
+    /^create (them|the tasks)$/,
+    /^looks good$/,
+    /^make it so$/
+  ];
+
+  return approvalPatterns.some(pattern => pattern.test(normalized));
+}

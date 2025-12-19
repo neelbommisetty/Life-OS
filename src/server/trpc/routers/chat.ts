@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { getThreadSchema, sendMessageSchema } from "@/lib/validations/chat";
+import { createManyTaskSchema } from "@/lib/validations/task";
 import { publicProcedure, router } from "../trpc";
 import { createLogger } from "@/lib/ai/logger";
 import {
@@ -7,6 +8,8 @@ import {
   formatMessagesForAI,
   calculateHistoryTokens,
   buildSummarizationPrompt,
+  extractTasksFromMessage,
+  isApproval,
 } from "@/lib/chat-utils";
 import "@/lib/ai/init";
 import { getModelFor } from "@/lib/ai/providers/router";
@@ -151,6 +154,93 @@ export const chatRouter = router({
         });
 
         logger.info("User message saved", { messageId: userMessage.id });
+
+        // Check for Task Approval Flow
+        const lastMessage = thread.messages[thread.messages.length - 1];
+        if (
+          lastMessage &&
+          lastMessage.role === "ASSISTANT" &&
+          isApproval(input.content)
+        ) {
+          const tasks = extractTasksFromMessage(lastMessage.content);
+          if (tasks) {
+            logger.info("Detected task approval", { count: tasks.length });
+            try {
+              const validation = createManyTaskSchema.safeParse({
+                projectId: input.projectId,
+                tasks: tasks,
+              });
+
+              if (validation.success) {
+                const createdTasks: { title: string }[] = [];
+
+                await ctx.prisma.$transaction(async (tx) => {
+                  const tasksByStatus = validation.data.tasks.reduce((acc, task) => {
+                    const status = task.status ?? "BACKLOG";
+                    if (!acc[status]) acc[status] = [];
+                    acc[status].push(task);
+                    return acc;
+                  }, {} as Record<string, typeof validation.data.tasks>);
+
+                  for (const [status, tasks] of Object.entries(tasksByStatus)) {
+                    const maxOrder = await tx.task.aggregate({
+                      where: { projectId: input.projectId, status: status as any },
+                      _max: { sortOrder: true },
+                    });
+
+                    let currentSortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
+                    for (const task of tasks) {
+                      const created = await tx.task.create({
+                        data: {
+                          projectId: input.projectId,
+                          title: task.title,
+                          description: task.description,
+                          status: status as any,
+                          priority: task.priority ?? "MEDIUM",
+                          dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
+                          sortOrder: currentSortOrder++,
+                        },
+                      });
+                      createdTasks.push(created);
+                    }
+                  }
+                });
+
+                // Add System Message to confirm creation
+                const systemMsg = await ctx.prisma.chatMessage.create({
+                  data: {
+                    threadId: thread.id,
+                    role: "SYSTEM", // Using SYSTEM role to denote system action
+                    content: `Tasks created successfully: ${createdTasks.map((t) => t.title).join(", ")}`,
+                  },
+                });
+
+                // Add to our local messages list so AI sees it (or we can return early if we want to skip AI response)
+                thread.messages.push(systemMsg);
+
+                logger.info("Created tasks from approval", { count: createdTasks.length });
+
+                // Skip AI generation if this was an approval action
+                // Return updated thread immediately
+                const updatedThread = await ctx.prisma.chatThread.findUnique({
+                  where: { id: thread.id },
+                  include: {
+                    messages: {
+                      orderBy: { createdAt: "asc" },
+                    },
+                  },
+                });
+                return updatedThread!;
+              }
+            } catch (e) {
+              logger.error("Failed to create tasks from approval", {
+                error: e instanceof Error ? e.message : String(e),
+              });
+              // Continue to AI response (AI might ask what went wrong if we added a failure message, but for now we just log)
+            }
+          }
+        }
 
         // Get all messages including the new one
         const allMessages = [

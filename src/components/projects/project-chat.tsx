@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { api } from "@/trpc/client";
-import { SendIcon, LoaderIcon } from "lucide-react";
+import { SendIcon, LoaderIcon, CheckCircle2Icon, PlusIcon, CalendarIcon, AlertCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@prisma/client";
+import { extractTasksFromMessage } from "@/lib/chat-utils";
+import { PriorityBadge } from "./priority-badge";
 
 type Props = {
   projectId: string;
@@ -21,6 +23,22 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     projectId,
   });
 
+  const utils = api.useUtils();
+
+  // Task creation mutation for direct approval
+  const createTaskMutation = api.task.create.useMutation({
+    onSuccess: () => {
+      // Invalidate project tasks to update board
+      utils.task.list.invalidate({ projectId });
+    },
+  });
+
+  const createManyTasksMutation = api.task.createMany.useMutation({
+    onSuccess: () => {
+      utils.task.list.invalidate({ projectId });
+    },
+  });
+
   // Send message mutation
   const sendMessageMutation = api.chat.sendMessage.useMutation({
     onSuccess: () => {
@@ -30,28 +48,51 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     },
   });
 
-  const utils = api.useUtils();
-
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [thread?.messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || sendMessageMutation.isPending) return;
+  const handleSubmit = async (e: React.FormEvent, contentOverride?: string) => {
+    e?.preventDefault();
+    const content = contentOverride || input.trim();
+    if (!content || sendMessageMutation.isPending) return;
 
     sendMessageMutation.mutate({
       projectId,
-      content: input.trim(),
+      content,
     });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e);
+      handleSubmit(e as any);
     }
+  };
+
+  const handleApproveTask = (task: any) => {
+    createTaskMutation.mutate({
+      projectId,
+      title: task.title,
+      description: task.description,
+      status: task.status ?? "BACKLOG",
+      priority: task.priority ?? "MEDIUM",
+      dueDate: task.dueDate ? new Date(task.dueDate).toISOString() : undefined,
+    });
+  };
+
+  const handleApproveAll = (tasks: any[]) => {
+    if (!tasks || tasks.length === 0) return;
+    createManyTasksMutation.mutate({
+      projectId,
+      tasks: tasks.map((t: any) => ({
+        ...t,
+        status: t.status ?? "BACKLOG",
+        priority: t.priority ?? "MEDIUM",
+        dueDate: t.dueDate ? new Date(t.dueDate).toISOString() : undefined,
+      })),
+    });
   };
 
   if (isLoading) {
@@ -88,6 +129,9 @@ export function ProjectChat({ projectId, accentColor }: Props) {
             key={message.id}
             message={message}
             accentColor={accentColor}
+            onApproveTask={handleApproveTask}
+            onApproveAll={handleApproveAll}
+            isPending={isPending || createTaskMutation.isPending || createManyTasksMutation.isPending}
           />
         ))}
 
@@ -102,12 +146,30 @@ export function ProjectChat({ projectId, accentColor }: Props) {
           </div>
         )}
 
+        {(createTaskMutation.isPending || createManyTasksMutation.isPending) && (
+          <div className="flex justify-center my-2">
+            <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
+              <LoaderIcon className="h-3 w-3 animate-spin" />
+              Creating tasks...
+            </div>
+          </div>
+        )}
+
+        {(createTaskMutation.isSuccess || createManyTasksMutation.isSuccess) && (
+           <div className="flex justify-center my-2">
+            <div className="flex items-center gap-2 rounded-full bg-green-100 dark:bg-green-900/30 px-4 py-1.5 text-xs text-green-700 dark:text-green-300">
+              <CheckCircle2Icon className="h-3 w-3" />
+              Tasks created successfully
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
       {/* Input area */}
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => handleSubmit(e)}
         className="border-t border-border bg-muted/50 p-4"
       >
         <div className="flex gap-2">
@@ -161,54 +223,160 @@ export function ProjectChat({ projectId, accentColor }: Props) {
 function MessageBubble({
   message,
   accentColor,
+  onApproveTask,
+  onApproveAll,
+  isPending,
 }: {
   message: ChatMessage;
   accentColor?: string | null;
+  onApproveTask: (task: any) => void;
+  onApproveAll: (tasks: any[]) => void;
+  isPending: boolean;
 }) {
   const isUser = message.role === "USER";
   const isAssistant = message.role === "ASSISTANT";
+  const isSystem = message.role === "SYSTEM";
 
-  if (!isUser && !isAssistant) {
-    return null; // Skip system messages in UI
+  // Parse tasks if assistant message
+  const proposedTasks = useMemo(() => {
+    if (!isAssistant) return null;
+    return extractTasksFromMessage(message.content);
+  }, [message.content, isAssistant]);
+
+  // Clean content by removing JSON block for display
+  const displayContent = useMemo(() => {
+    if (!isAssistant) return message.content;
+    return message.content.replace(/```json[\s\S]*?```/, "").trim();
+  }, [message.content, isAssistant]);
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center my-2">
+        <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">
+          {message.content}
+        </span>
+      </div>
+    );
   }
 
   return (
-    <div className={cn("flex items-start gap-3", isUser && "flex-row-reverse")}>
-      <div
-        className={cn(
-          "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold",
-          isUser
-            ? accentColor
-              ? "bg-[rgb(var(--project-accent))] text-white"
-              : "bg-primary text-primary-foreground"
-            : "bg-muted text-foreground"
-        )}
-        style={
-          isUser && accentColor
-            ? ({ "--project-accent": accentColor } as React.CSSProperties)
-            : undefined
-        }
-      >
-        {isUser ? "You" : "AI"}
+    <div className={cn("flex flex-col gap-2", isUser ? "items-end" : "items-start")}>
+      <div className={cn("flex items-start gap-3 max-w-[85%]", isUser && "flex-row-reverse")}>
+        <div
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+            isUser
+              ? accentColor
+                ? "bg-[rgb(var(--project-accent))] text-white"
+                : "bg-primary text-primary-foreground"
+              : "bg-muted text-foreground"
+          )}
+          style={
+            isUser && accentColor
+              ? ({ "--project-accent": accentColor } as React.CSSProperties)
+              : undefined
+          }
+        >
+          {isUser ? "You" : "AI"}
+        </div>
+        <div
+          className={cn(
+            "rounded-lg px-4 py-3 text-sm shadow-sm",
+            isUser
+              ? accentColor
+                ? "bg-[rgb(var(--project-accent))] text-white"
+                : "bg-primary text-primary-foreground"
+              : "bg-card border border-border text-foreground"
+          )}
+          style={
+            isUser && accentColor
+              ? ({ "--project-accent": accentColor } as React.CSSProperties)
+              : undefined
+          }
+        >
+          <p className="whitespace-pre-wrap break-words">{displayContent}</p>
+        </div>
       </div>
-      <div
-        className={cn(
-          "flex-1 rounded-lg px-4 py-3 text-sm",
-          isUser
-            ? accentColor
-              ? "bg-[rgb(var(--project-accent))] text-white"
-              : "bg-primary text-primary-foreground"
-            : "bg-muted text-foreground"
-        )}
-        style={
-          isUser && accentColor
-            ? ({ "--project-accent": accentColor } as React.CSSProperties)
-            : undefined
-        }
-      >
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
-      </div>
+
+      {/* Task Proposals */}
+      {proposedTasks && proposedTasks.length > 0 && (
+        <div className="ml-11 max-w-[85%] w-full sm:w-96 space-y-3">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <AlertCircleIcon className="h-4 w-4 text-primary" />
+                Proposed Tasks ({proposedTasks.length})
+              </h4>
+              {proposedTasks.length > 1 && (
+                <button
+                  onClick={() => onApproveAll(proposedTasks)}
+                  disabled={isPending}
+                  className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                >
+                  Approve All
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {proposedTasks.map((task: any, i: number) => (
+                <div
+                  key={i}
+                  className="group relative rounded-lg border border-border bg-muted/30 p-3 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground break-words">
+                        {task.title}
+                      </p>
+                      {task.description && (
+                        <p className="text-xs text-muted-foreground break-words line-clamp-2">
+                          {task.description}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-2 pt-1">
+                        <PriorityBadge priority={task.priority} />
+                        {task.status && (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground">
+                            {task.status}
+                          </span>
+                        )}
+                        {task.dueDate && (
+                          <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                            <CalendarIcon className="h-3 w-3" />
+                            {new Date(task.dueDate).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => onApproveTask(task)}
+                      disabled={isPending}
+                      className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                      title="Create this task"
+                    >
+                      Create task
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={() => onApproveAll(proposedTasks)}
+              disabled={isPending}
+              className={cn(
+                "w-full flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-colors",
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+                "disabled:cursor-not-allowed disabled:opacity-50"
+              )}
+            >
+              <CheckCircle2Icon className="h-4 w-4" />
+              Approve & Create Tasks
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-

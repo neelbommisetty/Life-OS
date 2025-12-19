@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import {
   createTaskSchema,
+  createManyTaskSchema,
   listTasksSchema,
   moveTaskSchema,
   updateTaskSchema,
@@ -122,6 +123,73 @@ export const taskRouter = router({
         logger.error("Failed to create task", {
           projectId: input.projectId,
           title: input.title,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - start,
+        });
+        throw error;
+      }
+    }),
+
+  createMany: publicProcedure
+    .input(createManyTaskSchema)
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Creating multiple tasks", {
+        projectId: input.projectId,
+        count: input.tasks.length,
+      });
+
+      try {
+        const results = [];
+        // Process sequentially to handle sort order correctly per status
+        // A transaction would be better but sortOrder logic is complex per status
+        // For now, simple loop inside transaction is safer if we want to guarantee order
+
+        // Let's group by status to optimize sort order fetching
+        const tasksByStatus = input.tasks.reduce((acc, task) => {
+          const status = task.status ?? "BACKLOG";
+          if (!acc[status]) acc[status] = [];
+          acc[status].push(task);
+          return acc;
+        }, {} as Record<string, typeof input.tasks>);
+
+        await ctx.prisma.$transaction(async (tx) => {
+          for (const [status, tasks] of Object.entries(tasksByStatus)) {
+            // Get current max order for this status
+            const maxOrder = await tx.task.aggregate({
+              where: { projectId: input.projectId, status: status as any },
+              _max: { sortOrder: true },
+            });
+
+            let currentSortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
+            for (const task of tasks) {
+              const created = await tx.task.create({
+                data: {
+                  projectId: input.projectId,
+                  title: task.title,
+                  description: task.description,
+                  status: status as any,
+                  priority: task.priority ?? "MEDIUM",
+                  dueDate: coerceDate(task.dueDate),
+                  sortOrder: currentSortOrder++,
+                },
+              });
+              results.push(created);
+            }
+          }
+        });
+
+        logger.info("Tasks created successfully", {
+          projectId: input.projectId,
+          count: results.length,
+          durationMs: Date.now() - start,
+        });
+
+        return results;
+      } catch (error) {
+        logger.error("Failed to create multiple tasks", {
+          projectId: input.projectId,
           error: error instanceof Error ? error.message : String(error),
           durationMs: Date.now() - start,
         });

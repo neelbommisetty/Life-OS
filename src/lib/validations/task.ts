@@ -18,6 +18,19 @@ export const createTaskSchema = z.object({
   dueDate: z.string().datetime().optional().nullable(),
 });
 
+export const createManyTaskSchema = z.object({
+  projectId: z.string().cuid(),
+  tasks: z.array(
+    z.object({
+      title: z.string().min(1, "Title is required"),
+      description: z.string().optional(),
+      status: taskStatusEnum.default("BACKLOG"),
+      priority: priorityEnum.default("MEDIUM"),
+      dueDate: z.string().datetime().optional().nullable(),
+    })
+  ).min(1, "At least one task is required"),
+});
+
 export const updateTaskSchema = createTaskSchema.partial().extend({
   id: z.string().cuid(),
 });

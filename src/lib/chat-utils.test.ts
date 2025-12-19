@@ -5,6 +5,8 @@ import {
   formatMessagesForAI,
   calculateHistoryTokens,
   buildSummarizationPrompt,
+  extractTasksFromMessage,
+  isApproval,
 } from "./chat-utils";
 import type { ChatMessage, Project } from "@prisma/client";
 
@@ -173,6 +175,77 @@ describe("Chat Utils", () => {
       expect(prompt).toContain("concise summary");
       expect(prompt).toContain("User: What is AI?");
       expect(prompt).toContain("Assistant: AI stands for Artificial Intelligence.");
+    });
+  });
+
+  describe("extractTasksFromMessage", () => {
+    it("extracts tasks from valid JSON block", () => {
+      const content = `Sure, I can help with that.
+\`\`\`json
+{
+  "tasks": [
+    {
+      "title": "Task 1",
+      "status": "TODO"
+    },
+    {
+      "title": "Task 2"
+    }
+  ]
+}
+\`\`\`
+Let me know if this looks good.`;
+
+      const tasks = extractTasksFromMessage(content);
+      expect(tasks).toBeArray();
+      expect(tasks).toHaveLength(2);
+      expect(tasks![0].title).toBe("Task 1");
+      expect(tasks![1].title).toBe("Task 2");
+    });
+
+    it("returns null if no JSON block found", () => {
+      const content = "Just some text without JSON.";
+      const tasks = extractTasksFromMessage(content);
+      expect(tasks).toBeNull();
+    });
+
+    it("returns null if JSON is invalid", () => {
+      const content = `
+\`\`\`json
+{ "tasks": [ ... invalid ... ] }
+\`\`\`
+`;
+      const tasks = extractTasksFromMessage(content);
+      expect(tasks).toBeNull();
+    });
+
+    it("returns null if structure is incorrect", () => {
+        const content = `
+\`\`\`json
+{ "notTasks": [] }
+\`\`\`
+`;
+        const tasks = extractTasksFromMessage(content);
+        expect(tasks).toBeNull();
+    });
+  });
+
+  describe("isApproval", () => {
+    it("returns true for approval phrases", () => {
+      expect(isApproval("yes")).toBe(true);
+      expect(isApproval("Yes")).toBe(true);
+      expect(isApproval("approve")).toBe(true);
+      expect(isApproval("ok")).toBe(true);
+      expect(isApproval("do it")).toBe(true);
+      expect(isApproval("create them")).toBe(true);
+    });
+
+    it("returns false for non-approval phrases", () => {
+      expect(isApproval("no")).toBe(false);
+      expect(isApproval("wait")).toBe(false);
+      expect(isApproval("what?")).toBe(false);
+      expect(isApproval("maybe later")).toBe(false);
+      expect(isApproval("create something else")).toBe(false); // "create something else" doesn't match strict patterns
     });
   });
 });
