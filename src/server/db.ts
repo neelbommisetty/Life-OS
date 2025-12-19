@@ -29,3 +29,7 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
+// Verify prisma is properly initialized at module load
+if (typeof prisma === "undefined") {
+  throw new Error("Prisma client failed to initialize");
+}

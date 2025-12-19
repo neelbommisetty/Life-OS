@@ -3,6 +3,7 @@ import { EditProjectDialog } from "@/components/projects/edit-project-dialog";
 import { ProjectHeader } from "@/components/projects/project-header";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { StatusTimeline } from "@/components/projects/status-timeline";
+import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
 import { formatDate } from "@/lib/project-utils";
 import { serverCaller } from "@/server/trpc/server";
 
@@ -70,11 +71,7 @@ export default async function ProjectDetailPage({ params }: Props) {
             </div>
           </div>
         }
-        tasks={
-          <PlaceholderCard title="Tasks">
-            Task management coming soon. Define tasks, owners, and progress.
-          </PlaceholderCard>
-        }
+        tasks={<ProjectTasksBoard projectId={project.id} accentColor={project.color} />}
         brainstorm={
           <PlaceholderCard title="Brainstorm">
             Capture notes, ideas, and research artifacts for this project.
