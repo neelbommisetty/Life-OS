@@ -4,6 +4,7 @@ import { Dialog, DialogPanel, DialogTitle, Disclosure, Menu, Transition } from '
 import type { Project } from '@prisma/client';
 import { Fragment, useMemo, useState } from 'react';
 import { priorityEnum } from '@/lib/validations/project';
+import type { z } from 'zod';
 import { api } from '@/trpc/client';
 import { ProjectColorPicker } from './project-color-picker';
 import { ProjectEmojiPicker } from './project-emoji-picker';
@@ -99,7 +100,9 @@ export function EditProjectDialog({ project }: Props) {
       name: form.name,
       description: form.description || undefined,
       status: form.status,
-      priority: form.priority || undefined,
+      priority: form.priority && priorityEnum.options.includes(form.priority as z.infer<typeof priorityEnum>)
+        ? (form.priority as z.infer<typeof priorityEnum>)
+        : undefined,
       tags,
       color: form.color || undefined,
       icon: form.icon || undefined,

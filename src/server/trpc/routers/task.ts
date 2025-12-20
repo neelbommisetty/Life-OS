@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import type { Task } from "@prisma/client";
 import {
   createTaskSchema,
   createManyTaskSchema,
@@ -140,7 +141,7 @@ export const taskRouter = router({
       });
 
       try {
-        const results = [];
+        const results: Task[] = [];
         // Process sequentially to handle sort order correctly per status
         // A transaction would be better but sortOrder logic is complex per status
         // For now, simple loop inside transaction is safer if we want to guarantee order

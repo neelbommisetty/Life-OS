@@ -1,9 +1,16 @@
-'use client';
+"use client";
 
-import { Dialog, DialogPanel, DialogTitle, Disclosure, Transition } from '@headlessui/react';
-import { Fragment, useMemo, useState } from 'react';
-import { api } from '@/trpc/client';
-import { projectStatusEnum, priorityEnum } from '@/lib/validations/project';
+import {
+  Dialog,
+  DialogPanel,
+  DialogTitle,
+  Disclosure,
+  Transition,
+} from "@headlessui/react";
+import { Fragment, useMemo, useState } from "react";
+import { api } from "@/trpc/client";
+import { projectStatusEnum, priorityEnum } from "@/lib/validations/project";
+import type { z } from "zod";
 import {
   Plus,
   X,
@@ -16,12 +23,12 @@ import {
   AlertOctagon,
   ChevronDown,
   Tag,
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { PRIORITY_LABELS } from '@/lib/project-utils';
-import { ProjectColorPicker } from './project-color-picker';
-import { ProjectEmojiPicker } from './project-emoji-picker';
-import { getProjectTheme } from '@/lib/project-theme';
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { PRIORITY_LABELS } from "@/lib/project-utils";
+import { ProjectColorPicker } from "./project-color-picker";
+import { ProjectEmojiPicker } from "./project-emoji-picker";
+import { getProjectTheme } from "@/lib/project-theme";
 
 const STATUS_ICONS = {
   IDEA: Lightbulb,
@@ -39,13 +46,13 @@ export function CreateProjectDialog() {
   const utils = api.useContext();
 
   const initialFormState = {
-    name: '',
-    description: '',
-    priority: '',
-    tags: '',
-    dueDate: '',
-    color: '',
-    icon: '',
+    name: "",
+    description: "",
+    priority: "",
+    tags: "",
+    dueDate: "",
+    color: "",
+    icon: "",
   };
 
   const [form, setForm] = useState(initialFormState);
@@ -69,14 +76,23 @@ export function CreateProjectDialog() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const tags = form.tags
-      ? form.tags.split(',').map((t) => t.trim()).filter(Boolean)
+      ? form.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
       : [];
 
     await mutateAsync({
       name: form.name,
       description: form.description || undefined,
       status: projectStatusEnum.options[0],
-      priority: form.priority || undefined,
+      priority:
+        form.priority &&
+        priorityEnum.options.includes(
+          form.priority as z.infer<typeof priorityEnum>
+        )
+          ? (form.priority as z.infer<typeof priorityEnum>)
+          : undefined,
       tags,
       color: form.color || undefined,
       icon: form.icon || undefined,
@@ -101,14 +117,17 @@ export function CreateProjectDialog() {
 
   const tagList = useMemo(() => {
     const tags = form.tags
-      ? form.tags.split(',').map((t) => t.trim()).filter(Boolean)
+      ? form.tags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
       : [];
     return Array.from(new Set(tags));
   }, [form.tags]);
 
   const removeTag = (tag: string) => {
     const remaining = tagList.filter((t) => t !== tag);
-    handleChange('tags', remaining.join(', '));
+    handleChange("tags", remaining.join(", "));
   };
 
   return (
@@ -149,7 +168,9 @@ export function CreateProjectDialog() {
                 <DialogPanel
                   className={cn(
                     "w-full max-w-xl overflow-hidden rounded-3xl border bg-card/95 text-left align-middle shadow-2xl transition-all",
-                    form.color ? "border-[rgb(var(--project-accent)/0.35)]" : "border-border/60"
+                    form.color
+                      ? "border-[rgb(var(--project-accent)/0.35)]"
+                      : "border-border/60"
                   )}
                   style={accentStyle}
                 >
@@ -167,7 +188,9 @@ export function CreateProjectDialog() {
                     <div className="relative space-y-5 p-6">
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-1">
-                          <DialogTitle className="text-lg font-semibold text-foreground">New project</DialogTitle>
+                          <DialogTitle className="text-lg font-semibold text-foreground">
+                            New project
+                          </DialogTitle>
                           <div className="inline-flex items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-1 text-xs text-muted-foreground">
                             <STATUS_ICONS.IDEA className="h-3.5 w-3.5" />
                             Starts in Idea
@@ -186,7 +209,7 @@ export function CreateProjectDialog() {
                       <div className="flex items-center gap-3">
                         <ProjectEmojiPicker
                           value={form.icon}
-                          onChange={(val) => handleChange('icon', val)}
+                          onChange={(val) => handleChange("icon", val)}
                           className="h-12 w-12"
                           compact
                         />
@@ -195,17 +218,21 @@ export function CreateProjectDialog() {
                             required
                             autoFocus
                             value={form.name}
-                            onChange={(e) => handleChange('name', e.target.value)}
+                            onChange={(e) =>
+                              handleChange("name", e.target.value)
+                            }
                             className={cn(
                               "h-12 w-full rounded-2xl border bg-background/70 px-4 text-base font-medium text-foreground placeholder:text-muted-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30",
-                              form.color ? "border-[rgb(var(--project-accent)/0.25)]" : "border-border/70"
+                              form.color
+                                ? "border-[rgb(var(--project-accent)/0.25)]"
+                                : "border-border/70"
                             )}
                             placeholder="Project name"
                           />
                         </div>
                         <ProjectColorPicker
                           value={form.color}
-                          onChange={(val) => handleChange('color', val)}
+                          onChange={(val) => handleChange("color", val)}
                           className="h-12 w-12"
                           compact
                         />
@@ -217,10 +244,14 @@ export function CreateProjectDialog() {
                         </label>
                         <textarea
                           value={form.description}
-                          onChange={(e) => handleChange('description', e.target.value)}
+                          onChange={(e) =>
+                            handleChange("description", e.target.value)
+                          }
                           className={cn(
                             "w-full rounded-2xl border bg-background/70 px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30 min-h-[160px]",
-                            form.color ? "border-[rgb(var(--project-accent)/0.25)]" : "border-border/70"
+                            form.color
+                              ? "border-[rgb(var(--project-accent)/0.25)]"
+                              : "border-border/70"
                           )}
                           placeholder="What’s the goal, scope, and what “done” looks like?"
                           rows={6}
@@ -235,10 +266,14 @@ export function CreateProjectDialog() {
                           <Tag className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                           <input
                             value={form.tags}
-                            onChange={(e) => handleChange('tags', e.target.value)}
+                            onChange={(e) =>
+                              handleChange("tags", e.target.value)
+                            }
                             className={cn(
                               "h-11 w-full rounded-2xl border bg-background/70 pl-10 pr-3 text-sm text-foreground placeholder:text-muted-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30",
-                              form.color ? "border-[rgb(var(--project-accent)/0.25)]" : "border-border/70"
+                              form.color
+                                ? "border-[rgb(var(--project-accent)/0.25)]"
+                                : "border-border/70"
                             )}
                             placeholder="ui, infra, client-x (comma separated)"
                           />
@@ -262,13 +297,20 @@ export function CreateProjectDialog() {
                         ) : null}
                       </div>
 
-                      <Disclosure as="div" className="rounded-2xl border border-border/60 bg-background/60 shadow-inner">
+                      <Disclosure
+                        as="div"
+                        className="rounded-2xl border border-border/60 bg-background/60 shadow-inner"
+                      >
                         {({ open: advancedOpen }) => (
                           <>
                             <Disclosure.Button className="flex w-full items-center justify-between px-4 py-3 text-left">
                               <div>
-                                <p className="text-sm font-semibold text-foreground">Advanced</p>
-                                <p className="text-xs text-muted-foreground">Priority and due date (optional)</p>
+                                <p className="text-sm font-semibold text-foreground">
+                                  Advanced
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Priority and due date (optional)
+                                </p>
                               </div>
                               <ChevronDown
                                 className={cn(
@@ -284,7 +326,9 @@ export function CreateProjectDialog() {
                                   {form.priority ? (
                                     <button
                                       type="button"
-                                      onClick={() => handleChange('priority', '')}
+                                      onClick={() =>
+                                        handleChange("priority", "")
+                                      }
                                       className="text-[11px] text-muted-foreground hover:text-foreground"
                                     >
                                       Clear
@@ -292,23 +336,27 @@ export function CreateProjectDialog() {
                                   ) : null}
                                 </div>
                                 <div className="flex flex-wrap gap-2">
-                                  {priorityOptions.map(({ value, label, Icon }) => (
-                                    <button
-                                      key={value}
-                                      type="button"
-                                      onClick={() => handleChange('priority', value)}
-                                      className={cn(
-                                        "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition",
-                                        form.priority === value
-                                          ? "border-primary/50 bg-primary/10 text-foreground shadow-sm"
-                                          : "border-border/70 bg-card/70 text-muted-foreground hover:border-border hover:text-foreground"
-                                      )}
-                                      aria-pressed={form.priority === value}
-                                    >
-                                      <Icon className="h-4 w-4" />
-                                      {label}
-                                    </button>
-                                  ))}
+                                  {priorityOptions.map(
+                                    ({ value, label, Icon }) => (
+                                      <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() =>
+                                          handleChange("priority", value)
+                                        }
+                                        className={cn(
+                                          "inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition",
+                                          form.priority === value
+                                            ? "border-primary/50 bg-primary/10 text-foreground shadow-sm"
+                                            : "border-border/70 bg-card/70 text-muted-foreground hover:border-border hover:text-foreground"
+                                        )}
+                                        aria-pressed={form.priority === value}
+                                      >
+                                        <Icon className="h-4 w-4" />
+                                        {label}
+                                      </button>
+                                    )
+                                  )}
                                 </div>
                               </div>
 
@@ -321,10 +369,14 @@ export function CreateProjectDialog() {
                                   <input
                                     type="date"
                                     value={form.dueDate}
-                                    onChange={(e) => handleChange('dueDate', e.target.value)}
+                                    onChange={(e) =>
+                                      handleChange("dueDate", e.target.value)
+                                    }
                                     className={cn(
                                       "h-11 w-full rounded-2xl border bg-background/70 pl-10 pr-3 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30",
-                                      form.color ? "border-[rgb(var(--project-accent)/0.25)]" : "border-border/70"
+                                      form.color
+                                        ? "border-[rgb(var(--project-accent)/0.25)]"
+                                        : "border-border/70"
                                     )}
                                   />
                                 </div>
