@@ -8,6 +8,7 @@ type Props = {
   value?: string;
   onChange: (emoji: string) => void;
   className?: string;
+  compact?: boolean;
 };
 
 // Curated list of emojis
@@ -20,25 +21,30 @@ const EMOJI_LIST = [
   '🔑', '🔔', '📣', '📢', '💬', '💭', '👁️', '🧠'
 ];
 
-export function ProjectEmojiPicker({ value, onChange, className }: Props) {
+export function ProjectEmojiPicker({ value, onChange, className, compact }: Props) {
   return (
     <Listbox value={value} onChange={onChange}>
       <ListboxButton
         className={cn(
-          "flex w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          "flex w-full items-center gap-2 rounded-md border border-input bg-background text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          compact ? "h-12 w-12 justify-center rounded-xl p-0" : "px-3 py-2",
           !value && "text-muted-foreground",
           className
         )}
       >
-        <div className="flex items-center gap-2 flex-1">
+        <div className={cn("flex items-center gap-2 flex-1", compact && "justify-center")}>
           {value ? (
             <span className="text-lg leading-none">{value}</span>
           ) : (
             <Smile className="h-4 w-4 shrink-0" />
           )}
-          <span className={cn("truncate", !value && "text-muted-foreground")}>
-            {value ? "Selected icon" : "Select icon"}
-          </span>
+          {compact ? (
+            <span className="sr-only">{value ? "Selected icon" : "Select icon"}</span>
+          ) : (
+            <span className={cn("truncate", !value && "text-muted-foreground")}>
+              {value ? "Selected icon" : "Select icon"}
+            </span>
+          )}
         </div>
       </ListboxButton>
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { Popover, PopoverButton, PopoverPanel } from '@headlessui/react';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Palette, Check, X, Pipette } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -9,6 +9,7 @@ type Props = {
   value?: string;
   onChange: (color: string) => void;
   className?: string;
+  compact?: boolean;
 };
 
 const PRESET_COLORS = [
@@ -32,13 +33,9 @@ const PRESET_COLORS = [
   { name: 'Rose', value: '#f43f5e' },
 ];
 
-export function ProjectColorPicker({ value, onChange, className }: Props) {
+export function ProjectColorPicker({ value, onChange, className, compact }: Props) {
   // Local state for the custom hex input to allow typing without jitter
-  const [customHex, setCustomHex] = useState(value || '');
-
-  useEffect(() => {
-    setCustomHex(value || '');
-  }, [value]);
+  const [customHex, setCustomHex] = useState(() => value || '');
 
   const handleCustomHexChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVal = e.target.value;
@@ -71,20 +68,24 @@ export function ProjectColorPicker({ value, onChange, className }: Props) {
     <Popover>
       <PopoverButton
         className={cn(
-          "flex w-full items-center gap-2 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          "flex w-full items-center gap-2 rounded-md border border-input bg-background text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+          compact ? "h-12 w-12 justify-center rounded-xl p-0" : "px-3 py-2",
           !value && "text-muted-foreground",
           className
         )}
       >
-        <div className="flex items-center gap-2 flex-1 truncate">
-          {value ? (
-            <>
-              <div
-                className="h-4 w-4 rounded-full border border-border shadow-sm shrink-0"
-                style={{ backgroundColor: value }}
-              />
-              <span className="font-medium">{value}</span>
-            </>
+        <div className={cn("flex items-center gap-2 flex-1", compact && "justify-center")}>
+          <div
+            className={cn(
+              "h-4 w-4 rounded-full border border-border shadow-sm shrink-0",
+              compact && "h-6 w-6"
+            )}
+            style={{ backgroundColor: value || undefined }}
+          />
+          {compact ? (
+            <span className="sr-only">{value ? value : "Select color"}</span>
+          ) : value ? (
+            <span className="font-medium">{value}</span>
           ) : (
             <>
               <Palette className="h-4 w-4 shrink-0" />
