@@ -57,6 +57,7 @@ export function useChatStreaming({
 
   const handleStreamingSubmit = useCallback(
     async (content: string, threadId: string) => {
+      const activeThreadId = threadId;
       setIsStreaming(true);
       setStreamingContent("");
       setOptimisticUserMessage(content);
@@ -69,7 +70,6 @@ export function useChatStreaming({
       abortControllerRef.current = new AbortController();
 
       try {
-        const activeThreadId = threadId;
         const response = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },

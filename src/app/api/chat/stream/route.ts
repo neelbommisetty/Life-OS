@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
+import type { Prisma } from "@prisma/client";
 import { streamMessageSchema } from "@/lib/validations/chat";
 import {
   buildSystemPrompt,
@@ -30,7 +31,10 @@ initializeChatServices();
 // Token cap before triggering summarization (~6k tokens)
 const HISTORY_TOKEN_CAP = 6000;
 const DEFAULT_THREAD_NAME = "New thread";
-const THREAD_ORDER = [{ lastChattedAt: "desc" }, { createdAt: "desc" }] as const;
+const THREAD_ORDER: Prisma.ChatThreadOrderByWithRelationInput[] = [
+  { lastChattedAt: "desc" },
+  { createdAt: "desc" },
+];
 
 export async function POST(request: Request) {
   const start = Date.now();
