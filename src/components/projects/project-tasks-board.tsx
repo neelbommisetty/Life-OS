@@ -19,7 +19,12 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Priority, Task, TaskStatus } from '@prisma/client';
 import { Calendar, Filter, Plus, Search, Trash2, X } from 'lucide-react';
 import { api } from '@/trpc/client';
-import { TASK_STATUS_LABELS, TASK_STATUS_ORDER, TASK_STATUS_TONES } from '@/lib/task-utils';
+import {
+  TASK_KANBAN_STATUS_ORDER,
+  TASK_STATUS_LABELS,
+  TASK_STATUS_ORDER,
+  TASK_STATUS_TONES,
+} from '@/lib/task-utils';
 import { PRIORITY_LABELS, formatDate } from '@/lib/project-utils';
 import { priorityEnum } from '@/lib/validations/project';
 import { taskStatusEnum } from '@/lib/validations/task';
@@ -42,6 +47,8 @@ type TaskDraft = {
   dueDate: string;
 };
 
+type TaskView = 'KANBAN' | 'BACKLOG' | 'ARCHIVED';
+
 const priorityOptions = priorityEnum.options as Priority[];
 const statusOptions = taskStatusEnum.options as TaskStatus[];
 
@@ -54,6 +61,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(() => createEmptyDraft());
+  const [activeView, setActiveView] = useState<TaskView>('KANBAN');
 
   useEffect(() => {
     if (data) {
@@ -114,8 +122,8 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
       BACKLOG: [],
       TODO: [],
       IN_PROGRESS: [],
-      WAITING: [],
       DONE: [],
+      ARCHIVED: [],
     };
 
     visibleTasks.forEach((task) => {
@@ -128,6 +136,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
 
     return grouped;
   }, [visibleTasks]);
+
+  const backlogTasks = tasksByStatus.BACKLOG ?? [];
+  const archivedTasks = tasksByStatus.ARCHIVED ?? [];
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -220,6 +231,17 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     utils.task.list.setData({ projectId }, next);
   };
 
+  const handleQuickStatusChange = (task: Task, status: TaskStatus) => {
+    const nextTasks = tasks.map((item) =>
+      item.id === task.id ? { ...item, status } : item
+    );
+    syncTasks(nextTasks);
+    updateTask.mutate({
+      id: task.id,
+      status,
+    });
+  };
+
   return (
     <section className="space-y-4" style={themeStyle}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -249,32 +271,84 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
             </select>
           </div>
         </div>
-        <button
-          onClick={() => openCreatePanel('BACKLOG')}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-        >
-          <Plus className="h-4 w-4" />
-          New task
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex rounded-lg border border-border bg-muted/60 p-1 text-xs font-semibold text-foreground">
+            <button
+              onClick={() => setActiveView('KANBAN')}
+              className={cn(
+                "rounded-md px-3 py-1 transition-colors",
+                activeView === 'KANBAN'
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Board
+            </button>
+            <button
+              onClick={() => setActiveView('BACKLOG')}
+              className={cn(
+                "rounded-md px-3 py-1 transition-colors",
+                activeView === 'BACKLOG'
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Backlog
+            </button>
+            <button
+              onClick={() => setActiveView('ARCHIVED')}
+              className={cn(
+                "rounded-md px-3 py-1 transition-colors",
+                activeView === 'ARCHIVED'
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              Archived
+            </button>
+          </div>
+          <button
+            onClick={() => openCreatePanel('BACKLOG')}
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4" />
+            New task
+          </button>
+        </div>
       </div>
 
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCorners}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid gap-4 lg:grid-cols-5 md:grid-cols-2">
-          {TASK_STATUS_ORDER.map((status) => (
-            <TaskColumn
-              key={status}
-              status={status}
-              tasks={tasksByStatus[status] ?? []}
-              onAdd={() => openCreatePanel(status)}
-              onSelect={openEditPanel}
-            />
-          ))}
-        </div>
-      </DndContext>
+      {activeView === 'KANBAN' ? (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCorners}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="grid gap-4 lg:grid-cols-3 md:grid-cols-2">
+            {TASK_KANBAN_STATUS_ORDER.map((status) => (
+              <TaskColumn
+                key={status}
+                status={status}
+                tasks={tasksByStatus[status] ?? []}
+                onAdd={() => openCreatePanel(status)}
+                onSelect={openEditPanel}
+              />
+            ))}
+          </div>
+        </DndContext>
+      ) : activeView === 'BACKLOG' ? (
+        <BacklogList
+          tasks={backlogTasks}
+          onAdd={() => openCreatePanel('BACKLOG')}
+          onSelect={openEditPanel}
+          onMove={(task, status) => handleQuickStatusChange(task, status)}
+        />
+      ) : (
+        <ArchivedList
+          tasks={archivedTasks}
+          onSelect={openEditPanel}
+          onMove={(task, status) => handleQuickStatusChange(task, status)}
+        />
+      )}
 
       <TaskPanel
         open={panelOpen}
@@ -300,6 +374,175 @@ type TaskColumnProps = {
   onAdd: () => void;
   onSelect: (task: Task) => void;
 };
+
+type BacklogListProps = {
+  tasks: Task[];
+  onAdd: () => void;
+  onSelect: (task: Task) => void;
+  onMove: (task: Task, status: TaskStatus) => void;
+};
+
+function BacklogList({ tasks, onAdd, onSelect, onMove }: BacklogListProps) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {TASK_STATUS_LABELS.BACKLOG}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {tasks.length} task{tasks.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <button
+          onClick={onAdd}
+          className="inline-flex h-8 items-center gap-1 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+        >
+          <Plus className="h-4 w-4" />
+          Add
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border/70 bg-muted/30 p-2">
+        {tasks.length === 0 ? (
+          <p className="text-center text-xs text-muted-foreground">
+            No backlog tasks yet.
+          </p>
+        ) : (
+          tasks.map((task) => (
+            <TaskListItem
+              key={task.id}
+              task={task}
+              onSelect={() => onSelect(task)}
+              actions={[
+                {
+                  label: "Move to To Do",
+                  onClick: () => onMove(task, 'TODO'),
+                },
+                {
+                  label: "Archive",
+                  onClick: () => onMove(task, 'ARCHIVED'),
+                },
+              ]}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+type ArchivedListProps = {
+  tasks: Task[];
+  onSelect: (task: Task) => void;
+  onMove: (task: Task, status: TaskStatus) => void;
+};
+
+function ArchivedList({ tasks, onSelect, onMove }: ArchivedListProps) {
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">
+            {TASK_STATUS_LABELS.ARCHIVED}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {tasks.length} task{tasks.length === 1 ? '' : 's'}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border/70 bg-muted/30 p-2">
+        {tasks.length === 0 ? (
+          <p className="text-center text-xs text-muted-foreground">
+            No archived tasks.
+          </p>
+        ) : (
+          tasks.map((task) => (
+            <TaskListItem
+              key={task.id}
+              task={task}
+              onSelect={() => onSelect(task)}
+              actions={[
+                {
+                  label: "Move to Backlog",
+                  onClick: () => onMove(task, 'BACKLOG'),
+                },
+                {
+                  label: "Move to To Do",
+                  onClick: () => onMove(task, 'TODO'),
+                },
+              ]}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+type TaskListAction = {
+  label: string;
+  onClick: () => void;
+};
+
+type TaskListItemProps = {
+  task: Task;
+  onSelect: () => void;
+  actions: TaskListAction[];
+};
+
+function TaskListItem({ task, onSelect, actions }: TaskListItemProps) {
+  return (
+    <article
+      onClick={onSelect}
+      className="group rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-colors hover:border-primary/40"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <h4 className="text-sm font-semibold text-foreground">{task.title}</h4>
+        <span
+          className={cn(
+            "rounded-full px-2 py-1 text-[10px] font-semibold",
+            TASK_STATUS_TONES[task.status]
+          )}
+        >
+          {TASK_STATUS_LABELS[task.status]}
+        </span>
+      </div>
+      {task.description && (
+        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+          {task.description}
+        </p>
+      )}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-[11px] text-muted-foreground">
+        <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-medium text-foreground">
+          {PRIORITY_LABELS[task.priority]}
+        </span>
+        {task.dueDate && (
+          <span className="inline-flex items-center gap-1">
+            <Calendar className="h-3 w-3" />
+            {formatDate(task.dueDate)}
+          </span>
+        )}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {actions.map((action) => (
+          <button
+            key={action.label}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              action.onClick();
+            }}
+            className="rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </article>
+  );
+}
 
 function TaskColumn({ status, tasks, onAdd, onSelect }: TaskColumnProps) {
   const { setNodeRef } = useDroppable({
@@ -613,8 +856,8 @@ function reorderTasks(
     BACKLOG: [],
     TODO: [],
     IN_PROGRESS: [],
-    WAITING: [],
     DONE: [],
+    ARCHIVED: [],
   };
 
   [...tasks].sort((a, b) => a.sortOrder - b.sortOrder).forEach((task) => {

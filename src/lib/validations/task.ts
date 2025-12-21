@@ -5,8 +5,8 @@ export const taskStatusEnum = z.enum([
   "BACKLOG",
   "TODO",
   "IN_PROGRESS",
-  "WAITING",
   "DONE",
+  "ARCHIVED",
 ]);
 
 export const createTaskSchema = z.object({

@@ -41,7 +41,7 @@ Example format:
 \`\`\`
 
 Valid priorities: LOW, MEDIUM, HIGH, URGENT
-Valid statuses: BACKLOG, TODO, IN_PROGRESS, WAITING, DONE (Default: BACKLOG)
+Valid statuses: BACKLOG, TODO, IN_PROGRESS, DONE, ARCHIVED (Default: BACKLOG)
 
 Ground your answers in the latest project details provided above. If the project description changes, adapt your suggestions accordingly.`;
 }
