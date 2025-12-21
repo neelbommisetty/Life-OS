@@ -8,6 +8,20 @@ export type ProposedTask = {
   dueDate?: string | null;
 };
 
+export type CreatedTaskInfo = {
+  id: string;
+  title: string;
+  description?: string;
+  status: TaskStatus;
+  priority?: Priority;
+  createdAt: Date | string;
+};
+
+export type TaskResolution = {
+  created?: CreatedTaskInfo[];
+  error?: string;
+};
+
 /**
  * Approximate token count for text (rough estimate: 1 token ≈ 4 characters)
  */

@@ -81,6 +81,7 @@ describe("Chat Utils", () => {
           role: "USER",
           content: "Hello",
           createdAt: new Date(),
+          taskResolution: null,
         },
         {
           id: "2",
@@ -88,6 +89,7 @@ describe("Chat Utils", () => {
           role: "ASSISTANT",
           content: "Hi there!",
           createdAt: new Date(),
+          taskResolution: null,
         },
       ];
 
@@ -107,6 +109,7 @@ describe("Chat Utils", () => {
           role: "USER",
           content: "New message",
           createdAt: new Date(),
+          taskResolution: null,
         },
       ];
 
@@ -132,6 +135,7 @@ describe("Chat Utils", () => {
           role: "USER",
           content: "test", // 1 token
           createdAt: new Date(),
+          taskResolution: null,
         },
         {
           id: "2",
@@ -139,6 +143,7 @@ describe("Chat Utils", () => {
           role: "ASSISTANT",
           content: "hello world", // 3 tokens
           createdAt: new Date(),
+          taskResolution: null,
         },
       ];
 
@@ -160,6 +165,7 @@ describe("Chat Utils", () => {
           role: "USER",
           content: "What is AI?",
           createdAt: new Date(),
+          taskResolution: null,
         },
         {
           id: "2",
@@ -167,6 +173,7 @@ describe("Chat Utils", () => {
           role: "ASSISTANT",
           content: "AI stands for Artificial Intelligence.",
           createdAt: new Date(),
+          taskResolution: null,
         },
       ];
 

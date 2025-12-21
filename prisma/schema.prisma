@@ -79,28 +79,29 @@ model Task {
 }
 
 model ChatThread {
-  id           String        @id @default(cuid())
-  projectId    String
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name         String        @default("Default")
-  modelKey     String?
-  summary      String?
-  summaryUpTo  DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  messages     ChatMessage[]
+  id          String        @id @default(cuid())
+  projectId   String
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String        @default("Default")
+  modelKey    String?
+  summary     String?
+  summaryUpTo DateTime?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  messages    ChatMessage[]
 
   @@unique([projectId, name])
   @@index([projectId])
 }
 
 model ChatMessage {
-  id        String   @id @default(cuid())
-  threadId  String
-  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
-  role      ChatRole
-  content   String
-  createdAt DateTime @default(now())
+  id             String     @id @default(cuid())
+  threadId       String
+  thread         ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role           ChatRole
+  content        String
+  taskResolution Json?
+  createdAt      DateTime   @default(now())
 
   @@index([threadId, createdAt])
 }

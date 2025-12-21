@@ -1,12 +1,13 @@
 import { TRPCError } from "@trpc/server";
-import type { TaskStatus } from "@prisma/client";
+import type { TaskStatus, Priority } from "@prisma/client";
+import { z } from "zod";
 import {
   getThreadSchema,
   listMessagesSchema,
   sendMessageSchema,
   setThreadModelSchema,
 } from "@/lib/validations/chat";
-import { createManyTaskSchema } from "@/lib/validations/task";
+import { createTaskSchema, createManyTaskSchema } from "@/lib/validations/task";
 import { publicProcedure, router } from "../trpc";
 import { createLogger } from "@/lib/logger";
 import {
@@ -350,7 +351,7 @@ export const chatRouter = router({
               });
 
               if (validation.success) {
-                const createdTasks: { title: string }[] = [];
+                const createdTasks: Array<{ id: string; title: string; description: string | null; status: TaskStatus; priority: Priority; createdAt: Date }> = [];
 
                 await ctx.prisma.$transaction(async (tx) => {
                   const tasksByStatus: Record<TaskStatus, typeof validation.data.tasks> = {
@@ -396,6 +397,25 @@ export const chatRouter = router({
                   }
                 });
 
+                // Update the assistant message with taskResolution
+                const taskResolution = {
+                  created: createdTasks.map((t) => ({
+                    id: t.id,
+                    title: t.title,
+                    description: t.description ?? undefined,
+                    status: t.status,
+                    priority: t.priority,
+                    createdAt: t.createdAt.toISOString(),
+                  })),
+                };
+
+                await ctx.prisma.chatMessage.update({
+                  where: { id: lastMessage.id },
+                  data: {
+                    taskResolution: taskResolution,
+                  },
+                });
+
                 // Add System Message to confirm creation
                 const systemMsg = await ctx.prisma.chatMessage.create({
                   data: {
@@ -426,6 +446,22 @@ export const chatRouter = router({
               logger.error("Failed to create tasks from approval", {
                 error: e instanceof Error ? e.message : String(e),
               });
+
+              // Update the assistant message with error
+              try {
+                const errorResolution = {
+                  error: e instanceof Error ? e.message : "Failed to create tasks",
+                };
+
+                await ctx.prisma.chatMessage.update({
+                  where: { id: lastMessage.id },
+                  data: {
+                    taskResolution: errorResolution,
+                  },
+                });
+              } catch (updateError) {
+                logger.error("Failed to update message with error", { updateError });
+              }
               // Continue to AI response (AI might ask what went wrong if we added a failure message, but for now we just log)
             }
           }
@@ -561,6 +597,220 @@ export const chatRouter = router({
         }
         logger.error("Failed to send chat message", {
           projectId: input.projectId,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - start,
+        });
+        throw error;
+      }
+    }),
+
+  createTaskFromChat: publicProcedure
+    .input(
+      z.object({
+        messageId: z.string().cuid(),
+        task: createTaskSchema,
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Creating task from chat", {
+        messageId: input.messageId,
+        projectId: input.task.projectId,
+      });
+
+      try {
+        // Get the message to verify it exists
+        const message = await ctx.prisma.chatMessage.findUnique({
+          where: { id: input.messageId },
+        });
+
+        if (!message) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Message not found",
+          });
+        }
+
+        const status = input.task.status ?? "BACKLOG";
+        const maxOrder = await ctx.prisma.task.aggregate({
+          where: { projectId: input.task.projectId, status },
+          _max: { sortOrder: true },
+        });
+
+        const sortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
+        const createdTask = await ctx.prisma.task.create({
+          data: {
+            projectId: input.task.projectId,
+            title: input.task.title,
+            description: input.task.description,
+            status,
+            priority: input.task.priority ?? "MEDIUM",
+            dueDate: input.task.dueDate ? new Date(input.task.dueDate) : undefined,
+            sortOrder,
+          },
+        });
+
+        // Update message with taskResolution
+        const existingResolution = message.taskResolution as {
+          created?: Array<{
+            id: string;
+            title: string;
+            description?: string;
+            status: TaskStatus;
+            priority?: string;
+            createdAt: string;
+          }>
+        } | null;
+        const existingCreated = existingResolution?.created ?? [];
+
+        const newTaskResolution = {
+          created: [
+            ...existingCreated,
+            {
+              id: createdTask.id,
+              title: createdTask.title,
+              description: createdTask.description ?? undefined,
+              status: createdTask.status,
+              priority: createdTask.priority,
+              createdAt: createdTask.createdAt.toISOString(),
+            },
+          ],
+        };
+
+        await ctx.prisma.chatMessage.update({
+          where: { id: input.messageId },
+          data: {
+            taskResolution: newTaskResolution,
+          },
+        });
+
+        logger.info("Task created from chat", {
+          taskId: createdTask.id,
+          messageId: input.messageId,
+          durationMs: Date.now() - start,
+        });
+
+        return createdTask;
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        logger.error("Failed to create task from chat", {
+          messageId: input.messageId,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - start,
+        });
+        throw error;
+      }
+    }),
+
+  createTasksFromChat: publicProcedure
+    .input(
+      z.object({
+        messageId: z.string().cuid(),
+        tasks: createManyTaskSchema,
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Creating multiple tasks from chat", {
+        messageId: input.messageId,
+        projectId: input.tasks.projectId,
+        count: input.tasks.tasks.length,
+      });
+
+      try {
+        // Get the message to verify it exists
+        const message = await ctx.prisma.chatMessage.findUnique({
+          where: { id: input.messageId },
+        });
+
+        if (!message) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Message not found",
+          });
+        }
+
+        const createdTasks: Array<{ id: string; title: string; description: string | null; status: TaskStatus; priority: Priority; createdAt: Date }> = [];
+
+        await ctx.prisma.$transaction(async (tx) => {
+          const tasksByStatus: Record<TaskStatus, typeof input.tasks.tasks> = {
+            BACKLOG: [],
+            TODO: [],
+            IN_PROGRESS: [],
+            DONE: [],
+            ARCHIVED: [],
+          };
+
+          input.tasks.tasks.forEach((task) => {
+            const status = task.status ?? "BACKLOG";
+            tasksByStatus[status].push(task);
+          });
+
+          const statusEntries = Object.entries(tasksByStatus) as [
+            TaskStatus,
+            typeof input.tasks.tasks,
+          ][];
+
+          for (const [status, tasks] of statusEntries) {
+            const maxOrder = await tx.task.aggregate({
+              where: { projectId: input.tasks.projectId, status },
+              _max: { sortOrder: true },
+            });
+
+            let currentSortOrder = (maxOrder._max.sortOrder ?? 0) + 1;
+
+            for (const task of tasks) {
+              const created = await tx.task.create({
+                data: {
+                  projectId: input.tasks.projectId,
+                  title: task.title,
+                  description: task.description,
+                  status,
+                  priority: task.priority ?? "MEDIUM",
+                  dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
+                  sortOrder: currentSortOrder++,
+                },
+              });
+              createdTasks.push(created);
+            }
+          }
+        });
+
+        // Update message with taskResolution
+        const newTaskResolution = {
+          created: createdTasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            description: t.description ?? undefined,
+            status: t.status,
+            priority: t.priority,
+            createdAt: t.createdAt.toISOString(),
+          })),
+        };
+
+        await ctx.prisma.chatMessage.update({
+          where: { id: input.messageId },
+          data: {
+            taskResolution: newTaskResolution,
+          },
+        });
+
+        logger.info("Tasks created from chat", {
+          messageId: input.messageId,
+          count: createdTasks.length,
+          durationMs: Date.now() - start,
+        });
+
+        return createdTasks;
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        logger.error("Failed to create tasks from chat", {
+          messageId: input.messageId,
           error: error instanceof Error ? error.message : String(error),
           durationMs: Date.now() - start,
         });
