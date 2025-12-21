@@ -13,6 +13,7 @@ import { getProjectTheme } from "@/lib/project-theme";
 import { MessageBubble } from "./message-bubble";
 import { ModelSelector } from "./model-selector";
 import { ChatMarkdown } from "./chat-markdown";
+import { ThreadSelector } from "./thread-selector";
 import { useChatStreaming } from "./hooks/use-chat-streaming";
 import { useChatTasks } from "./hooks/use-chat-tasks";
 import { useChatScroll } from "./hooks/use-chat-scroll";
@@ -28,36 +29,67 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pageSize = 30;
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
 
-  // Fetch thread and messages
-  const threadQuery = api.chat.getThread.useQuery({
+  const threadsQuery = api.chat.listThreads.useQuery({
     projectId,
   });
-
-  const messagesQuery = api.chat.listMessages.useInfiniteQuery(
-    { projectId, limit: pageSize },
-    {
-      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-    }
-  );
 
   const modelsQuery = api.chat.listModels.useQuery();
 
   const utils = api.useUtils();
-  const thread = threadQuery.data;
+  const threads = threadsQuery.data ?? [];
+  const effectiveThreadId = activeThreadId ?? threads[0]?.id ?? null;
+  const activeThread =
+    threads.find((thread) => thread.id === effectiveThreadId) ?? null;
+  const messagesQuery = api.chat.listMessages.useInfiniteQuery(
+    { projectId, threadId: effectiveThreadId ?? "", limit: pageSize },
+    {
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+      enabled: !!effectiveThreadId,
+    }
+  );
 
   // Send message mutation
   const sendMessageMutation = api.chat.sendMessage.useMutation({
     onSuccess: () => {
       setInput("");
-      utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
-      utils.chat.getThread.invalidate({ projectId });
+      if (effectiveThreadId) {
+        utils.chat.listMessages.invalidate({
+          projectId,
+          threadId: effectiveThreadId,
+          limit: pageSize,
+        });
+      }
+      utils.chat.listThreads.invalidate({ projectId });
     },
   });
 
   const setThreadModelMutation = api.chat.setThreadModel.useMutation({
     onSuccess: (updatedThread) => {
-      utils.chat.getThread.setData({ projectId }, updatedThread);
+      utils.chat.listThreads.setData({ projectId }, (existing) => {
+        if (!existing) return [updatedThread];
+        return existing.map((thread) =>
+          thread.id === updatedThread.id ? updatedThread : thread
+        );
+      });
+    },
+  });
+
+  const createThreadMutation = api.chat.createThread.useMutation({
+    onSuccess: (thread) => {
+      utils.chat.listThreads.setData({ projectId }, (existing) => {
+        if (!existing) return [thread];
+        return [thread, ...existing.filter((item) => item.id !== thread.id)];
+      });
+      setActiveThreadId(thread.id);
+    },
+  });
+
+  const archiveThreadMutation = api.chat.archiveThread.useMutation({
+    onSuccess: () => {
+      utils.chat.listThreads.invalidate({ projectId });
+      setActiveThreadId(null);
     },
   });
 
@@ -72,6 +104,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   // Custom hooks
   const {
     isStreaming,
+    streamingThreadId,
     streamingContent,
     optimisticUserMessage,
     pendingAssistantId,
@@ -91,10 +124,12 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     isPending: tasksPending,
   } = useChatTasks({
     projectId,
+    threadId: effectiveThreadId,
     pageSize,
   });
 
   const { messagesContainerRef, handleScroll } = useChatScroll({
+    threadId: effectiveThreadId,
     messagesLength: messages.length,
     isLoading: messagesQuery.isLoading,
     isFetchingNextPage: messagesQuery.isFetchingNextPage,
@@ -105,6 +140,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   });
 
   const isPending = sendMessageMutation.isPending || isStreaming;
+  const isActiveThreadStreaming =
+    isStreaming && streamingThreadId === effectiveThreadId;
 
   const handleSubmit = async (
     e?: React.SyntheticEvent,
@@ -112,10 +149,10 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   ) => {
     e?.preventDefault();
     const content = contentOverride || input.trim();
-    if (!content || isPending) return;
+    if (!content || isPending || !effectiveThreadId) return;
 
     // Use streaming by default
-    handleStreamingSubmit(content);
+    handleStreamingSubmit(content, effectiveThreadId);
     setInput("");
   };
 
@@ -126,36 +163,49 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     }
   };
 
-  if (threadQuery.isLoading || messagesQuery.isLoading) {
-    return (
-      <div className="flex items-center justify-center rounded-xl border border-border bg-card p-12 shadow-sm">
-        <LoaderIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   const isEmpty = messages.length === 0;
   const modelErrorMessage =
     setThreadModelMutation.error?.message ?? modelsQuery.error?.message;
 
   const handleModelChange = (modelKey: string | null) => {
-    if (thread?.modelKey === modelKey || setThreadModelMutation.isPending) {
+    if (
+      activeThread?.modelKey === modelKey ||
+      setThreadModelMutation.isPending ||
+      !effectiveThreadId
+    ) {
       return;
     }
     setThreadModelMutation.mutate({
       projectId,
+      threadId: effectiveThreadId,
       modelKey,
     });
   };
 
   return (
-    <div className="flex h-[600px] flex-col rounded-xl border border-border bg-card shadow-sm">
-      {/* Messages area */}
-      <div
-        ref={messagesContainerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-4 space-y-4"
-      >
+    <div className="flex h-[600px] flex-col rounded-xl border border-border bg-card shadow-sm sm:flex-row">
+      <ThreadSelector
+        threads={threads}
+        value={effectiveThreadId}
+        onChange={(threadId) => setActiveThreadId(threadId)}
+        onCreate={() => createThreadMutation.mutate({ projectId })}
+        onArchive={() => {
+          if (!effectiveThreadId) return;
+          archiveThreadMutation.mutate({ projectId, threadId: effectiveThreadId });
+        }}
+        isCreating={createThreadMutation.isPending}
+        isArchiving={archiveThreadMutation.isPending}
+        isLocked={false}
+        isStreaming={isStreaming}
+        streamingThreadId={streamingThreadId}
+      />
+      <div className="flex flex-1 flex-col">
+        {/* Messages area */}
+        <div
+          ref={messagesContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-4"
+        >
         {messagesQuery.isFetchingNextPage && (
           <div className="flex justify-center">
             <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
@@ -165,7 +215,13 @@ export function ProjectChat({ projectId, accentColor }: Props) {
           </div>
         )}
 
-        {isEmpty && (
+        {(threadsQuery.isLoading || messagesQuery.isLoading) && (
+          <div className="flex h-full items-center justify-center">
+            <LoaderIcon className="h-6 w-6 animate-spin text-muted-foreground" />
+          </div>
+        )}
+
+        {!messagesQuery.isLoading && !threadsQuery.isLoading && isEmpty && (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
               <p className="text-sm font-medium text-foreground">
@@ -178,7 +234,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
           </div>
         )}
 
-        {messages.map((message) => (
+        {!messagesQuery.isLoading &&
+          messages.map((message) => (
           <MessageBubble
             key={message.id}
             message={message}
@@ -191,7 +248,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         ))}
 
         {/* Optimistic user message during streaming */}
-        {optimisticUserMessage && (
+        {optimisticUserMessage && isActiveThreadStreaming && (
           <div className="flex flex-col gap-2 items-end">
             <div className="flex items-start gap-3 max-w-[85%] flex-row-reverse">
               <div
@@ -221,7 +278,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         )}
 
         {/* Streaming AI response (and post-stream optimistic assistant bubble until DB message arrives) */}
-        {(isStreaming || (streamingContent && pendingAssistantId)) && (
+        {isActiveThreadStreaming &&
+          (isStreaming || (streamingContent && pendingAssistantId)) && (
           <div className="flex items-start gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
               AI
@@ -268,7 +326,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         )}
 
         {/* Stream error message */}
-        {streamError && (
+        {streamError && streamingThreadId === effectiveThreadId && (
           <div className="flex justify-center my-2">
             <div className="flex items-center gap-2 rounded-full bg-red-100 dark:bg-red-900/30 px-4 py-1.5 text-xs text-red-700 dark:text-red-300">
               <AlertCircleIcon className="h-3 w-3" />
@@ -285,57 +343,58 @@ export function ProjectChat({ projectId, accentColor }: Props) {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Input area */}
-      <form
-        onSubmit={(e) => handleSubmit(e)}
-        className="border-t border-border bg-muted/50 p-4"
-      >
-        <div className="flex items-end gap-2">
-          <ModelSelector
-            models={modelsQuery.data ?? []}
-            value={threadQuery.data?.modelKey ?? null}
-            onChange={handleModelChange}
-            isLoading={modelsQuery.isLoading}
-            isUpdating={setThreadModelMutation.isPending}
-            errorMessage={modelErrorMessage}
-          />
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your message... (Shift+Enter for new line)"
-            disabled={isPending}
-            rows={1}
-            className={cn(
-              "flex-1 resize-none rounded-lg border border-border bg-background px-4 py-3 text-sm",
-              "focus:outline-none focus:ring-2 focus:ring-offset-2",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-              hasAccentColor
-                ? "focus:ring-[rgb(var(--project-accent))]"
-                : "focus:ring-primary"
-            )}
-            style={hasAccentColor ? themeStyle : undefined}
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || isPending}
-            className={cn(
-              "flex h-[48px] w-[48px] items-center justify-center rounded-lg font-medium text-sm",
-              "transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2",
-              "disabled:cursor-not-allowed disabled:opacity-50",
-              hasAccentColor
-                ? "bg-[rgb(var(--project-accent))] text-white hover:opacity-90 focus:ring-[rgb(var(--project-accent))]"
-                : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary"
-            )}
-            style={hasAccentColor ? themeStyle : undefined}
-          >
-            <SendIcon className="h-5 w-5" />
-          </button>
         </div>
-      </form>
+
+        {/* Input area */}
+        <form
+          onSubmit={(e) => handleSubmit(e)}
+          className="border-t border-border bg-muted/50 p-4"
+        >
+          <div className="flex items-end gap-2">
+            <ModelSelector
+              models={modelsQuery.data ?? []}
+              value={activeThread?.modelKey ?? null}
+              onChange={handleModelChange}
+              isLoading={modelsQuery.isLoading}
+              isUpdating={setThreadModelMutation.isPending}
+              errorMessage={modelErrorMessage}
+            />
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type your message... (Shift+Enter for new line)"
+              disabled={isPending || !effectiveThreadId}
+              rows={1}
+              className={cn(
+                "flex-1 resize-none rounded-lg border border-border bg-background px-4 py-3 text-sm",
+                "focus:outline-none focus:ring-2 focus:ring-offset-2",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                hasAccentColor
+                  ? "focus:ring-[rgb(var(--project-accent))]"
+                  : "focus:ring-primary"
+              )}
+              style={hasAccentColor ? themeStyle : undefined}
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || isPending || !effectiveThreadId}
+              className={cn(
+                "flex h-[48px] w-[48px] items-center justify-center rounded-lg font-medium text-sm",
+                "transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2",
+                "disabled:cursor-not-allowed disabled:opacity-50",
+                hasAccentColor
+                  ? "bg-[rgb(var(--project-accent))] text-white hover:opacity-90 focus:ring-[rgb(var(--project-accent))]"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary"
+              )}
+              style={hasAccentColor ? themeStyle : undefined}
+            >
+              <SendIcon className="h-5 w-5" />
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

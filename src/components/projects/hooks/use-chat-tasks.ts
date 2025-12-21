@@ -3,23 +3,36 @@ import type { ProposedTask } from "@/lib/chat-utils";
 
 type UseChatTasksParams = {
   projectId: string;
+  threadId: string | null;
   pageSize: number;
 };
 
-export function useChatTasks({ projectId, pageSize }: UseChatTasksParams) {
+export function useChatTasks({ projectId, threadId, pageSize }: UseChatTasksParams) {
   const utils = api.useUtils();
 
   const createTaskFromChatMutation = api.chat.createTaskFromChat.useMutation({
     onSuccess: () => {
       utils.task.list.invalidate({ projectId });
-      utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
+      if (threadId) {
+        utils.chat.listMessages.invalidate({
+          projectId,
+          threadId,
+          limit: pageSize,
+        });
+      }
     },
   });
 
   const createTasksFromChatMutation = api.chat.createTasksFromChat.useMutation({
     onSuccess: () => {
       utils.task.list.invalidate({ projectId });
-      utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
+      if (threadId) {
+        utils.chat.listMessages.invalidate({
+          projectId,
+          threadId,
+          limit: pageSize,
+        });
+      }
     },
   });
 
@@ -63,4 +76,3 @@ export function useChatTasks({ projectId, pageSize }: UseChatTasksParams) {
       createTasksFromChatMutation.isPending,
   };
 }
-

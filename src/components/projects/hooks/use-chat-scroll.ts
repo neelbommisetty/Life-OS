@@ -1,6 +1,7 @@
 import { useRef, useLayoutEffect } from "react";
 
 type UseChatScrollParams = {
+  threadId: string | null;
   messagesLength: number;
   isLoading: boolean;
   isFetchingNextPage: boolean;
@@ -11,6 +12,7 @@ type UseChatScrollParams = {
 };
 
 export function useChatScroll({
+  threadId,
   messagesLength,
   isLoading,
   isFetchingNextPage,
@@ -24,6 +26,27 @@ export function useChatScroll({
   const shouldAutoScrollRef = useRef(true);
   const previousScrollHeightRef = useRef<number | null>(null);
   const previousScrollTopRef = useRef(0);
+  const lastThreadIdRef = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    hasAutoScrolledRef.current = false;
+    shouldAutoScrollRef.current = true;
+    previousScrollHeightRef.current = null;
+    previousScrollTopRef.current = 0;
+    lastThreadIdRef.current = null;
+  }, [threadId]);
+
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (isLoading || isFetchingNextPage) return;
+
+    if (lastThreadIdRef.current !== threadId) {
+      lastThreadIdRef.current = threadId;
+      container.scrollTop = container.scrollHeight;
+      hasAutoScrolledRef.current = true;
+    }
+  }, [threadId, isLoading, isFetchingNextPage, messagesLength]);
 
   const handleScroll = () => {
     const container = messagesContainerRef.current;
@@ -82,4 +105,3 @@ export function useChatScroll({
     handleScroll,
   };
 }
-

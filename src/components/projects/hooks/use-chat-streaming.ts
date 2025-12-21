@@ -8,7 +8,7 @@ type UseChatStreamingParams = {
   pageSize: number;
   messages: ChatMessage[];
   sendMessageMutation: {
-    mutate: (params: { projectId: string; content: string }) => void;
+    mutate: (params: { projectId: string; threadId?: string; content: string }) => void;
   };
 };
 
@@ -27,6 +27,9 @@ export function useChatStreaming({
     null
   );
   const [streamError, setStreamError] = useState<string | null>(null);
+  const [streamingThreadId, setStreamingThreadId] = useState<string | null>(
+    null
+  );
   const abortControllerRef = useRef<AbortController | null>(null);
   const didInvalidateAfterStreamRef = useRef(false);
 
@@ -53,22 +56,24 @@ export function useChatStreaming({
   }, []);
 
   const handleStreamingSubmit = useCallback(
-    async (content: string) => {
+    async (content: string, threadId: string) => {
       setIsStreaming(true);
       setStreamingContent("");
       setOptimisticUserMessage(content);
       setPendingAssistantId(null);
       setStreamError(null);
+      setStreamingThreadId(threadId);
       didInvalidateAfterStreamRef.current = false;
 
       // Create abort controller
       abortControllerRef.current = new AbortController();
 
       try {
+        const activeThreadId = threadId;
         const response = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, content }),
+          body: JSON.stringify({ projectId, threadId: activeThreadId, content }),
           signal: abortControllerRef.current.signal,
         });
 
@@ -112,9 +117,10 @@ export function useChatStreaming({
                   didInvalidateAfterStreamRef.current = true;
                   utils.chat.listMessages.invalidate({
                     projectId,
+                    threadId: activeThreadId,
                     limit: pageSize,
                   });
-                  utils.chat.getThread.invalidate({ projectId });
+                  utils.chat.listThreads.invalidate({ projectId });
                 }
               } else if (event.type === "done") {
                 // Server finished sending. If we haven't invalidated yet, do it once now.
@@ -123,9 +129,10 @@ export function useChatStreaming({
                   didInvalidateAfterStreamRef.current = true;
                   utils.chat.listMessages.invalidate({
                     projectId,
+                    threadId: activeThreadId,
                     limit: pageSize,
                   });
-                  utils.chat.getThread.invalidate({ projectId });
+                  utils.chat.listThreads.invalidate({ projectId });
                 }
               }
             }
@@ -142,8 +149,12 @@ export function useChatStreaming({
           setIsStreaming(false);
           if (!didInvalidateAfterStreamRef.current) {
             didInvalidateAfterStreamRef.current = true;
-            utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
-            utils.chat.getThread.invalidate({ projectId });
+            utils.chat.listMessages.invalidate({
+              projectId,
+              threadId: activeThreadId,
+              limit: pageSize,
+            });
+            utils.chat.listThreads.invalidate({ projectId });
           }
         } else {
           // On error, fall back to blocking mutation
@@ -157,6 +168,7 @@ export function useChatStreaming({
           );
           sendMessageMutation.mutate({
             projectId,
+            threadId: activeThreadId,
             content,
           });
         }
@@ -171,7 +183,7 @@ export function useChatStreaming({
     [
       projectId,
       utils.chat.listMessages,
-      utils.chat.getThread,
+      utils.chat.listThreads,
       sendMessageMutation,
       pageSize,
     ]
@@ -179,6 +191,7 @@ export function useChatStreaming({
 
   return {
     isStreaming,
+    streamingThreadId,
     streamingContent,
     optimisticUserMessage,
     pendingAssistantId,
@@ -187,4 +200,3 @@ export function useChatStreaming({
     handleStopStreaming,
   };
 }
-
