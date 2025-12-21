@@ -1,13 +1,17 @@
 "use client";
 
 import { useState, useRef, useMemo, useLayoutEffect } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/trpc/client";
 import { SendIcon, LoaderIcon, CheckCircle2Icon, CalendarIcon, AlertCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getProjectTheme } from "@/lib/project-theme";
 import type { ChatMessage } from "@prisma/client";
+import type { ProposedTask } from "@/lib/chat-utils";
 import { extractTasksFromMessage } from "@/lib/chat-utils";
 import { PriorityBadge } from "./priority-badge";
 import { ModelSelector } from "./model-selector";
+import { ChatMarkdown } from "./chat-markdown";
 
 type Props = {
   projectId: string;
@@ -15,6 +19,8 @@ type Props = {
 };
 
 export function ProjectChat({ projectId, accentColor }: Props) {
+  const themeStyle = getProjectTheme(accentColor);
+  const hasAccentColor = !!accentColor && Object.keys(themeStyle).length > 0;
   const [input, setInput] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -123,7 +129,10 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     previousScrollHeightRef.current = null;
   }, [messages.length, messagesQuery.isFetchingNextPage]);
 
-  const handleSubmit = async (e: React.FormEvent, contentOverride?: string) => {
+  const handleSubmit = async (
+    e?: React.SyntheticEvent,
+    contentOverride?: string
+  ) => {
     e?.preventDefault();
     const content = contentOverride || input.trim();
     if (!content || sendMessageMutation.isPending) return;
@@ -138,11 +147,11 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit(e as any);
+      handleSubmit(e);
     }
   };
 
-  const handleApproveTask = (task: any) => {
+  const handleApproveTask = (task: ProposedTask) => {
     createTaskMutation.mutate({
       projectId,
       title: task.title,
@@ -153,11 +162,11 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     });
   };
 
-  const handleApproveAll = (tasks: any[]) => {
+  const handleApproveAll = (tasks: ProposedTask[]) => {
     if (!tasks || tasks.length === 0) return;
     createManyTasksMutation.mutate({
       projectId,
-      tasks: tasks.map((t: any) => ({
+      tasks: tasks.map((t) => ({
         ...t,
         status: t.status ?? "BACKLOG",
         priority: t.priority ?? "MEDIUM",
@@ -222,7 +231,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
           <MessageBubble
             key={message.id}
             message={message}
-            accentColor={accentColor}
+            themeStyle={themeStyle}
+            hasAccentColor={hasAccentColor}
             onApproveTask={handleApproveTask}
             onApproveAll={handleApproveAll}
             isPending={isPending || createTaskMutation.isPending || createManyTasksMutation.isPending}
@@ -286,15 +296,11 @@ export function ProjectChat({ projectId, accentColor }: Props) {
               "flex-1 resize-none rounded-lg border border-border bg-background px-4 py-3 text-sm",
               "focus:outline-none focus:ring-2 focus:ring-offset-2",
               "disabled:cursor-not-allowed disabled:opacity-50",
-              accentColor
+              hasAccentColor
                 ? "focus:ring-[rgb(var(--project-accent))]"
                 : "focus:ring-primary"
             )}
-            style={
-              accentColor
-                ? ({ "--project-accent": accentColor } as React.CSSProperties)
-                : undefined
-            }
+            style={hasAccentColor ? themeStyle : undefined}
           />
           <button
             type="submit"
@@ -303,15 +309,11 @@ export function ProjectChat({ projectId, accentColor }: Props) {
               "flex h-[48px] w-[48px] items-center justify-center rounded-lg font-medium text-sm",
               "transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2",
               "disabled:cursor-not-allowed disabled:opacity-50",
-              accentColor
+              hasAccentColor
                 ? "bg-[rgb(var(--project-accent))] text-white hover:opacity-90 focus:ring-[rgb(var(--project-accent))]"
                 : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary"
             )}
-            style={
-              accentColor
-                ? ({ "--project-accent": accentColor } as React.CSSProperties)
-                : undefined
-            }
+            style={hasAccentColor ? themeStyle : undefined}
           >
             <SendIcon className="h-5 w-5" />
           </button>
@@ -323,15 +325,17 @@ export function ProjectChat({ projectId, accentColor }: Props) {
 
 function MessageBubble({
   message,
-  accentColor,
+  themeStyle,
+  hasAccentColor,
   onApproveTask,
   onApproveAll,
   isPending,
 }: {
   message: ChatMessage;
-  accentColor?: string | null;
-  onApproveTask: (task: any) => void;
-  onApproveAll: (tasks: any[]) => void;
+  themeStyle: CSSProperties;
+  hasAccentColor: boolean;
+  onApproveTask: (task: ProposedTask) => void;
+  onApproveAll: (tasks: ProposedTask[]) => void;
   isPending: boolean;
 }) {
   const isUser = message.role === "USER";
@@ -367,16 +371,12 @@ function MessageBubble({
           className={cn(
             "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
             isUser
-              ? accentColor
+              ? hasAccentColor
                 ? "bg-[rgb(var(--project-accent))] text-white"
                 : "bg-primary text-primary-foreground"
               : "bg-muted text-foreground"
           )}
-          style={
-            isUser && accentColor
-              ? ({ "--project-accent": accentColor } as React.CSSProperties)
-              : undefined
-          }
+          style={isUser && hasAccentColor ? themeStyle : undefined}
         >
           {isUser ? "You" : "AI"}
         </div>
@@ -384,18 +384,14 @@ function MessageBubble({
           className={cn(
             "rounded-lg px-4 py-3 text-sm shadow-sm",
             isUser
-              ? accentColor
+              ? hasAccentColor
                 ? "bg-[rgb(var(--project-accent))] text-white"
                 : "bg-primary text-primary-foreground"
               : "bg-card border border-border text-foreground"
           )}
-          style={
-            isUser && accentColor
-              ? ({ "--project-accent": accentColor } as React.CSSProperties)
-              : undefined
-          }
+          style={isUser && hasAccentColor ? themeStyle : undefined}
         >
-          <p className="whitespace-pre-wrap break-words">{displayContent}</p>
+          <ChatMarkdown content={displayContent} tone={isUser ? "inverted" : "default"} />
         </div>
       </div>
 
@@ -420,7 +416,7 @@ function MessageBubble({
             </div>
 
             <div className="space-y-2">
-              {proposedTasks.map((task: any, i: number) => (
+              {proposedTasks.map((task: ProposedTask, i: number) => (
                 <div
                   key={i}
                   className="group relative rounded-lg border border-border bg-muted/30 p-3 transition-colors hover:bg-muted/50"

@@ -108,3 +108,164 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+.chat-markdown {
+  --chat-code-bg: var(--muted);
+  --chat-code-border: var(--border);
+  --chat-code-fg: var(--foreground);
+  --chat-code-muted: var(--muted-foreground);
+  --chat-code-keyword: #0ea5e9; /* sky-500 */
+  --chat-code-title: #14b8a6; /* teal-500 */
+  --chat-code-string: #f97316; /* orange-500 */
+  --chat-code-number: #f59e0b; /* amber-500 */
+  --chat-code-attr: #2563eb; /* blue-600 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.chat-markdown--inverted {
+  --chat-code-bg: rgba(255, 255, 255, 0.12);
+  --chat-code-border: rgba(255, 255, 255, 0.2);
+  --chat-code-fg: #ffffff;
+  --chat-code-muted: rgba(255, 255, 255, 0.65);
+  --chat-code-keyword: #67e8f9; /* cyan-200 */
+  --chat-code-title: #a7f3d0; /* emerald-200 */
+  --chat-code-string: #fde68a; /* amber-200 */
+  --chat-code-number: #fcd34d; /* amber-300 */
+  --chat-code-attr: #93c5fd; /* blue-300 */
+}
+
+.chat-markdown > :not(:last-child) {
+  margin-bottom: 0.75rem;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.chat-markdown h1 {
+  font-size: 1.1rem;
+}
+
+.chat-markdown h2 {
+  font-size: 1.05rem;
+}
+
+.chat-markdown h3 {
+  font-size: 1rem;
+}
+
+.chat-markdown h4 {
+  font-size: 0.95rem;
+}
+
+.chat-markdown a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  padding-left: 1.25rem;
+}
+
+.chat-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.chat-markdown blockquote {
+  border-left: 2px solid var(--chat-code-border);
+  padding-left: 0.75rem;
+  color: var(--chat-code-muted);
+}
+
+.chat-markdown code {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85em;
+  background: var(--chat-code-bg);
+  color: var(--chat-code-fg);
+  border: 1px solid var(--chat-code-border);
+  border-radius: 0.45rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.chat-markdown pre {
+  background: var(--chat-code-bg);
+  color: var(--chat-code-fg);
+  border: 1px solid var(--chat-code-border);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+}
+
+.chat-markdown pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--chat-code-border);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.chat-markdown hr {
+  border-color: var(--chat-code-border);
+}
+
+.chat-markdown .hljs {
+  background: transparent;
+  color: var(--chat-code-fg);
+}
+
+.chat-markdown .hljs-comment,
+.chat-markdown .hljs-quote {
+  color: var(--chat-code-muted);
+  font-style: italic;
+}
+
+.chat-markdown .hljs-keyword,
+.chat-markdown .hljs-selector-tag,
+.chat-markdown .hljs-type,
+.chat-markdown .hljs-built_in {
+  color: var(--chat-code-keyword);
+}
+
+.chat-markdown .hljs-title,
+.chat-markdown .hljs-section,
+.chat-markdown .hljs-function {
+  color: var(--chat-code-title);
+}
+
+.chat-markdown .hljs-string,
+.chat-markdown .hljs-literal {
+  color: var(--chat-code-string);
+}
+
+.chat-markdown .hljs-number,
+.chat-markdown .hljs-symbol,
+.chat-markdown .hljs-bullet {
+  color: var(--chat-code-number);
+}
+
+.chat-markdown .hljs-attr,
+.chat-markdown .hljs-attribute,
+.chat-markdown .hljs-name {
+  color: var(--chat-code-attr);
+}
