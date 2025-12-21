@@ -1,8 +1,8 @@
 import { TRPCError } from "@trpc/server";
-import { getThreadSchema, sendMessageSchema } from "@/lib/validations/chat";
+import { getThreadSchema, sendMessageSchema, setThreadModelSchema } from "@/lib/validations/chat";
 import { createManyTaskSchema } from "@/lib/validations/task";
 import { publicProcedure, router } from "../trpc";
-import { createLogger } from "@/lib/ai/logger";
+import { createLogger } from "@/lib/logger";
 import {
   buildSystemPrompt,
   formatMessagesForAI,
@@ -12,8 +12,10 @@ import {
   isApproval,
 } from "@/lib/chat-utils";
 import "@/lib/ai/init";
+import { modelRegistry } from "@/lib/ai";
 import { getModelFor } from "@/lib/ai/providers/router";
 import { initializeChatServices } from "@/lib/ai/chat-services";
+import type { ModelKey } from "@/lib/ai";
 
 const logger = createLogger("trpc:chat");
 
@@ -92,6 +94,107 @@ export const chatRouter = router({
         });
         throw error;
       }
+    }),
+
+  listModels: publicProcedure.query(() => {
+    const models = modelRegistry
+      .listMetadata()
+      .filter((model) => model.modes.includes("text"))
+      .map((model) => ({
+        key: model.key,
+        label: model.label,
+        provider: model.providerId,
+        costTier: model.costTier ?? null,
+        description: model.description ?? null,
+      }));
+
+    return models;
+  }),
+
+  setThreadModel: publicProcedure
+    .input(setThreadModelSchema)
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Setting chat thread model", {
+        projectId: input.projectId,
+        modelKey: input.modelKey,
+      });
+
+      if (input.modelKey) {
+        const modelMetadata = modelRegistry.getMetadata(input.modelKey as ModelKey);
+
+        if (!modelMetadata || !modelMetadata.modes.includes("text")) {
+          logger.warn("Invalid chat model selection", {
+            projectId: input.projectId,
+            modelKey: input.modelKey,
+          });
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: "Selected model is not available",
+          });
+        }
+      }
+
+      const project = await ctx.prisma.project.findUnique({
+        where: { id: input.projectId },
+      });
+
+      if (!project) {
+        logger.warn("Project not found for model update", {
+          projectId: input.projectId,
+        });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
+      }
+
+      let thread = await ctx.prisma.chatThread.findFirst({
+        where: {
+          projectId: input.projectId,
+          name: "Default",
+        },
+        include: {
+          messages: {
+            orderBy: { createdAt: "asc" },
+          },
+        },
+      });
+
+      if (!thread) {
+        thread = await ctx.prisma.chatThread.create({
+          data: {
+            projectId: input.projectId,
+            name: "Default",
+            modelKey: input.modelKey,
+          },
+          include: {
+            messages: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        });
+      } else {
+        thread = await ctx.prisma.chatThread.update({
+          where: { id: thread.id },
+          data: {
+            modelKey: input.modelKey,
+          },
+          include: {
+            messages: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        });
+      }
+
+      logger.info("Chat thread model updated", {
+        threadId: thread.id,
+        modelKey: thread.modelKey,
+        durationMs: Date.now() - start,
+      });
+
+      return thread;
     }),
 
   sendMessage: publicProcedure
@@ -321,8 +424,20 @@ export const chatRouter = router({
           hasSummary: !!thread.summary,
         });
 
+        const overrideKey =
+          thread.modelKey && modelRegistry.has(thread.modelKey as ModelKey)
+            ? (thread.modelKey as ModelKey)
+            : undefined;
+
+        if (thread.modelKey && !overrideKey) {
+          logger.warn("Stored model key not found in registry", {
+            threadId: thread.id,
+            modelKey: thread.modelKey,
+          });
+        }
+
         // Call AI model
-        const chatModel = getModelFor("project_chat");
+        const chatModel = getModelFor("project_chat", overrideKey);
         const aiResult = await chatModel.call({
           prompt: fullPrompt,
           mode: "text",
@@ -367,4 +482,3 @@ export const chatRouter = router({
       }
     }),
 });
-

@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
-import { createLogger } from '@/lib/ai/logger';
+import { createLogger } from '@/lib/logger';
 
 import type { BaseModel, ModelCallInput } from './core';
 
@@ -93,4 +93,3 @@ export async function callJson<TSchema extends z.ZodTypeAny>(
 
   return validation.data;
 }
-

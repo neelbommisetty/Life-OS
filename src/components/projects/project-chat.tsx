@@ -2,11 +2,12 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { api } from "@/trpc/client";
-import { SendIcon, LoaderIcon, CheckCircle2Icon, PlusIcon, CalendarIcon, AlertCircleIcon } from "lucide-react";
+import { SendIcon, LoaderIcon, CheckCircle2Icon, CalendarIcon, AlertCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@prisma/client";
 import { extractTasksFromMessage } from "@/lib/chat-utils";
 import { PriorityBadge } from "./priority-badge";
+import { ModelSelector } from "./model-selector";
 
 type Props = {
   projectId: string;
@@ -22,6 +23,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const { data: thread, isLoading } = api.chat.getThread.useQuery({
     projectId,
   });
+
+  const modelsQuery = api.chat.listModels.useQuery();
 
   const utils = api.useUtils();
 
@@ -45,6 +48,12 @@ export function ProjectChat({ projectId, accentColor }: Props) {
       setInput("");
       // Refetch the thread to get updated messages
       utils.chat.getThread.invalidate({ projectId });
+    },
+  });
+
+  const setThreadModelMutation = api.chat.setThreadModel.useMutation({
+    onSuccess: (updatedThread) => {
+      utils.chat.getThread.setData({ projectId }, updatedThread);
     },
   });
 
@@ -106,6 +115,18 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const messages = thread?.messages || [];
   const isEmpty = messages.length === 0;
   const isPending = sendMessageMutation.isPending;
+  const modelErrorMessage =
+    setThreadModelMutation.error?.message ?? modelsQuery.error?.message;
+
+  const handleModelChange = (modelKey: string | null) => {
+    if (thread?.modelKey === modelKey || setThreadModelMutation.isPending) {
+      return;
+    }
+    setThreadModelMutation.mutate({
+      projectId,
+      modelKey,
+    });
+  };
 
   return (
     <div className="flex h-[600px] flex-col rounded-xl border border-border bg-card shadow-sm">
@@ -172,7 +193,15 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         onSubmit={(e) => handleSubmit(e)}
         className="border-t border-border bg-muted/50 p-4"
       >
-        <div className="flex gap-2">
+        <div className="flex items-end gap-2">
+          <ModelSelector
+            models={modelsQuery.data ?? []}
+            value={thread?.modelKey ?? null}
+            onChange={handleModelChange}
+            isLoading={modelsQuery.isLoading}
+            isUpdating={setThreadModelMutation.isPending}
+            errorMessage={modelErrorMessage}
+          />
           <textarea
             ref={inputRef}
             value={input}

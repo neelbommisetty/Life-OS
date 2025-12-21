@@ -1,4 +1,4 @@
-import { createLogger, type Logger } from '@/lib/ai/logger';
+import { createLogger, type Logger } from '@/lib/logger';
 
 import type { BaseModel } from './core';
 
@@ -127,4 +127,3 @@ export const withLogging = (options: LoggingOptions = {}): Middleware => {
     }
   };
 };
-

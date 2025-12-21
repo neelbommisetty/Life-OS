@@ -1,5 +1,5 @@
 import type { BaseModel } from '@/lib/ai/core';
-import { createLogger } from '@/lib/ai/logger';
+import { createLogger } from '@/lib/logger';
 
 import type {
   ModelDefinition,
@@ -84,4 +84,3 @@ export class ModelRegistry {
 }
 
 export const modelRegistry = new ModelRegistry();
-

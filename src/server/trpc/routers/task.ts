@@ -8,7 +8,7 @@ import {
   updateTaskSchema,
 } from "@/lib/validations/task";
 import { publicProcedure, router } from "../trpc";
-import { createLogger } from "@/lib/ai/logger";
+import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("trpc:task");
 

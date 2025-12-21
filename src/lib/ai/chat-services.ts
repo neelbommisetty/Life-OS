@@ -14,7 +14,7 @@ import {
   registerDefaultGeminiModels,
   modelRegistry,
 } from "@/lib/ai";
-import { createLogger } from "@/lib/ai/logger";
+import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("ai:chat-services");
 
@@ -80,4 +80,3 @@ export function initializeChatServices(): void {
     throw error;
   }
 }
-

@@ -1,7 +1,7 @@
 import Anthropic, { type ClientOptions as AnthropicClientOptions } from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI, { type ClientOptions as OpenAIClientOptions } from 'openai';
-import { createLogger } from '@/lib/ai/logger';
+import { createLogger } from '@/lib/logger';
 
 export type OpenAIDefaults = Readonly<{
   apiKey?: string;
@@ -112,4 +112,3 @@ export const resetProviderDefaults = (): void => {
   geminiDefaults = undefined;
   logger.warn('Reset provider defaults');
 };
-

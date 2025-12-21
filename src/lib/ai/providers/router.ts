@@ -6,7 +6,7 @@ import type {
   ModelCallMode,
 } from '@/lib/ai/core';
 import { applyMiddleware, withLogging, withRetry, type RetryOptions } from '@/lib/ai/core';
-import { createLogger, setLogLevel, type LogLevel } from '@/lib/ai/logger';
+import { createLogger, setLogLevel, type LogLevel } from '@/lib/logger';
 
 import { modelRegistry, type ModelRegistry } from './registry';
 import { CostTier, type ModelKey, type ModelMetadata } from './types';
@@ -334,23 +334,45 @@ export class ModelRouter {
       modelKey: key,
       modelName: base.name,
     });
-    return this.applyRouteMiddleware(serviceName, base, route);
+    return this.applyRouteMiddleware(serviceName, base, route, key);
   }
 
   private applyRouteMiddleware(
     serviceName: string,
     model: BaseModel,
     route: NormalizedRouteOptions,
+    modelKey?: ModelKey,
   ): BaseModel {
     const loggingOptions = route.logging ?? {};
     const retryOptions = route.retry ?? {};
     const middlewares: Middleware[] = [];
+    const defaultLogger = createLogger('ai-providers:model-call');
+    const baseLogger = loggingOptions.logger ?? {};
+    const context = {
+      serviceName,
+      ...(modelKey ? { modelKey } : {}),
+    };
 
-    middlewares.push(withLogging(loggingOptions));
+    const withContext =
+      (fn: (message: string, logContext?: Record<string, unknown>) => void) =>
+      (message: string, logContext?: Record<string, unknown>) =>
+        fn(message, logContext ? { ...context, ...logContext } : context);
+
+    const contextualLogger = {
+      trace: withContext(baseLogger.trace ?? defaultLogger.trace),
+      debug: withContext(baseLogger.debug ?? defaultLogger.debug),
+      info: withContext(baseLogger.info ?? defaultLogger.info),
+      warn: withContext(baseLogger.warn ?? defaultLogger.warn),
+      error: withContext(baseLogger.error ?? defaultLogger.error),
+      fatal: withContext(baseLogger.fatal ?? defaultLogger.fatal),
+    };
+
+    middlewares.push(withLogging({ ...loggingOptions, logger: contextualLogger }));
     middlewares.push(withRetry(retryOptions));
 
     logger.debug('Applied middleware to model', {
       serviceName,
+      modelKey,
       modelName: model.name,
       hasCustomLogger: loggingOptions.logger !== undefined,
       retries: retryOptions.retries ?? 0,
@@ -495,7 +517,7 @@ export class ModelRouter {
       modelKey: winner.key,
       label: winner.label,
     });
-    return this.applyRouteMiddleware(serviceName, base, route);
+    return this.applyRouteMiddleware(serviceName, base, route, winner.key);
   }
 
   private getMetadataOrThrow(key: ModelKey): ModelMetadata {
@@ -521,4 +543,3 @@ export const registerServiceRoute = (serviceName: string, config: ServiceRouteCo
 
 export const getModelFor = (serviceName: string, overrideKey?: ModelKey): BaseModel =>
   defaultRouter.getModelFor(serviceName, overrideKey);
-

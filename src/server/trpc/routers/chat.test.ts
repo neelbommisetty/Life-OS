@@ -1,5 +1,5 @@
 import { describe, test as it, expect } from "bun:test";
-import { getThreadSchema, sendMessageSchema } from "@/lib/validations/chat";
+import { getThreadSchema, sendMessageSchema, setThreadModelSchema } from "@/lib/validations/chat";
 
 describe("Chat Validations", () => {
   describe("getThreadSchema", () => {
@@ -68,5 +68,42 @@ describe("Chat Validations", () => {
       expect(result.success).toBe(true);
     });
   });
-});
 
+  describe("setThreadModelSchema", () => {
+    it("validates valid model selection", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        modelKey: "openai.gpt-5-mini",
+      };
+      const result = setThreadModelSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts auto model selection", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        modelKey: null,
+      };
+      const result = setThreadModelSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects missing model key", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        modelKey: "",
+      };
+      const result = setThreadModelSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects invalid project ID", () => {
+      const input = {
+        projectId: "",
+        modelKey: "openai.gpt-5-mini",
+      };
+      const result = setThreadModelSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+});
