@@ -9,9 +9,6 @@ import { z } from 'zod';
 
 import {
   // Core types
-  type BaseModel,
-  type ModelCallInput,
-
   // Middleware
   applyMiddleware,
   withRetry,
@@ -243,4 +240,3 @@ export function listModels() {
     console.log('');
   }
 }
-

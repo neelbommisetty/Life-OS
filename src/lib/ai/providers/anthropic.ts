@@ -153,7 +153,8 @@ const readContentBlockText = (block: ContentBlock | unknown): string | undefined
 
 const normaliseToolInputSchema = (schema: unknown): Tool.InputSchema => {
   if (isObject(schema)) {
-    const { type: _type, ...rest } = schema as Record<string, unknown>;
+    const rest = { ...(schema as Record<string, unknown>) };
+    delete rest.type;
 
     return {
       type: 'object',
@@ -353,4 +354,3 @@ export const registerDefaultAnthropicModels = (
     registry.register(definition);
   }
 };
-
