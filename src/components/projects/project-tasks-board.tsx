@@ -4,11 +4,15 @@ import { Dialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react'
 import { useEffect, useMemo, useState, Fragment } from 'react';
 import {
   DndContext,
+  DragOverlay,
   PointerSensor,
   closestCorners,
+  pointerWithin,
+  rectIntersection,
   useSensor,
   useSensors,
   type DragEndEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -62,6 +66,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(() => createEmptyDraft());
   const [activeView, setActiveView] = useState<TaskView>('KANBAN');
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     if (data) {
@@ -105,6 +110,14 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     })
   );
 
+  const collisionDetection: CollisionDetection = (args) => {
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) {
+      return pointerCollisions;
+    }
+    return rectIntersection(args);
+  };
+
   const visibleTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
     return tasks.filter((task) => {
@@ -142,6 +155,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveTaskId(null);
     if (!over) return;
 
     const activeId = String(active.id);
@@ -173,6 +187,19 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
       position: targetIndex,
     });
   };
+
+  const handleDragStart = (event: { active: { id: string } }) => {
+    setActiveTaskId(String(event.active.id));
+  };
+
+  const handleDragCancel = () => {
+    setActiveTaskId(null);
+  };
+
+  const activeTask = useMemo(
+    () => (activeTaskId ? tasks.find((task) => task.id === activeTaskId) : null),
+    [activeTaskId, tasks]
+  );
 
   const openCreatePanel = (status: TaskStatus) => {
     setDraft(createEmptyDraft(status));
@@ -320,7 +347,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
       {activeView === 'KANBAN' ? (
         <DndContext
           sensors={sensors}
-          collisionDetection={closestCorners}
+          collisionDetection={collisionDetection}
+          onDragStart={handleDragStart}
+          onDragCancel={handleDragCancel}
           onDragEnd={handleDragEnd}
         >
           <div className="grid gap-4 lg:grid-cols-3 md:grid-cols-2">
@@ -334,6 +363,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
               />
             ))}
           </div>
+          <DragOverlay>
+            {activeTask ? <TaskCard task={activeTask} isOverlay /> : null}
+          </DragOverlay>
         </DndContext>
       ) : activeView === 'BACKLOG' ? (
         <BacklogList
@@ -545,12 +577,13 @@ function TaskListItem({ task, onSelect, actions }: TaskListItemProps) {
 }
 
 function TaskColumn({ status, tasks, onAdd, onSelect }: TaskColumnProps) {
-  const { setNodeRef } = useDroppable({
+  const { setNodeRef, isOver } = useDroppable({
     id: `column-${status}`,
   });
 
   return (
     <div
+      ref={setNodeRef}
       className="flex h-full flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm"
       id={`column-${status}`}
     >
@@ -575,8 +608,10 @@ function TaskColumn({ status, tasks, onAdd, onSelect }: TaskColumnProps) {
         strategy={verticalListSortingStrategy}
       >
         <div
-          ref={setNodeRef}
-          className="flex flex-1 flex-col gap-3 rounded-lg border border-dashed border-border/70 bg-muted/30 p-2"
+          className={cn(
+            "flex min-h-32 flex-1 flex-col gap-3 rounded-lg border border-dashed border-border/70 bg-muted/30 p-2",
+            isOver && "border-primary/50 bg-primary/5"
+          )}
         >
           {tasks.length === 0 ? (
             <p className="text-center text-xs text-muted-foreground">
@@ -599,9 +634,10 @@ type SortableTaskCardProps = {
 };
 
 function SortableTaskCard({ task, onSelect }: SortableTaskCardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
-    id: task.id,
-  });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({
+      id: task.id,
+    });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -615,8 +651,37 @@ function SortableTaskCard({ task, onSelect }: SortableTaskCardProps) {
       {...attributes}
       {...listeners}
       onClick={onSelect}
-      className="group cursor-grab rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-colors hover:border-primary/40"
+      className={cn(
+        "group cursor-grab rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-colors hover:border-primary/40",
+        isDragging && "opacity-0"
+      )}
     >
+      <TaskCardContent task={task} />
+    </article>
+  );
+}
+
+type TaskCardProps = {
+  task: Task;
+  isOverlay?: boolean;
+};
+
+function TaskCard({ task, isOverlay }: TaskCardProps) {
+  return (
+    <article
+      className={cn(
+        "group rounded-lg border border-border bg-background p-3 text-left shadow-sm",
+        isOverlay ? "cursor-grabbing opacity-90 shadow-lg" : "cursor-grab"
+      )}
+    >
+      <TaskCardContent task={task} />
+    </article>
+  );
+}
+
+function TaskCardContent({ task }: { task: Task }) {
+  return (
+    <>
       <div className="flex items-start justify-between gap-3">
         <h4 className="text-sm font-semibold text-foreground">{task.title}</h4>
         <span
@@ -644,7 +709,7 @@ function SortableTaskCard({ task, onSelect }: SortableTaskCardProps) {
           </span>
         )}
       </div>
-    </article>
+    </>
   );
 }
 
