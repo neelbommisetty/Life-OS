@@ -1,5 +1,10 @@
 import { TRPCError } from "@trpc/server";
-import { getThreadSchema, sendMessageSchema, setThreadModelSchema } from "@/lib/validations/chat";
+import {
+  getThreadSchema,
+  listMessagesSchema,
+  sendMessageSchema,
+  setThreadModelSchema,
+} from "@/lib/validations/chat";
 import { createManyTaskSchema } from "@/lib/validations/task";
 import { publicProcedure, router } from "../trpc";
 import { createLogger } from "@/lib/logger";
@@ -52,11 +57,6 @@ export const chatRouter = router({
             projectId: input.projectId,
             name: "Default",
           },
-          include: {
-            messages: {
-              orderBy: { createdAt: "asc" },
-            },
-          },
         });
 
         if (!thread) {
@@ -68,17 +68,11 @@ export const chatRouter = router({
               projectId: input.projectId,
               name: "Default",
             },
-            include: {
-              messages: {
-                orderBy: { createdAt: "asc" },
-              },
-            },
           });
         }
 
         logger.info("Chat thread retrieved successfully", {
           threadId: thread.id,
-          messageCount: thread.messages.length,
           durationMs: Date.now() - start,
         });
 
@@ -88,6 +82,100 @@ export const chatRouter = router({
           throw error;
         }
         logger.error("Failed to get chat thread", {
+          projectId: input.projectId,
+          error: error instanceof Error ? error.message : String(error),
+          durationMs: Date.now() - start,
+        });
+        throw error;
+      }
+    }),
+
+  listMessages: publicProcedure
+    .input(listMessagesSchema)
+    .query(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Listing chat messages", {
+        projectId: input.projectId,
+        hasCursor: !!input.cursor,
+      });
+
+      try {
+        const project = await ctx.prisma.project.findUnique({
+          where: { id: input.projectId },
+        });
+
+        if (!project) {
+          logger.warn("Project not found", { projectId: input.projectId });
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Project not found",
+          });
+        }
+
+        let thread = await ctx.prisma.chatThread.findFirst({
+          where: {
+            projectId: input.projectId,
+            name: "Default",
+          },
+        });
+
+        if (!thread) {
+          logger.info("Creating default chat thread for pagination", {
+            projectId: input.projectId,
+          });
+          thread = await ctx.prisma.chatThread.create({
+            data: {
+              projectId: input.projectId,
+              name: "Default",
+            },
+          });
+        }
+
+        const limit = input.limit ?? 30;
+        const take = limit + 1;
+        const where: {
+          threadId: string;
+          OR?: Array<{ createdAt: { lt: Date } } | { createdAt: Date; id: { lt: string } }>;
+        } = { threadId: thread.id };
+
+        if (input.cursor) {
+          where.OR = [
+            { createdAt: { lt: input.cursor.createdAt } },
+            { createdAt: input.cursor.createdAt, id: { lt: input.cursor.id } },
+          ];
+        }
+
+        const messages = await ctx.prisma.chatMessage.findMany({
+          where,
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take,
+        });
+
+        const hasMore = messages.length > limit;
+        const page = hasMore ? messages.slice(0, limit) : messages;
+        const nextCursor = hasMore
+          ? {
+              id: page[page.length - 1].id,
+              createdAt: page[page.length - 1].createdAt,
+            }
+          : null;
+
+        logger.info("Chat messages listed", {
+          threadId: thread.id,
+          messageCount: page.length,
+          durationMs: Date.now() - start,
+        });
+
+        return {
+          threadId: thread.id,
+          messages: page.reverse(),
+          nextCursor,
+        };
+      } catch (error) {
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+        logger.error("Failed to list chat messages", {
           projectId: input.projectId,
           error: error instanceof Error ? error.message : String(error),
           durationMs: Date.now() - start,
@@ -154,11 +242,6 @@ export const chatRouter = router({
           projectId: input.projectId,
           name: "Default",
         },
-        include: {
-          messages: {
-            orderBy: { createdAt: "asc" },
-          },
-        },
       });
 
       if (!thread) {
@@ -168,22 +251,12 @@ export const chatRouter = router({
             name: "Default",
             modelKey: input.modelKey,
           },
-          include: {
-            messages: {
-              orderBy: { createdAt: "asc" },
-            },
-          },
         });
       } else {
         thread = await ctx.prisma.chatThread.update({
           where: { id: thread.id },
           data: {
             modelKey: input.modelKey,
-          },
-          include: {
-            messages: {
-              orderBy: { createdAt: "asc" },
-            },
           },
         });
       }

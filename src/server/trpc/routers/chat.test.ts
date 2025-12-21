@@ -1,5 +1,10 @@
 import { describe, test as it, expect } from "bun:test";
-import { getThreadSchema, sendMessageSchema, setThreadModelSchema } from "@/lib/validations/chat";
+import {
+  getThreadSchema,
+  listMessagesSchema,
+  sendMessageSchema,
+  setThreadModelSchema,
+} from "@/lib/validations/chat";
 
 describe("Chat Validations", () => {
   describe("getThreadSchema", () => {
@@ -103,6 +108,35 @@ describe("Chat Validations", () => {
         modelKey: "openai.gpt-5-mini",
       };
       const result = setThreadModelSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("listMessagesSchema", () => {
+    it("validates basic pagination input", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        limit: 40,
+      };
+      const result = listMessagesSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts cursor with date", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        cursor: { id: "clxyz987654321", createdAt: new Date() },
+      };
+      const result = listMessagesSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects invalid limit", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        limit: 0,
+      };
+      const result = listMessagesSchema.safeParse(input);
       expect(result.success).toBe(false);
     });
   });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useMemo, useLayoutEffect } from "react";
 import { api } from "@/trpc/client";
 import { SendIcon, LoaderIcon, CheckCircle2Icon, CalendarIcon, AlertCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,17 +16,30 @@ type Props = {
 
 export function ProjectChat({ projectId, accentColor }: Props) {
   const [input, setInput] = useState("");
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const hasAutoScrolledRef = useRef(false);
+  const shouldAutoScrollRef = useRef(true);
+  const previousScrollHeightRef = useRef<number | null>(null);
+  const previousScrollTopRef = useRef(0);
+  const pageSize = 30;
 
   // Fetch thread and messages
-  const { data: thread, isLoading } = api.chat.getThread.useQuery({
+  const threadQuery = api.chat.getThread.useQuery({
     projectId,
   });
+
+  const messagesQuery = api.chat.listMessages.useInfiniteQuery(
+    { projectId, limit: pageSize },
+    {
+      getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    }
+  );
 
   const modelsQuery = api.chat.listModels.useQuery();
 
   const utils = api.useUtils();
+  const thread = threadQuery.data;
 
   // Task creation mutation for direct approval
   const createTaskMutation = api.task.create.useMutation({
@@ -46,7 +59,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const sendMessageMutation = api.chat.sendMessage.useMutation({
     onSuccess: () => {
       setInput("");
-      // Refetch the thread to get updated messages
+      // Refetch messages to get updated list
+      utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
       utils.chat.getThread.invalidate({ projectId });
     },
   });
@@ -57,16 +71,64 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     },
   });
 
-  // Scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [thread?.messages]);
+  const messages = useMemo(() => {
+    const pages = messagesQuery.data?.pages ?? [];
+    return pages.slice().reverse().flatMap((page) => page.messages);
+  }, [messagesQuery.data]);
+  const isPending = sendMessageMutation.isPending;
+
+  const handleScroll = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom < 80;
+
+    if (
+      container.scrollTop < 80 &&
+      messagesQuery.hasNextPage &&
+      !messagesQuery.isFetchingNextPage
+    ) {
+      previousScrollHeightRef.current = container.scrollHeight;
+      previousScrollTopRef.current = container.scrollTop;
+      messagesQuery.fetchNextPage();
+    }
+  };
+
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    if (!hasAutoScrolledRef.current && !messagesQuery.isLoading) {
+      container.scrollTop = container.scrollHeight;
+      hasAutoScrolledRef.current = true;
+      return;
+    }
+
+    if (shouldAutoScrollRef.current && !messagesQuery.isFetchingNextPage) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }, [messages.length, messagesQuery.isLoading, messagesQuery.isFetchingNextPage, isPending]);
+
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (previousScrollHeightRef.current === null) return;
+    if (messagesQuery.isFetchingNextPage) return;
+
+    const previousScrollHeight = previousScrollHeightRef.current;
+    const previousScrollTop = previousScrollTopRef.current;
+    container.scrollTop =
+      container.scrollHeight - previousScrollHeight + previousScrollTop;
+    previousScrollHeightRef.current = null;
+  }, [messages.length, messagesQuery.isFetchingNextPage]);
 
   const handleSubmit = async (e: React.FormEvent, contentOverride?: string) => {
     e?.preventDefault();
     const content = contentOverride || input.trim();
     if (!content || sendMessageMutation.isPending) return;
 
+    shouldAutoScrollRef.current = true;
     sendMessageMutation.mutate({
       projectId,
       content,
@@ -104,7 +166,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     });
   };
 
-  if (isLoading) {
+  if (threadQuery.isLoading || messagesQuery.isLoading) {
     return (
       <div className="flex items-center justify-center rounded-xl border border-border bg-card p-12 shadow-sm">
         <LoaderIcon className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -112,9 +174,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     );
   }
 
-  const messages = thread?.messages || [];
   const isEmpty = messages.length === 0;
-  const isPending = sendMessageMutation.isPending;
   const modelErrorMessage =
     setThreadModelMutation.error?.message ?? modelsQuery.error?.message;
 
@@ -131,7 +191,20 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   return (
     <div className="flex h-[600px] flex-col rounded-xl border border-border bg-card shadow-sm">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div
+        ref={messagesContainerRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-4 space-y-4"
+      >
+        {messagesQuery.isFetchingNextPage && (
+          <div className="flex justify-center">
+            <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
+              <LoaderIcon className="h-3 w-3 animate-spin" />
+              Loading older messages...
+            </div>
+          </div>
+        )}
+
         {isEmpty && (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
@@ -185,7 +258,6 @@ export function ProjectChat({ projectId, accentColor }: Props) {
           </div>
         )}
 
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input area */}
@@ -196,7 +268,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         <div className="flex items-end gap-2">
           <ModelSelector
             models={modelsQuery.data ?? []}
-            value={thread?.modelKey ?? null}
+            value={threadQuery.data?.modelKey ?? null}
             onChange={handleModelChange}
             isLoading={modelsQuery.isLoading}
             isUpdating={setThreadModelMutation.isPending}
