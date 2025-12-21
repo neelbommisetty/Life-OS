@@ -19,10 +19,13 @@ export const applyMiddleware = (
     boundCall
   );
 
+  const streamCall = model.streamCall ? model.streamCall.bind(model) : undefined;
+
   return {
     name: model.name,
     caps: model.caps,
     call,
+    ...(streamCall ? { streamCall } : {}),
   };
 };
 
