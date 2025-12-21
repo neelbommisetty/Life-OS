@@ -391,7 +391,7 @@ export class ModelRouter {
   ): BaseModel {
     const metadatas = route.models.map((key) => this.getMetadataOrThrow(key));
     const caps = deriveSharedCapabilities(metadatas);
-    const router = this; // Capture router instance for use in closures
+    const instantiateModel = this.instantiateModel.bind(this);
 
     const base: BaseModel = {
       name: `service:${serviceName}:failover`,
@@ -404,7 +404,7 @@ export class ModelRouter {
               serviceName,
               modelKey: key,
             });
-            const model = router.instantiateModel(serviceName, key, route);
+            const model = instantiateModel(serviceName, key, route);
             return await model.call(input);
           } catch (error) {
             logger.warn('Failover candidate failed', {
@@ -427,7 +427,7 @@ export class ModelRouter {
               let lastError: unknown;
 
               for (const key of route.models) {
-                const candidate = router.instantiateModel(serviceName, key, route);
+                const candidate = instantiateModel(serviceName, key, route);
 
                 if (!candidate.streamCall) {
                   continue;
@@ -470,15 +470,16 @@ export class ModelRouter {
   ): BaseModel {
     const metadatas = route.models.map((key) => this.getMetadataOrThrow(key));
     const caps = deriveSharedCapabilities(metadatas);
-    const router = this; // Capture router instance for use in closures
+    const instantiateModel = this.instantiateModel.bind(this);
+    const rotationState = this.rotationState;
 
     const base: BaseModel = {
       name: `service:${serviceName}:rotating_failover`,
       caps,
       call: async (input: ModelCallInput) => {
-        const startingIndex = router.rotationState.get(serviceName) ?? 0;
+        const startingIndex = rotationState.get(serviceName) ?? 0;
         const nextIndex = (startingIndex + 1) % route.models.length;
-        router.rotationState.set(serviceName, nextIndex);
+        rotationState.set(serviceName, nextIndex);
 
         let lastError: unknown;
 
@@ -493,7 +494,7 @@ export class ModelRouter {
               startingIndex,
               candidateIndex,
             });
-            const model = router.instantiateModel(serviceName, key, route);
+            const model = instantiateModel(serviceName, key, route);
             return await model.call(input);
           } catch (error) {
             logger.warn('Rotating failover candidate failed', {
@@ -513,14 +514,14 @@ export class ModelRouter {
             async *streamCall(
               input: ModelCallInput,
             ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
-              const startingIndex = router.rotationState.get(serviceName) ?? 0;
+              const startingIndex = rotationState.get(serviceName) ?? 0;
               const nextIndex = (startingIndex + 1) % route.models.length;
-              router.rotationState.set(serviceName, nextIndex);
+              rotationState.set(serviceName, nextIndex);
 
               for (let offset = 0; offset < route.models.length; offset += 1) {
                 const candidateIndex = (startingIndex + offset) % route.models.length;
                 const key = route.models[candidateIndex];
-                const candidate = router.instantiateModel(serviceName, key, route);
+                const candidate = instantiateModel(serviceName, key, route);
 
                 if (!candidate.streamCall) {
                   continue;
@@ -543,7 +544,7 @@ export class ModelRouter {
 
               // Fallback: do a blocking call on the first model if streaming not available.
               const key = route.models[startingIndex];
-              const model = router.instantiateModel(serviceName, key, route);
+              const model = instantiateModel(serviceName, key, route);
               const result = await model.call(input);
               yield { text: result.text, done: true };
               return { text: result.text };
@@ -561,22 +562,23 @@ export class ModelRouter {
   ): BaseModel {
     const metadatas = route.models.map((key) => this.getMetadataOrThrow(key));
     const caps = deriveSharedCapabilities(metadatas);
-    const router = this; // Capture router instance for use in closures
+    const instantiateModel = this.instantiateModel.bind(this);
+    const rotationState = this.rotationState;
 
     const base: BaseModel = {
       name: `service:${serviceName}:round_robin`,
       caps,
       call: async (input: ModelCallInput) => {
-        const currentIndex = router.rotationState.get(serviceName) ?? 0;
+        const currentIndex = rotationState.get(serviceName) ?? 0;
         const nextIndex = (currentIndex + 1) % route.models.length;
-        router.rotationState.set(serviceName, nextIndex);
+        rotationState.set(serviceName, nextIndex);
         const key = route.models[currentIndex];
         logger.debug('Selected round robin candidate', {
           serviceName,
           modelKey: key,
           nextIndex,
         });
-        const model = router.instantiateModel(serviceName, key, route);
+        const model = instantiateModel(serviceName, key, route);
         return model.call(input);
       },
       ...(caps.supportsStreaming
@@ -584,12 +586,12 @@ export class ModelRouter {
             async *streamCall(
               input: ModelCallInput,
             ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
-              const currentIndex = router.rotationState.get(serviceName) ?? 0;
+              const currentIndex = rotationState.get(serviceName) ?? 0;
               const nextIndex = (currentIndex + 1) % route.models.length;
-              router.rotationState.set(serviceName, nextIndex);
+              rotationState.set(serviceName, nextIndex);
               const key = route.models[currentIndex];
 
-              const model = router.instantiateModel(serviceName, key, route);
+              const model = instantiateModel(serviceName, key, route);
               if (model.streamCall) {
                 let accumulatedText = '';
                 for await (const chunk of model.streamCall(input)) {
