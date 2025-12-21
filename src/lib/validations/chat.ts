@@ -31,7 +31,40 @@ export const listMessagesSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
 });
 
+// Schema for streaming chat request
+export const streamMessageSchema = z.object({
+  projectId: z.string().cuid(),
+  content: z
+    .string()
+    .min(1, "Message cannot be empty")
+    .max(10000)
+    .refine((val) => val.trim().length > 0, {
+      message: "Message cannot be only whitespace",
+    }),
+});
+
+// Stream event schema for validation
+export const streamEventSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("chunk"),
+    text: z.string(),
+  }),
+  z.object({
+    type: z.literal("done"),
+  }),
+  z.object({
+    type: z.literal("error"),
+    error: z.string(),
+  }),
+  z.object({
+    type: z.literal("message_saved"),
+    messageId: z.string(),
+  }),
+]);
+
 export type GetThreadInput = z.infer<typeof getThreadSchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type SetThreadModelInput = z.infer<typeof setThreadModelSchema>;
 export type ListMessagesInput = z.infer<typeof listMessagesSchema>;
+export type StreamMessageInput = z.infer<typeof streamMessageSchema>;
+export type StreamEvent = z.infer<typeof streamEventSchema>;

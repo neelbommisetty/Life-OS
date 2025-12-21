@@ -135,3 +135,115 @@ export function isApproval(content: string): boolean {
 
   return approvalPatterns.some(pattern => pattern.test(normalized));
 }
+
+// ===== Streaming Utilities =====
+
+/**
+ * Stream event types for Server-Sent Events
+ */
+export type StreamEventType = 'chunk' | 'done' | 'error' | 'message_saved';
+
+/**
+ * Structure of a streaming event
+ */
+export interface StreamEvent {
+  type: StreamEventType;
+  /** Text content for chunk events */
+  text?: string;
+  /** Message ID when saved to database */
+  messageId?: string;
+  /** Error message for error events */
+  error?: string;
+}
+
+/**
+ * Encode a stream event as SSE format
+ */
+export function encodeSSE(event: StreamEvent): string {
+  return `data: ${JSON.stringify(event)}\n\n`;
+}
+
+/**
+ * Parse a Server-Sent Event line into a StreamEvent
+ * Returns null if parsing fails or line is not a data event
+ */
+export function parseSSELine(line: string): StreamEvent | null {
+  if (!line.startsWith('data: ')) {
+    return null;
+  }
+
+  try {
+    const jsonStr = line.slice(6); // Remove 'data: ' prefix
+    const event = JSON.parse(jsonStr) as StreamEvent;
+
+    // Validate event structure
+    if (!event.type || !['chunk', 'done', 'error', 'message_saved'].includes(event.type)) {
+      return null;
+    }
+
+    return event;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse SSE text chunk that may contain multiple events
+ */
+export function parseSSEChunk(chunk: string): StreamEvent[] {
+  const events: StreamEvent[] = [];
+  const lines = chunk.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed) {
+      const event = parseSSELine(trimmed);
+      if (event) {
+        events.push(event);
+      }
+    }
+  }
+
+  return events;
+}
+
+/**
+ * Error class for stream-specific errors
+ */
+export class StreamError extends Error {
+  constructor(
+    message: string,
+    public readonly code: 'STREAM_ABORTED' | 'STREAM_ERROR' | 'PARSE_ERROR' | 'NETWORK_ERROR'
+  ) {
+    super(message);
+    this.name = 'StreamError';
+  }
+}
+
+/**
+ * Handle stream error with graceful degradation
+ * Returns a user-friendly error message
+ */
+export function handleStreamError(error: unknown): string {
+  if (error instanceof StreamError) {
+    switch (error.code) {
+      case 'STREAM_ABORTED':
+        return 'Response was cancelled.';
+      case 'NETWORK_ERROR':
+        return 'Network connection was lost. Please try again.';
+      case 'PARSE_ERROR':
+        return 'Received invalid response format.';
+      default:
+        return 'An error occurred while streaming the response.';
+    }
+  }
+
+  if (error instanceof Error) {
+    if (error.name === 'AbortError') {
+      return 'Request was cancelled.';
+    }
+    return error.message;
+  }
+
+  return 'An unexpected error occurred.';
+}
