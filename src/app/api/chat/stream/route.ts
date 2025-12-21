@@ -16,6 +16,11 @@ import { modelRegistry } from "@/lib/ai";
 import { getModelFor } from "@/lib/ai/providers/router";
 import { initializeChatServices } from "@/lib/ai/chat-services";
 import type { ModelKey } from "@/lib/ai";
+import {
+  getUniqueThreadName,
+  isPlaceholderThreadName,
+  queueThreadTitleGeneration,
+} from "@/server/chat-thread-utils";
 
 const logger = createLogger("api:chat:stream");
 
@@ -24,6 +29,8 @@ initializeChatServices();
 
 // Token cap before triggering summarization (~6k tokens)
 const HISTORY_TOKEN_CAP = 6000;
+const DEFAULT_THREAD_NAME = "New thread";
+const THREAD_ORDER = [{ lastChattedAt: "desc" }, { createdAt: "desc" }] as const;
 
 export async function POST(request: Request) {
   const start = Date.now();
@@ -43,7 +50,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { projectId, content } = validation.data;
+    const { projectId, content, threadId } = validation.data;
 
     logger.debug("Starting chat stream", {
       projectId,
@@ -64,23 +71,48 @@ export async function POST(request: Request) {
     }
 
     // Get or create thread
-    let thread = await prisma.chatThread.findFirst({
-      where: {
-        projectId,
-        name: "Default",
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: "asc" },
-        },
-      },
-    });
+    let thread = threadId
+      ? await prisma.chatThread.findFirst({
+          where: {
+            id: threadId,
+            projectId,
+          },
+          include: {
+            messages: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        })
+      : await prisma.chatThread.findFirst({
+          where: {
+            projectId,
+            archivedAt: null,
+          },
+          orderBy: THREAD_ORDER,
+          include: {
+            messages: {
+              orderBy: { createdAt: "asc" },
+            },
+          },
+        });
+
+    if (threadId && !thread) {
+      return NextResponse.json(
+        { error: "Thread not found" },
+        { status: 404 }
+      );
+    }
 
     if (!thread) {
+      const name = await getUniqueThreadName(
+        projectId,
+        DEFAULT_THREAD_NAME,
+        prisma
+      );
       thread = await prisma.chatThread.create({
         data: {
           projectId,
-          name: "Default",
+          name,
         },
         include: {
           messages: {
@@ -89,6 +121,9 @@ export async function POST(request: Request) {
         },
       });
     }
+
+    const shouldGenerateTitle =
+      thread.messages.length === 0 && isPlaceholderThreadName(thread.name);
 
     // Save user message
     const userMessage = await prisma.chatMessage.create({
@@ -100,6 +135,23 @@ export async function POST(request: Request) {
     });
 
     logger.info("User message saved", { messageId: userMessage.id });
+
+    await prisma.chatThread.update({
+      where: { id: thread.id },
+      data: {
+        lastChattedAt: userMessage.createdAt,
+      },
+    });
+
+    if (shouldGenerateTitle) {
+      queueThreadTitleGeneration({
+        threadId: thread.id,
+        projectId,
+        firstMessage: content,
+        currentName: thread.name,
+        client: prisma,
+      });
+    }
 
     // Get all messages including the new one
     const allMessages = [...thread.messages, userMessage];
@@ -214,6 +266,13 @@ export async function POST(request: Request) {
         },
       });
 
+      await prisma.chatThread.update({
+        where: { id: thread.id },
+        data: {
+          lastChattedAt: assistantMessage.createdAt,
+        },
+      });
+
       // Return complete response as SSE
       const encoder = new TextEncoder();
       const events = [
@@ -233,7 +292,7 @@ export async function POST(request: Request) {
 
     // Create streaming response
     const encoder = new TextEncoder();
-    const threadId = thread.id;
+    const activeThreadId = thread.id;
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -261,9 +320,16 @@ export async function POST(request: Request) {
           // Save complete assistant message to database
           const assistantMessage = await prisma.chatMessage.create({
             data: {
-              threadId,
+              threadId: activeThreadId,
               role: "ASSISTANT",
               content: accumulatedText,
+            },
+          });
+
+          await prisma.chatThread.update({
+            where: { id: activeThreadId },
+            data: {
+              lastChattedAt: assistantMessage.createdAt,
             },
           });
 
@@ -297,9 +363,16 @@ export async function POST(request: Request) {
             try {
               const partialMessage = await prisma.chatMessage.create({
                 data: {
-                  threadId,
+                  threadId: activeThreadId,
                   role: "ASSISTANT",
                   content: accumulatedText + "\n\n[Response interrupted]",
+                },
+              });
+
+              await prisma.chatThread.update({
+                where: { id: activeThreadId },
+                data: {
+                  lastChattedAt: partialMessage.createdAt,
                 },
               });
 
@@ -344,4 +417,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

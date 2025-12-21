@@ -4,6 +4,9 @@ import {
   listMessagesSchema,
   sendMessageSchema,
   setThreadModelSchema,
+  listThreadsSchema,
+  createThreadSchema,
+  archiveThreadSchema,
 } from "@/lib/validations/chat";
 
 describe("Chat Validations", () => {
@@ -31,6 +34,7 @@ describe("Chat Validations", () => {
     it("validates valid message", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         content: "Hello, AI!",
       };
       const result = sendMessageSchema.safeParse(input);
@@ -40,6 +44,7 @@ describe("Chat Validations", () => {
     it("rejects empty content", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         content: "",
       };
       const result = sendMessageSchema.safeParse(input);
@@ -49,6 +54,7 @@ describe("Chat Validations", () => {
     it("rejects whitespace-only content", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         content: "   ",
       };
       const result = sendMessageSchema.safeParse(input);
@@ -58,6 +64,7 @@ describe("Chat Validations", () => {
     it("rejects content exceeding max length", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         content: "a".repeat(10001),
       };
       const result = sendMessageSchema.safeParse(input);
@@ -67,6 +74,7 @@ describe("Chat Validations", () => {
     it("accepts content at max length", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         content: "a".repeat(10000),
       };
       const result = sendMessageSchema.safeParse(input);
@@ -78,6 +86,7 @@ describe("Chat Validations", () => {
     it("validates valid model selection", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         modelKey: "openai.gpt-5-mini",
       };
       const result = setThreadModelSchema.safeParse(input);
@@ -87,6 +96,7 @@ describe("Chat Validations", () => {
     it("accepts auto model selection", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         modelKey: null,
       };
       const result = setThreadModelSchema.safeParse(input);
@@ -96,6 +106,7 @@ describe("Chat Validations", () => {
     it("rejects missing model key", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         modelKey: "",
       };
       const result = setThreadModelSchema.safeParse(input);
@@ -116,6 +127,7 @@ describe("Chat Validations", () => {
     it("validates basic pagination input", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         limit: 40,
       };
       const result = listMessagesSchema.safeParse(input);
@@ -125,6 +137,7 @@ describe("Chat Validations", () => {
     it("accepts cursor with date", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         cursor: { id: "clxyz987654321", createdAt: new Date() },
       };
       const result = listMessagesSchema.safeParse(input);
@@ -134,10 +147,35 @@ describe("Chat Validations", () => {
     it("rejects invalid limit", () => {
       const input = {
         projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
         limit: 0,
       };
       const result = listMessagesSchema.safeParse(input);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("listThreadsSchema", () => {
+    it("validates basic list input", () => {
+      const input = { projectId: "clxyz123456789" };
+      const result = listThreadsSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("createThreadSchema", () => {
+    it("accepts optional name", () => {
+      const input = { projectId: "clxyz123456789", name: "Brainstorm" };
+      const result = createThreadSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("archiveThreadSchema", () => {
+    it("requires threadId", () => {
+      const input = { projectId: "clxyz123456789", threadId: "clxyz987654321" };
+      const result = archiveThreadSchema.safeParse(input);
+      expect(result.success).toBe(true);
     });
   });
 });

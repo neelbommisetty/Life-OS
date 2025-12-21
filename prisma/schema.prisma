@@ -82,16 +82,19 @@ model ChatThread {
   id          String        @id @default(cuid())
   projectId   String
   project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  name        String        @default("Default")
+  name        String        @default("New thread")
   modelKey    String?
   summary     String?
   summaryUpTo DateTime?
+  lastChattedAt DateTime    @default(now())
+  archivedAt  DateTime?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   messages    ChatMessage[]
 
   @@unique([projectId, name])
   @@index([projectId])
+  @@index([projectId, archivedAt, lastChattedAt])
 }
 
 model ChatMessage {

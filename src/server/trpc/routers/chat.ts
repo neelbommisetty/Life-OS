@@ -6,6 +6,9 @@ import {
   listMessagesSchema,
   sendMessageSchema,
   setThreadModelSchema,
+  listThreadsSchema,
+  createThreadSchema,
+  archiveThreadSchema,
 } from "@/lib/validations/chat";
 import { createTaskSchema, createManyTaskSchema } from "@/lib/validations/task";
 import { publicProcedure, router } from "../trpc";
@@ -23,6 +26,11 @@ import { modelRegistry } from "@/lib/ai";
 import { getModelFor } from "@/lib/ai/providers/router";
 import { initializeChatServices } from "@/lib/ai/chat-services";
 import type { ModelKey } from "@/lib/ai";
+import {
+  getUniqueThreadName,
+  isPlaceholderThreadName,
+  queueThreadTitleGeneration,
+} from "@/server/chat-thread-utils";
 
 const logger = createLogger("trpc:chat");
 
@@ -31,6 +39,8 @@ initializeChatServices();
 
 // Token cap before triggering summarization (~6k tokens)
 const HISTORY_TOKEN_CAP = 6000;
+const DEFAULT_THREAD_NAME = "New thread";
+const THREAD_ORDER = [{ lastChattedAt: "desc" }, { createdAt: "desc" }] as const;
 
 export const chatRouter = router({
   getThread: publicProcedure
@@ -53,22 +63,41 @@ export const chatRouter = router({
           });
         }
 
-        // Get or create default thread
-        let thread = await ctx.prisma.chatThread.findFirst({
-          where: {
-            projectId: input.projectId,
-            name: "Default",
-          },
-        });
+        let thread = input.threadId
+          ? await ctx.prisma.chatThread.findFirst({
+              where: {
+                id: input.threadId,
+                projectId: input.projectId,
+              },
+            })
+          : await ctx.prisma.chatThread.findFirst({
+              where: {
+                projectId: input.projectId,
+                archivedAt: null,
+              },
+              orderBy: THREAD_ORDER,
+            });
+
+        if (input.threadId && !thread) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Thread not found",
+          });
+        }
 
         if (!thread) {
           logger.info("Creating default chat thread", {
             projectId: input.projectId,
           });
+          const name = await getUniqueThreadName(
+            input.projectId,
+            DEFAULT_THREAD_NAME,
+            ctx.prisma
+          );
           thread = await ctx.prisma.chatThread.create({
             data: {
               projectId: input.projectId,
-              name: "Default",
+              name,
             },
           });
         }
@@ -90,6 +119,137 @@ export const chatRouter = router({
         });
         throw error;
       }
+    }),
+
+  listThreads: publicProcedure
+    .input(listThreadsSchema)
+    .query(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Listing chat threads", { projectId: input.projectId });
+
+      const project = await ctx.prisma.project.findUnique({
+        where: { id: input.projectId },
+      });
+
+      if (!project) {
+        logger.warn("Project not found", { projectId: input.projectId });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
+      }
+
+      const includeArchived = input.includeArchived ?? false;
+
+      let threads = await ctx.prisma.chatThread.findMany({
+        where: {
+          projectId: input.projectId,
+          ...(includeArchived ? {} : { archivedAt: null }),
+        },
+        orderBy: THREAD_ORDER,
+      });
+
+      if (!includeArchived && threads.length === 0) {
+        const name = await getUniqueThreadName(
+          input.projectId,
+          DEFAULT_THREAD_NAME,
+          ctx.prisma
+        );
+        const created = await ctx.prisma.chatThread.create({
+          data: {
+            projectId: input.projectId,
+            name,
+          },
+        });
+        threads = [created];
+      }
+
+      logger.info("Chat threads listed", {
+        projectId: input.projectId,
+        count: threads.length,
+        durationMs: Date.now() - start,
+      });
+
+      return threads;
+    }),
+
+  createThread: publicProcedure
+    .input(createThreadSchema)
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Creating chat thread", { projectId: input.projectId });
+
+      const project = await ctx.prisma.project.findUnique({
+        where: { id: input.projectId },
+      });
+
+      if (!project) {
+        logger.warn("Project not found", { projectId: input.projectId });
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Project not found",
+        });
+      }
+
+      const baseName = input.name?.trim() || DEFAULT_THREAD_NAME;
+      const name = await getUniqueThreadName(
+        input.projectId,
+        baseName,
+        ctx.prisma
+      );
+
+      const thread = await ctx.prisma.chatThread.create({
+        data: {
+          projectId: input.projectId,
+          name,
+          lastChattedAt: new Date(),
+        },
+      });
+
+      logger.info("Chat thread created", {
+        threadId: thread.id,
+        durationMs: Date.now() - start,
+      });
+
+      return thread;
+    }),
+
+  archiveThread: publicProcedure
+    .input(archiveThreadSchema)
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Archiving chat thread", {
+        projectId: input.projectId,
+        threadId: input.threadId,
+      });
+
+      const thread = await ctx.prisma.chatThread.findFirst({
+        where: {
+          id: input.threadId,
+          projectId: input.projectId,
+        },
+      });
+
+      if (!thread) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Thread not found",
+        });
+      }
+
+      const archivedThread = await ctx.prisma.chatThread.update({
+        where: { id: input.threadId },
+        data: {
+          archivedAt: new Date(),
+        },
+      });
+
+      logger.info("Chat thread archived", {
+        threadId: archivedThread.id,
+        durationMs: Date.now() - start,
+      });
+
+      return archivedThread;
     }),
 
   listMessages: publicProcedure
@@ -114,22 +274,17 @@ export const chatRouter = router({
           });
         }
 
-        let thread = await ctx.prisma.chatThread.findFirst({
+        const thread = await ctx.prisma.chatThread.findFirst({
           where: {
+            id: input.threadId,
             projectId: input.projectId,
-            name: "Default",
           },
         });
 
         if (!thread) {
-          logger.info("Creating default chat thread for pagination", {
-            projectId: input.projectId,
-          });
-          thread = await ctx.prisma.chatThread.create({
-            data: {
-              projectId: input.projectId,
-              name: "Default",
-            },
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Thread not found",
           });
         }
 
@@ -240,18 +395,38 @@ export const chatRouter = router({
         });
       }
 
-      let thread = await ctx.prisma.chatThread.findFirst({
-        where: {
-          projectId: input.projectId,
-          name: "Default",
-        },
-      });
+      let thread = input.threadId
+        ? await ctx.prisma.chatThread.findFirst({
+            where: {
+              id: input.threadId,
+              projectId: input.projectId,
+            },
+          })
+        : await ctx.prisma.chatThread.findFirst({
+            where: {
+              projectId: input.projectId,
+              archivedAt: null,
+            },
+            orderBy: THREAD_ORDER,
+          });
+
+      if (input.threadId && !thread) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Thread not found",
+        });
+      }
 
       if (!thread) {
+        const name = await getUniqueThreadName(
+          input.projectId,
+          DEFAULT_THREAD_NAME,
+          ctx.prisma
+        );
         thread = await ctx.prisma.chatThread.create({
           data: {
             projectId: input.projectId,
-            name: "Default",
+            name,
             modelKey: input.modelKey,
           },
         });
@@ -297,23 +472,48 @@ export const chatRouter = router({
         }
 
         // Get or create thread
-        let thread = await ctx.prisma.chatThread.findFirst({
-          where: {
-            projectId: input.projectId,
-            name: "Default",
-          },
-          include: {
-            messages: {
-              orderBy: { createdAt: "asc" },
-            },
-          },
-        });
+        let thread = input.threadId
+          ? await ctx.prisma.chatThread.findFirst({
+              where: {
+                id: input.threadId,
+                projectId: input.projectId,
+              },
+              include: {
+                messages: {
+                  orderBy: { createdAt: "asc" },
+                },
+              },
+            })
+          : await ctx.prisma.chatThread.findFirst({
+              where: {
+                projectId: input.projectId,
+                archivedAt: null,
+              },
+              orderBy: THREAD_ORDER,
+              include: {
+                messages: {
+                  orderBy: { createdAt: "asc" },
+                },
+              },
+            });
+
+        if (input.threadId && !thread) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Thread not found",
+          });
+        }
 
         if (!thread) {
+          const name = await getUniqueThreadName(
+            input.projectId,
+            DEFAULT_THREAD_NAME,
+            ctx.prisma
+          );
           thread = await ctx.prisma.chatThread.create({
             data: {
               projectId: input.projectId,
-              name: "Default",
+              name,
             },
             include: {
               messages: {
@@ -322,6 +522,9 @@ export const chatRouter = router({
             },
           });
         }
+
+        const shouldGenerateTitle =
+          thread.messages.length === 0 && isPlaceholderThreadName(thread.name);
 
         // Save user message
         const userMessage = await ctx.prisma.chatMessage.create({
@@ -333,6 +536,23 @@ export const chatRouter = router({
         });
 
         logger.info("User message saved", { messageId: userMessage.id });
+
+        await ctx.prisma.chatThread.update({
+          where: { id: thread.id },
+          data: {
+            lastChattedAt: userMessage.createdAt,
+          },
+        });
+
+        if (shouldGenerateTitle) {
+          queueThreadTitleGeneration({
+            threadId: thread.id,
+            projectId: input.projectId,
+            firstMessage: input.content,
+            currentName: thread.name,
+            client: ctx.prisma,
+          });
+        }
 
         // Check for Task Approval Flow
         const lastMessage = thread.messages[thread.messages.length - 1];
@@ -422,6 +642,13 @@ export const chatRouter = router({
                     threadId: thread.id,
                     role: "SYSTEM", // Using SYSTEM role to denote system action
                     content: `Tasks created successfully: ${createdTasks.map((t) => t.title).join(", ")}`,
+                  },
+                });
+
+                await ctx.prisma.chatThread.update({
+                  where: { id: thread.id },
+                  data: {
+                    lastChattedAt: systemMsg.createdAt,
                   },
                 });
 
@@ -571,6 +798,13 @@ export const chatRouter = router({
             threadId: thread.id,
             role: "ASSISTANT",
             content: aiResult.text,
+          },
+        });
+
+        await ctx.prisma.chatThread.update({
+          where: { id: thread.id },
+          data: {
+            lastChattedAt: assistantMessage.createdAt,
           },
         });
 
