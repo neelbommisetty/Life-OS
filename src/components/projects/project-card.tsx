@@ -154,7 +154,7 @@ export function ProjectCard({ project }: Props) {
         </Listbox>
 
         <Link
-          href={`/projects/${project.id}`}
+          href={`/projects/${project.id}/overview`}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
           aria-label="Open project"
         >

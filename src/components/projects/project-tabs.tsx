@@ -4,8 +4,20 @@ import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { Fragment } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { getProjectTheme } from '@/lib/project-theme';
+import { useParams } from 'next/navigation';
+import {
+  buildProjectTabUrl,
+  defaultProjectTabKey,
+  getProjectTabKeyFromPathname,
+  normalizeProjectTabKey,
+  projectTabs,
+  resolveProjectTabKey,
+  type ProjectTabKey,
+} from '@/lib/project-tabs';
+import { trackEvent } from '@/lib/analytics';
+import { pushUrl, replaceUrl, useUrlState } from '@/lib/url-state';
 
 type Props = {
   overview: ReactNode;
@@ -15,24 +27,72 @@ type Props = {
   accentColor?: string | null;
 };
 
-const tabs = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'tasks', label: 'Tasks' },
-  { key: 'brainstorm', label: 'Brainstorm' },
-  { key: 'artifacts', label: 'Artifacts' },
-];
-
 export function ProjectTabs({ overview, tasks, brainstorm, artifacts, accentColor }: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const hasColor = !!accentColor;
+  const params = useParams();
+  const projectId = typeof params.id === 'string' ? params.id : params.id?.[0] ?? '';
+  const urlState = useUrlState();
+  const tabParam = getProjectTabKeyFromPathname(urlState.pathname);
+  const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
+
+  const tabIndexByKey = useMemo(() => {
+    return projectTabs.reduce<Record<ProjectTabKey, number>>((acc, tab, index) => {
+      acc[tab.key] = index;
+      return acc;
+    }, {} as Record<ProjectTabKey, number>);
+  }, []);
+
+  const [selectedIndex, setSelectedIndex] = useState(() => {
+    const initialKey = resolveProjectTabKey(tabParam);
+    return tabIndexByKey[initialKey] ?? tabIndexByKey[defaultProjectTabKey];
+  });
+
+  const lastTrackedKey = useRef<ProjectTabKey | null>(null);
+
+  useEffect(() => {
+    const nextKey = resolveProjectTabKey(tabParam);
+    setSelectedIndex(tabIndexByKey[nextKey] ?? tabIndexByKey[defaultProjectTabKey]);
+  }, [tabParam, tabIndexByKey]);
+
+  const selectedKey = projectTabs[selectedIndex]?.key ?? defaultProjectTabKey;
+
+  useEffect(() => {
+    if (!projectId) {
+      return;
+    }
+    const normalizedTab = normalizeProjectTabKey(tabParam);
+    if (!normalizedTab) {
+      const nextUrl = buildProjectTabUrl(projectId, searchParams, defaultProjectTabKey);
+      replaceUrl(nextUrl);
+    }
+  }, [projectId, searchParams, tabParam]);
+
+  useEffect(() => {
+    if (lastTrackedKey.current === selectedKey) {
+      return;
+    }
+    lastTrackedKey.current = selectedKey;
+    trackEvent('project_tab_opened', { tab: selectedKey });
+  }, [selectedKey]);
 
   return (
-    <TabGroup>
+    <TabGroup
+      selectedIndex={selectedIndex}
+      onChange={(index) => {
+        const nextKey = projectTabs[index]?.key ?? defaultProjectTabKey;
+        setSelectedIndex(index);
+        if (nextKey !== selectedKey) {
+          const nextUrl = buildProjectTabUrl(projectId, searchParams, nextKey);
+          pushUrl(nextUrl);
+        }
+      }}
+    >
       <TabList
         className="relative flex w-full border-b border-border bg-background"
         style={themeStyle}
       >
-        {tabs.map((tab) => (
+        {projectTabs.map((tab) => (
           <Tab as={Fragment} key={tab.key}>
             {({ selected }) => (
               <button

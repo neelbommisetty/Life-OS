@@ -20,6 +20,16 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Project Space Deep Links
+
+Project detail tabs can be linked directly via URL:
+
+- Tabs as path params: `/projects/:id/overview|tasks|brainstorm|artifacts`
+- Tasks view: `/projects/:id/tasks?tasksView=kanban|backlog|archived`
+- Chat thread: `/projects/:id/brainstorm?threadId=thread_123`
+
+Missing or invalid tab keys default to `overview`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/trpc/client";
 import {
   SendIcon,
@@ -17,6 +17,8 @@ import { ThreadSelector } from "./thread-selector";
 import { useChatStreaming } from "./hooks/use-chat-streaming";
 import { useChatTasks } from "./hooks/use-chat-tasks";
 import { useChatScroll } from "./hooks/use-chat-scroll";
+import { useUrlState, pushUrl, replaceUrl } from "@/lib/url-state";
+import { getProjectTabKeyFromPathname } from "@/lib/project-tabs";
 
 type Props = {
   projectId: string;
@@ -26,6 +28,9 @@ type Props = {
 export function ProjectChat({ projectId, accentColor }: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const hasAccentColor = !!accentColor && Object.keys(themeStyle).length > 0;
+  const urlState = useUrlState();
+  const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
+  const tabParam = getProjectTabKeyFromPathname(urlState.pathname);
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pageSize = 30;
@@ -39,6 +44,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
 
   const utils = api.useUtils();
   const threads = threadsQuery.data ?? [];
+  const threadIdParam = searchParams.get("threadId");
   const effectiveThreadId = activeThreadId ?? threads[0]?.id ?? null;
   const activeThread =
     threads.find((thread) => thread.id === effectiveThreadId) ?? null;
@@ -65,6 +71,29 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     },
   });
 
+  const setThreadIdInUrl = useCallback(
+    (threadId: string | null, replace = false) => {
+      if (tabParam !== "brainstorm") {
+        return;
+      }
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (threadId) {
+        nextParams.set("threadId", threadId);
+      } else {
+        nextParams.delete("threadId");
+      }
+      const query = nextParams.toString();
+      const basePath = `/projects/${projectId}/brainstorm`;
+      const nextUrl = query ? `${basePath}?${query}` : basePath;
+      if (replace) {
+        replaceUrl(nextUrl);
+        return;
+      }
+      pushUrl(nextUrl);
+    },
+    [projectId, searchParams, tabParam]
+  );
+
   const setThreadModelMutation = api.chat.setThreadModel.useMutation({
     onSuccess: (updatedThread) => {
       utils.chat.listThreads.setData({ projectId }, (existing) => {
@@ -83,6 +112,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         return [thread, ...existing.filter((item) => item.id !== thread.id)];
       });
       setActiveThreadId(thread.id);
+      setThreadIdInUrl(thread.id);
     },
   });
 
@@ -182,12 +212,41 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     });
   };
 
+  useEffect(() => {
+    if (threadsQuery.isLoading) {
+      return;
+    }
+    if (tabParam !== "brainstorm") {
+      return;
+    }
+    const paramIsValid =
+      !!threadIdParam && threads.some((thread) => thread.id === threadIdParam);
+    const candidate = paramIsValid ? threadIdParam : threads[0]?.id ?? null;
+    if (candidate !== activeThreadId) {
+      setActiveThreadId(candidate);
+    }
+    if (candidate && !paramIsValid) {
+      setThreadIdInUrl(candidate, true);
+    }
+  }, [
+    activeThreadId,
+    searchParams,
+    setThreadIdInUrl,
+    tabParam,
+    threadIdParam,
+    threads,
+    threadsQuery.isLoading,
+  ]);
+
   return (
     <div className="flex h-[600px] flex-col rounded-xl border border-border bg-card shadow-sm sm:flex-row">
       <ThreadSelector
         threads={threads}
         value={effectiveThreadId}
-        onChange={(threadId) => setActiveThreadId(threadId)}
+        onChange={(threadId) => {
+          setActiveThreadId(threadId);
+          setThreadIdInUrl(threadId);
+        }}
         onCreate={() => createThreadMutation.mutate({ projectId })}
         onArchive={() => {
           if (!effectiveThreadId) return;

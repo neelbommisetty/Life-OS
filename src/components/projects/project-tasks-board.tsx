@@ -1,7 +1,7 @@
 'use client';
 
 import { Dialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
-import { useCallback, useMemo, useState, Fragment } from 'react';
+import { useCallback, useMemo, useState, Fragment, useEffect } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -35,6 +35,8 @@ import { taskStatusEnum } from '@/lib/validations/task';
 import { cn } from '@/lib/utils';
 import { getProjectTheme } from '@/lib/project-theme';
 import { useDroppable } from '@dnd-kit/core';
+import { resolveTasksViewParam } from '@/lib/project-deeplinks';
+import { pushUrl, useUrlState } from '@/lib/url-state';
 
 type Props = {
   projectId: string;
@@ -59,6 +61,8 @@ const statusOptions = taskStatusEnum.options as TaskStatus[];
 export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const utils = api.useUtils();
+  const urlState = useUrlState();
+  const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
   const { data, isLoading } = api.task.list.useQuery({ projectId });
   const tasks = useMemo(() => data ?? [], [data]);
   const [search, setSearch] = useState('');
@@ -153,6 +157,27 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
 
   const backlogTasks = tasksByStatus.BACKLOG ?? [];
   const archivedTasks = tasksByStatus.ARCHIVED ?? [];
+
+  useEffect(() => {
+    const viewParam = resolveTasksViewParam(searchParams.get('tasksView'));
+    setActiveView(viewParam.toUpperCase() as TaskView);
+  }, [searchParams]);
+
+  const updateTasksView = useCallback(
+    (nextView: TaskView) => {
+      setActiveView(nextView);
+      const nextParams = new URLSearchParams(searchParams.toString());
+      if (nextView === 'KANBAN') {
+        nextParams.delete('tasksView');
+      } else {
+        nextParams.set('tasksView', nextView.toLowerCase());
+      }
+      const query = nextParams.toString();
+      const basePath = `/projects/${projectId}/tasks`;
+      pushUrl(query ? `${basePath}?${query}` : basePath);
+    },
+    [projectId, searchParams]
+  );
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -297,7 +322,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-border bg-muted/60 p-1 text-xs font-semibold text-foreground">
             <button
-              onClick={() => setActiveView('KANBAN')}
+              onClick={() => updateTasksView('KANBAN')}
               className={cn(
                 "rounded-md px-3 py-1 transition-colors",
                 activeView === 'KANBAN'
@@ -308,7 +333,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
               Board
             </button>
             <button
-              onClick={() => setActiveView('BACKLOG')}
+              onClick={() => updateTasksView('BACKLOG')}
               className={cn(
                 "rounded-md px-3 py-1 transition-colors",
                 activeView === 'BACKLOG'
@@ -319,7 +344,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
               Backlog
             </button>
             <button
-              onClick={() => setActiveView('ARCHIVED')}
+              onClick={() => updateTasksView('ARCHIVED')}
               className={cn(
                 "rounded-md px-3 py-1 transition-colors",
                 activeView === 'ARCHIVED'
