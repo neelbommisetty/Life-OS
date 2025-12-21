@@ -11,6 +11,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragStartEvent,
   type CollisionDetection,
 } from '@dnd-kit/core';
 import {
@@ -188,7 +189,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     });
   };
 
-  const handleDragStart = (event: { active: { id: string } }) => {
+  const handleDragStart = (event: DragStartEvent) => {
     setActiveTaskId(String(event.active.id));
   };
 

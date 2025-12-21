@@ -35,10 +35,10 @@ export async function POST(request: Request) {
 
     if (!validation.success) {
       logger.warn("Invalid stream request", {
-        errors: validation.error.errors,
+        errors: validation.error.issues,
       });
       return NextResponse.json(
-        { error: "Invalid request", details: validation.error.errors },
+        { error: "Invalid request", details: validation.error.issues },
         { status: 400 }
       );
     }
