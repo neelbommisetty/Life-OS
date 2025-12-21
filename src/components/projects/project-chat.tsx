@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useRef, useMemo, useLayoutEffect } from "react";
+import { useState, useRef, useMemo, useLayoutEffect, useCallback, useEffect } from "react";
 import type { CSSProperties } from "react";
 import { api } from "@/trpc/client";
-import { SendIcon, LoaderIcon, CheckCircle2Icon, CalendarIcon, AlertCircleIcon } from "lucide-react";
+import { SendIcon, LoaderIcon, CheckCircle2Icon, CalendarIcon, AlertCircleIcon, StopCircleIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getProjectTheme } from "@/lib/project-theme";
 import type { ChatMessage } from "@prisma/client";
 import type { ProposedTask } from "@/lib/chat-utils";
-import { extractTasksFromMessage } from "@/lib/chat-utils";
+import { extractTasksFromMessage, parseSSEChunk, handleStreamError } from "@/lib/chat-utils";
 import { PriorityBadge } from "./priority-badge";
 import { ModelSelector } from "./model-selector";
 import { ChatMarkdown } from "./chat-markdown";
@@ -29,6 +29,15 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const previousScrollHeightRef = useRef<number | null>(null);
   const previousScrollTopRef = useRef(0);
   const pageSize = 30;
+
+  // Streaming state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
+  const [optimisticUserMessage, setOptimisticUserMessage] = useState<string | null>(null);
+  const [pendingAssistantId, setPendingAssistantId] = useState<string | null>(null);
+  const [streamError, setStreamError] = useState<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const didInvalidateAfterStreamRef = useRef(false);
 
   // Fetch thread and messages
   const threadQuery = api.chat.getThread.useQuery({
@@ -81,7 +90,20 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     const pages = messagesQuery.data?.pages ?? [];
     return pages.slice().reverse().flatMap((page) => page.messages);
   }, [messagesQuery.data]);
-  const isPending = sendMessageMutation.isPending;
+  const isPending = sendMessageMutation.isPending || isStreaming;
+
+  // Clear optimistic/streaming UI once we observe the saved assistant message in the query data.
+  useEffect(() => {
+    if (!pendingAssistantId) return;
+    const found = messages.some((m) => m.id === pendingAssistantId);
+    if (!found) return;
+
+    setPendingAssistantId(null);
+    setStreamingContent("");
+    setOptimisticUserMessage(null);
+    setStreamError(null);
+    didInvalidateAfterStreamRef.current = false;
+  }, [messages, pendingAssistantId]);
 
   const handleScroll = () => {
     const container = messagesContainerRef.current;
@@ -114,7 +136,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     if (shouldAutoScrollRef.current && !messagesQuery.isFetchingNextPage) {
       container.scrollTop = container.scrollHeight;
     }
-  }, [messages.length, messagesQuery.isLoading, messagesQuery.isFetchingNextPage, isPending]);
+  }, [messages.length, messagesQuery.isLoading, messagesQuery.isFetchingNextPage, isPending, streamingContent]);
 
   useLayoutEffect(() => {
     const container = messagesContainerRef.current;
@@ -129,19 +151,135 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     previousScrollHeightRef.current = null;
   }, [messages.length, messagesQuery.isFetchingNextPage]);
 
+  // Stop streaming
+  const handleStopStreaming = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+  }, []);
+
+  // Streaming submit handler
+  const handleStreamingSubmit = useCallback(async (content: string) => {
+    setIsStreaming(true);
+    setStreamingContent("");
+    setOptimisticUserMessage(content);
+    setPendingAssistantId(null);
+    setStreamError(null);
+    setInput("");
+    didInvalidateAfterStreamRef.current = false;
+
+    // Create abort controller
+    abortControllerRef.current = new AbortController();
+
+    try {
+      const response = await fetch("/api/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, content }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Stream request failed: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process only complete SSE events (delimited by blank line).
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          const events = parseSSEChunk(part);
+
+          for (const event of events) {
+            if (event.type === "chunk" && event.text) {
+              setStreamingContent((prev) => prev + event.text);
+            } else if (event.type === "error") {
+              setStreamError(event.error || "Stream error occurred");
+            } else if (event.type === "message_saved" && event.messageId) {
+              // Mark stream as finished, but keep the streamed bubble visible until the DB-backed message arrives.
+              setIsStreaming(false);
+              setPendingAssistantId(event.messageId);
+
+              if (!didInvalidateAfterStreamRef.current) {
+                didInvalidateAfterStreamRef.current = true;
+                utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
+                utils.chat.getThread.invalidate({ projectId });
+              }
+            } else if (event.type === "done") {
+              // Server finished sending. If we haven't invalidated yet, do it once now.
+              setIsStreaming(false);
+              if (!didInvalidateAfterStreamRef.current) {
+                didInvalidateAfterStreamRef.current = true;
+                utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
+                utils.chat.getThread.invalidate({ projectId });
+              }
+            }
+          }
+        }
+      }
+
+      // Stream ended. Keep the optimistic bubbles until the saved message shows up.
+      setIsStreaming(false);
+      abortControllerRef.current = null;
+    } catch (error) {
+      // Handle abort gracefully
+      if (error instanceof Error && error.name === "AbortError") {
+        // User cancelled - keep whatever we've rendered, and refresh in background.
+        setIsStreaming(false);
+        if (!didInvalidateAfterStreamRef.current) {
+          didInvalidateAfterStreamRef.current = true;
+          utils.chat.listMessages.invalidate({ projectId, limit: pageSize });
+          utils.chat.getThread.invalidate({ projectId });
+        }
+      } else {
+        // On error, fall back to blocking mutation
+        const errorMessage = handleStreamError(error);
+        setStreamError(errorMessage);
+
+        // Fallback to blocking mutation
+        console.warn("Streaming failed, falling back to blocking mutation:", error);
+        sendMessageMutation.mutate({
+          projectId,
+          content,
+        });
+      }
+
+      setIsStreaming(false);
+      setStreamingContent("");
+      setOptimisticUserMessage(null);
+      setPendingAssistantId(null);
+      abortControllerRef.current = null;
+    }
+  }, [projectId, utils.chat.listMessages, utils.chat.getThread, sendMessageMutation, pageSize]);
+
   const handleSubmit = async (
     e?: React.SyntheticEvent,
     contentOverride?: string
   ) => {
     e?.preventDefault();
     const content = contentOverride || input.trim();
-    if (!content || sendMessageMutation.isPending) return;
+    if (!content || isPending) return;
 
     shouldAutoScrollRef.current = true;
-    sendMessageMutation.mutate({
-      projectId,
-      content,
-    });
+
+    // Use streaming by default
+    handleStreamingSubmit(content);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -239,13 +377,89 @@ export function ProjectChat({ projectId, accentColor }: Props) {
           />
         ))}
 
-        {isPending && (
+        {/* Optimistic user message during streaming */}
+        {optimisticUserMessage && (
+          <div className="flex flex-col gap-2 items-end">
+            <div className="flex items-start gap-3 max-w-[85%] flex-row-reverse">
+              <div
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                  hasAccentColor
+                    ? "bg-[rgb(var(--project-accent))] text-white"
+                    : "bg-primary text-primary-foreground"
+                )}
+                style={hasAccentColor ? themeStyle : undefined}
+              >
+                You
+              </div>
+              <div
+                className={cn(
+                  "rounded-lg px-4 py-3 text-sm shadow-sm",
+                  hasAccentColor
+                    ? "bg-[rgb(var(--project-accent))] text-white"
+                    : "bg-primary text-primary-foreground"
+                )}
+                style={hasAccentColor ? themeStyle : undefined}
+              >
+                <ChatMarkdown content={optimisticUserMessage} tone="inverted" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Streaming AI response (and post-stream optimistic assistant bubble until DB message arrives) */}
+        {(isStreaming || (streamingContent && pendingAssistantId)) && (
           <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-xs font-semibold">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
+              AI
+            </div>
+            <div className="flex-1 rounded-lg bg-card border border-border px-4 py-3 text-sm shadow-sm">
+              {streamingContent ? (
+                <div className="relative">
+                  <ChatMarkdown content={streamingContent} tone="default" />
+                  {/* Pulsing cursor only while actively streaming */}
+                  {isStreaming && (
+                    <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse rounded-sm" />
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  <LoaderIcon className="h-4 w-4 animate-spin" />
+                  <span className="text-xs">Thinking...</span>
+                </div>
+              )}
+            </div>
+            {/* Stop button (only while actively streaming) */}
+            {isStreaming && (
+              <button
+                onClick={handleStopStreaming}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
+                title="Stop generating"
+              >
+                <StopCircleIcon className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Blocking mutation pending state (fallback) */}
+        {sendMessageMutation.isPending && !isStreaming && (
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
               AI
             </div>
             <div className="flex-1 rounded-lg bg-muted px-4 py-3">
               <LoaderIcon className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          </div>
+        )}
+
+        {/* Stream error message */}
+        {streamError && (
+          <div className="flex justify-center my-2">
+            <div className="flex items-center gap-2 rounded-full bg-red-100 dark:bg-red-900/30 px-4 py-1.5 text-xs text-red-700 dark:text-red-300">
+              <AlertCircleIcon className="h-3 w-3" />
+              {streamError}
             </div>
           </div>
         )}
