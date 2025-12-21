@@ -1,12 +1,11 @@
 'use client';
 
 import { Dialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
-import { useEffect, useMemo, useState, Fragment } from 'react';
+import { useCallback, useMemo, useState, Fragment } from 'react';
 import {
   DndContext,
   DragOverlay,
   PointerSensor,
-  closestCorners,
   pointerWithin,
   rectIntersection,
   useSensor,
@@ -60,7 +59,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const utils = api.useUtils();
   const { data, isLoading } = api.task.list.useQuery({ projectId });
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const tasks = useMemo(() => data ?? [], [data]);
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
   const [panelOpen, setPanelOpen] = useState(false);
@@ -68,11 +67,12 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const [activeView, setActiveView] = useState<TaskView>('KANBAN');
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (data) {
-      syncTasks(data);
-    }
-  }, [data]);
+  const syncTasks = useCallback(
+    (next: Task[]) => {
+      utils.task.list.setData({ projectId }, next);
+    },
+    [projectId, utils.task.list]
+  );
 
   const createTask = api.task.create.useMutation({
     onSuccess: (created) => {
@@ -251,11 +251,6 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const handleDelete = () => {
     if (!draft.id) return;
     deleteTask.mutate({ id: draft.id });
-  };
-
-  const syncTasks = (next: Task[]) => {
-    setTasks(next);
-    utils.task.list.setData({ projectId }, next);
   };
 
   const handleQuickStatusChange = (task: Task, status: TaskStatus) => {

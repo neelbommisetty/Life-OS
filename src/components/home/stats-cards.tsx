@@ -65,7 +65,7 @@ export function StatsCards({ total, inProgress, ideas, completed }: Props) {
       animate="show"
       className="grid grid-cols-2 gap-4 sm:grid-cols-4"
     >
-      {stats.map((stat, i) => (
+      {stats.map((stat) => (
         <motion.div
           key={stat.label}
           variants={item}
@@ -88,4 +88,3 @@ export function StatsCards({ total, inProgress, ideas, completed }: Props) {
     </motion.div>
   );
 }
-
