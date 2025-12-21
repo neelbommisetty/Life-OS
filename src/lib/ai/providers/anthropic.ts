@@ -3,9 +3,12 @@ import type {
   ContentBlock,
   Message,
   MessageCreateParamsNonStreaming,
+  MessageCreateParamsStreaming,
   Tool,
+  ContentBlockDeltaEvent,
+  TextDelta,
 } from '@anthropic-ai/sdk/resources/messages/messages';
-import type { BaseModel, ModelCallInput, ModelCallMode } from '@/lib/ai/core';
+import type { BaseModel, ModelCallInput, ModelCallMode, ModelStreamChunk, ModelStreamResult } from '@/lib/ai/core';
 
 import {
   CostTier,
@@ -30,6 +33,7 @@ export interface AnthropicModelOverrides {
   readonly tags?: readonly string[];
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
+  readonly supportsStreaming?: boolean;
   readonly name?: string;
 }
 
@@ -191,6 +195,7 @@ export const createAnthropicModel = (
   const client = ensureAnthropicClient(options);
   const resolvedModes = (overrides.modes ?? DEFAULT_ANTHROPIC_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
+  const supportsStreaming = overrides.supportsStreaming ?? true; // Anthropic supports streaming by default
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
 
@@ -199,6 +204,7 @@ export const createAnthropicModel = (
     caps: {
       modes: resolvedModes,
       supportsJson,
+      supportsStreaming,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -258,6 +264,65 @@ export const createAnthropicModel = (
 
       return { text };
     },
+
+    ...(supportsStreaming
+      ? {
+          async *streamCall(
+            input: ModelCallInput,
+          ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
+            const mode: ModelCallMode = input.mode ?? 'text';
+
+            if (!resolvedModes.includes(mode)) {
+              throw new Error(
+                `Mode "${mode}" is not supported by Anthropic model "${model}". Supported modes: ${resolvedModes.join(', ')}.`,
+              );
+            }
+
+            // Streaming is only supported for text mode
+            if (mode === 'json') {
+              throw new Error(`Streaming is not supported for JSON mode. Use call() instead.`);
+            }
+
+            const request: MessageCreateParamsStreaming = {
+              model,
+              messages: [
+                {
+                  role: 'user',
+                  content: input.prompt,
+                },
+              ],
+              max_tokens: maxOutputTokens,
+              stream: true,
+            };
+
+            const stream = client.messages.stream(
+              request,
+              input.signal ? { signal: input.signal } : undefined,
+            );
+
+            let accumulatedText = '';
+
+            for await (const event of stream) {
+              if (event.type === 'content_block_delta') {
+                const deltaEvent = event as ContentBlockDeltaEvent;
+                if (deltaEvent.delta.type === 'text_delta') {
+                  const textDelta = deltaEvent.delta as TextDelta;
+                  const delta = textDelta.text ?? '';
+                  if (delta) {
+                    accumulatedText += delta;
+                    yield { text: delta, done: false };
+                  }
+                }
+              } else if (event.type === 'message_stop') {
+                // Stream completed
+                yield { text: '', done: true };
+              }
+            }
+
+            return { text: accumulatedText };
+          },
+        }
+      : {}),
   };
 };
 
@@ -266,6 +331,7 @@ const createAnthropicModelDefinition = (
 ): ModelDefinition => {
   const resolvedModes = (config.modes ?? DEFAULT_ANTHROPIC_MODES) as readonly ModelCallMode[];
   const supportsJson = config.supportsJson ?? resolvedModes.includes('json');
+  const supportsStreaming = config.supportsStreaming ?? true;
   const resolvedTags = config.tags ? [...config.tags] : undefined;
   const maxOutputTokens = config.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
 
@@ -279,6 +345,7 @@ const createAnthropicModelDefinition = (
       releaseStage: config.releaseStage,
       modes: resolvedModes,
       supportsJson,
+      supportsStreaming,
       maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -294,6 +361,7 @@ const createAnthropicModelDefinition = (
           tags: resolvedTags,
           modes: resolvedModes,
           supportsJson,
+          supportsStreaming,
           name: config.label,
         },
         options,

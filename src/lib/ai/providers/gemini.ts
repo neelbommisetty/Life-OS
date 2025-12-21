@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI, type GenerateContentRequest, type GenerationConfig, type ResponseSchema, SchemaType } from '@google/generative-ai';
 import type { JsonSchema7Type } from 'zod-to-json-schema';
-import type { BaseModel, ModelCallInput, ModelCallMode } from '@/lib/ai/core';
+import type { BaseModel, ModelCallInput, ModelCallMode, ModelStreamChunk, ModelStreamResult } from '@/lib/ai/core';
 
 import {
   CostTier,
@@ -23,6 +23,7 @@ export interface GeminiModelOverrides {
   readonly tags?: readonly string[];
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
+  readonly supportsStreaming?: boolean;
   readonly name?: string;
 }
 
@@ -218,6 +219,7 @@ export const createGeminiModel = (
   const client = ensureGeminiClient(options);
   const resolvedModes = (overrides.modes ?? DEFAULT_GEMINI_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
+  const supportsStreaming = overrides.supportsStreaming ?? true; // Gemini supports streaming by default
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens;
   const generativeModel = client.getGenerativeModel({ model });
@@ -227,6 +229,7 @@ export const createGeminiModel = (
     caps: {
       modes: resolvedModes,
       supportsJson,
+      supportsStreaming,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -260,6 +263,49 @@ export const createGeminiModel = (
 
       return { text };
     },
+
+    ...(supportsStreaming
+      ? {
+          async *streamCall(
+            input: ModelCallInput,
+          ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
+            const mode: ModelCallMode = input.mode ?? 'text';
+
+            if (!resolvedModes.includes(mode)) {
+              throw new Error(
+                `Mode "${mode}" is not supported by Google Gemini model "${model}". Supported modes: ${resolvedModes.join(', ')}.`,
+              );
+            }
+
+            // Streaming is only supported for text mode
+            if (mode === 'json') {
+              throw new Error(`Streaming is not supported for JSON mode. Use call() instead.`);
+            }
+
+            const request = buildGeminiRequest(input.prompt, mode, maxOutputTokens, input.jsonSchema);
+
+            const result = await generativeModel.generateContentStream(
+              request,
+              input.signal ? { signal: input.signal } : undefined,
+            );
+
+            let accumulatedText = '';
+
+            for await (const chunk of result.stream) {
+              const chunkText = chunk.text();
+              if (chunkText) {
+                accumulatedText += chunkText;
+                yield { text: chunkText, done: false };
+              }
+            }
+
+            // Signal completion
+            yield { text: '', done: true };
+
+            return { text: accumulatedText };
+          },
+        }
+      : {}),
   };
 };
 
@@ -268,6 +314,7 @@ const createGeminiModelDefinition = (
 ): ModelDefinition => {
   const resolvedModes = (config.modes ?? DEFAULT_GEMINI_MODES) as readonly ModelCallMode[];
   const supportsJson = config.supportsJson ?? resolvedModes.includes('json');
+  const supportsStreaming = config.supportsStreaming ?? true;
   const resolvedTags = config.tags ? [...config.tags] : undefined;
 
   return {
@@ -280,6 +327,7 @@ const createGeminiModelDefinition = (
       releaseStage: config.releaseStage,
       modes: resolvedModes,
       supportsJson,
+      supportsStreaming,
       maxOutputTokens: config.maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -295,6 +343,7 @@ const createGeminiModelDefinition = (
           tags: resolvedTags,
           modes: resolvedModes,
           supportsJson,
+          supportsStreaming,
           name: config.label,
         },
         options,

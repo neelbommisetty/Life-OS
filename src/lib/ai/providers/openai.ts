@@ -2,8 +2,9 @@ import OpenAI, { type ClientOptions } from 'openai';
 import type {
   Response,
   ResponseCreateParamsNonStreaming,
+  ResponseCreateParamsStreaming,
 } from 'openai/resources/responses/responses';
-import type { BaseModel, ModelCallInput, ModelCallMode } from '@/lib/ai/core';
+import type { BaseModel, ModelCallInput, ModelCallMode, ModelStreamChunk, ModelStreamResult } from '@/lib/ai/core';
 
 import {
   CostTier,
@@ -26,6 +27,7 @@ export interface OpenAIModelOverrides {
   readonly tags?: readonly string[];
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
+  readonly supportsStreaming?: boolean;
   readonly name?: string;
 }
 
@@ -137,6 +139,7 @@ export const createOpenAIModel = (
   const client = ensureOpenAIClient(options);
   const resolvedModes = (overrides.modes ?? DEFAULT_OPENAI_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
+  const supportsStreaming = overrides.supportsStreaming ?? true; // OpenAI supports streaming by default
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens;
 
@@ -145,6 +148,7 @@ export const createOpenAIModel = (
     caps: {
       modes: resolvedModes,
       supportsJson,
+      supportsStreaming,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -192,6 +196,60 @@ export const createOpenAIModel = (
 
       return { text };
     },
+
+    ...(supportsStreaming
+      ? {
+          async *streamCall(
+            input: ModelCallInput,
+          ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
+            const mode: ModelCallMode = input.mode ?? 'text';
+
+            if (!resolvedModes.includes(mode)) {
+              throw new Error(
+                `Mode "${mode}" is not supported by OpenAI model "${model}". Supported modes: ${resolvedModes.join(', ')}.`,
+              );
+            }
+
+            // Streaming is only supported for text mode
+            if (mode === 'json') {
+              throw new Error(`Streaming is not supported for JSON mode. Use call() instead.`);
+            }
+
+            const request: ResponseCreateParamsStreaming = {
+              model,
+              input: input.prompt,
+              stream: true,
+            };
+
+            if (maxOutputTokens !== undefined) {
+              request.max_output_tokens = maxOutputTokens;
+            }
+
+            const stream = await client.responses.create(
+              request,
+              input.signal ? { signal: input.signal } : undefined,
+            );
+
+            let accumulatedText = '';
+
+            for await (const event of stream) {
+              // Handle different event types from OpenAI streaming
+              if (event.type === 'response.output_text.delta') {
+                const delta = (event as { delta?: string }).delta ?? '';
+                if (delta) {
+                  accumulatedText += delta;
+                  yield { text: delta, done: false };
+                }
+              } else if (event.type === 'response.completed') {
+                // Stream completed
+                yield { text: '', done: true };
+              }
+            }
+
+            return { text: accumulatedText };
+          },
+        }
+      : {}),
   };
 };
 
@@ -200,6 +258,7 @@ const createOpenAIModelDefinition = (
 ): ModelDefinition => {
   const resolvedModes = (config.modes ?? DEFAULT_OPENAI_MODES) as readonly ModelCallMode[];
   const supportsJson = config.supportsJson ?? resolvedModes.includes('json');
+  const supportsStreaming = config.supportsStreaming ?? true;
   const resolvedTags = config.tags ? [...config.tags] : undefined;
 
   return {
@@ -212,6 +271,7 @@ const createOpenAIModelDefinition = (
       releaseStage: config.releaseStage,
       modes: resolvedModes,
       supportsJson,
+      supportsStreaming,
       maxOutputTokens: config.maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -227,6 +287,7 @@ const createOpenAIModelDefinition = (
           tags: resolvedTags,
           modes: resolvedModes,
           supportsJson,
+          supportsStreaming,
           name: config.label,
         },
         options,
