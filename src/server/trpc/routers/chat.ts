@@ -195,6 +195,7 @@ export const chatRouter = router({
         provider: model.providerId,
         costTier: model.costTier ?? null,
         description: model.description ?? null,
+        supportsStreaming: model.supportsStreaming ?? false,
       }));
 
     return models;
