@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import type { Task } from "@prisma/client";
+import type { Task, TaskStatus } from "@prisma/client";
 import {
   createTaskSchema,
   createManyTaskSchema,
@@ -147,18 +147,29 @@ export const taskRouter = router({
         // For now, simple loop inside transaction is safer if we want to guarantee order
 
         // Let's group by status to optimize sort order fetching
-        const tasksByStatus = input.tasks.reduce((acc, task) => {
+        const tasksByStatus: Record<TaskStatus, typeof input.tasks> = {
+          BACKLOG: [],
+          TODO: [],
+          IN_PROGRESS: [],
+          DONE: [],
+          ARCHIVED: [],
+        };
+
+        input.tasks.forEach((task) => {
           const status = task.status ?? "BACKLOG";
-          if (!acc[status]) acc[status] = [];
-          acc[status].push(task);
-          return acc;
-        }, {} as Record<string, typeof input.tasks>);
+          tasksByStatus[status].push(task);
+        });
 
         await ctx.prisma.$transaction(async (tx) => {
-          for (const [status, tasks] of Object.entries(tasksByStatus)) {
+          const statusEntries = Object.entries(tasksByStatus) as [
+            TaskStatus,
+            typeof input.tasks,
+          ][];
+
+          for (const [status, tasks] of statusEntries) {
             // Get current max order for this status
             const maxOrder = await tx.task.aggregate({
-              where: { projectId: input.projectId, status: status as any },
+              where: { projectId: input.projectId, status },
               _max: { sortOrder: true },
             });
 
@@ -170,7 +181,7 @@ export const taskRouter = router({
                   projectId: input.projectId,
                   title: task.title,
                   description: task.description,
-                  status: status as any,
+                  status,
                   priority: task.priority ?? "MEDIUM",
                   dueDate: coerceDate(task.dueDate),
                   sortOrder: currentSortOrder++,

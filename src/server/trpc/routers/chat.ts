@@ -1,4 +1,5 @@
 import { TRPCError } from "@trpc/server";
+import type { TaskStatus } from "@prisma/client";
 import {
   getThreadSchema,
   listMessagesSchema,
@@ -351,16 +352,27 @@ export const chatRouter = router({
                 const createdTasks: { title: string }[] = [];
 
                 await ctx.prisma.$transaction(async (tx) => {
-                  const tasksByStatus = validation.data.tasks.reduce((acc, task) => {
-                    const status = task.status ?? "BACKLOG";
-                    if (!acc[status]) acc[status] = [];
-                    acc[status].push(task);
-                    return acc;
-                  }, {} as Record<string, typeof validation.data.tasks>);
+                  const tasksByStatus: Record<TaskStatus, typeof validation.data.tasks> = {
+                    BACKLOG: [],
+                    TODO: [],
+                    IN_PROGRESS: [],
+                    DONE: [],
+                    ARCHIVED: [],
+                  };
 
-                  for (const [status, tasks] of Object.entries(tasksByStatus)) {
+                  validation.data.tasks.forEach((task) => {
+                    const status = task.status ?? "BACKLOG";
+                    tasksByStatus[status].push(task);
+                  });
+
+                  const statusEntries = Object.entries(tasksByStatus) as [
+                    TaskStatus,
+                    typeof validation.data.tasks,
+                  ][];
+
+                  for (const [status, tasks] of statusEntries) {
                     const maxOrder = await tx.task.aggregate({
-                      where: { projectId: input.projectId, status: status as any },
+                      where: { projectId: input.projectId, status },
                       _max: { sortOrder: true },
                     });
 
@@ -372,7 +384,7 @@ export const chatRouter = router({
                           projectId: input.projectId,
                           title: task.title,
                           description: task.description,
-                          status: status as any,
+                          status,
                           priority: task.priority ?? "MEDIUM",
                           dueDate: task.dueDate ? new Date(task.dueDate) : undefined,
                           sortOrder: currentSortOrder++,

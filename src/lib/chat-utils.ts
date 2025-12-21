@@ -1,4 +1,12 @@
-import type { ChatMessage, Project } from "@prisma/client";
+import type { ChatMessage, Priority, Project, TaskStatus } from "@prisma/client";
+
+export type ProposedTask = {
+  title: string;
+  description?: string;
+  priority?: Priority;
+  status?: TaskStatus;
+  dueDate?: string | null;
+};
 
 /**
  * Approximate token count for text (rough estimate: 1 token ≈ 4 characters)
@@ -95,17 +103,20 @@ export function buildSummarizationPrompt(messages: ChatMessage[]): string {
 /**
  * Extract task proposals from message content
  */
-export function extractTasksFromMessage(content: string): any[] | null {
+export function extractTasksFromMessage(content: string): ProposedTask[] | null {
   try {
     const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/);
     if (!jsonMatch) return null;
 
-    const data = JSON.parse(jsonMatch[1]);
-    if (data && Array.isArray(data.tasks)) {
-      return data.tasks;
+    const data = JSON.parse(jsonMatch[1]) as unknown;
+    if (data && typeof data === "object" && "tasks" in data) {
+      const tasks = (data as { tasks?: unknown }).tasks;
+      if (Array.isArray(tasks)) {
+        return tasks as ProposedTask[];
+      }
     }
     return null;
-  } catch (e) {
+  } catch {
     return null;
   }
 }
