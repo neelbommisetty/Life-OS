@@ -131,6 +131,14 @@ export function ProjectChat({ projectId, accentColor }: Props) {
       .flatMap((page) => page.messages);
   }, [messagesQuery.data]);
 
+  const modelLookup = useMemo(() => {
+    const entries = (modelsQuery.data ?? []).map((model) => [
+      model.key,
+      model,
+    ]);
+    return new Map(entries);
+  }, [modelsQuery.data]);
+
   // Custom hooks
   const {
     isStreaming,
@@ -141,6 +149,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     streamError,
     handleStreamingSubmit,
     handleStopStreaming,
+    handleRegenerate,
   } = useChatStreaming({
     projectId,
     pageSize,
@@ -172,6 +181,14 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const isPending = sendMessageMutation.isPending || isStreaming;
   const isActiveThreadStreaming =
     isStreaming && streamingThreadId === effectiveThreadId;
+  const lastAssistantMessageId = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i]?.role === "ASSISTANT") {
+        return messages[i]?.id ?? null;
+      }
+    }
+    return null;
+  }, [messages]);
 
   const handleSubmit = async (
     e?: React.SyntheticEvent,
@@ -211,6 +228,14 @@ export function ProjectChat({ projectId, accentColor }: Props) {
       modelKey,
     });
   };
+
+  const handleRegenerateClick = useCallback(
+    (messageId: string) => {
+      if (!effectiveThreadId || isPending) return;
+      handleRegenerate(messageId, effectiveThreadId);
+    },
+    [effectiveThreadId, handleRegenerate, isPending]
+  );
 
   useEffect(() => {
     if (threadsQuery.isLoading) {
@@ -302,6 +327,22 @@ export function ProjectChat({ projectId, accentColor }: Props) {
             hasAccentColor={hasAccentColor}
             onApproveTask={handleApproveTask}
             onApproveAll={handleApproveAll}
+            onRegenerate={handleRegenerateClick}
+            canRegenerate={
+              message.role === "ASSISTANT" &&
+              message.id === lastAssistantMessageId &&
+              !isPending
+            }
+            modelLabel={
+              activeThread?.modelKey
+                ? modelLookup.get(activeThread.modelKey)?.label
+                : undefined
+            }
+            modelProvider={
+              activeThread?.modelKey
+                ? modelLookup.get(activeThread.modelKey)?.provider
+                : null
+            }
             isPending={isPending || tasksPending}
           />
         ))}

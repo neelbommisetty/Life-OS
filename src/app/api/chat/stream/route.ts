@@ -54,11 +54,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const { projectId, content, threadId } = validation.data;
+    const { projectId, content, threadId, regenerateFromMessageId } =
+      validation.data;
+    const isRegenerate = Boolean(regenerateFromMessageId);
 
     logger.debug("Starting chat stream", {
       projectId,
-      contentLength: content.length,
+      contentLength: content?.length ?? 0,
+      isRegenerate,
     });
 
     // Get project with details
@@ -126,39 +129,92 @@ export async function POST(request: Request) {
       });
     }
 
-    const shouldGenerateTitle =
-      thread.messages.length === 0 && isPlaceholderThreadName(thread.name);
+    let userMessage = null as typeof thread.messages[number] | null;
+    let allMessages = thread.messages;
 
-    // Save user message
-    const userMessage = await prisma.chatMessage.create({
-      data: {
-        threadId: thread.id,
-        role: "USER",
-        content,
-      },
-    });
+    if (isRegenerate) {
+      const targetIndex = thread.messages.findIndex(
+        (msg) => msg.id === regenerateFromMessageId
+      );
 
-    logger.info("User message saved", { messageId: userMessage.id });
+      if (targetIndex === -1) {
+        return NextResponse.json(
+          { error: "Message not found" },
+          { status: 404 }
+        );
+      }
 
-    await prisma.chatThread.update({
-      where: { id: thread.id },
-      data: {
-        lastChattedAt: userMessage.createdAt,
-      },
-    });
+      const targetMessage = thread.messages[targetIndex];
+      if (targetMessage.role !== "ASSISTANT") {
+        return NextResponse.json(
+          { error: "Can only regenerate assistant messages" },
+          { status: 400 }
+        );
+      }
 
-    if (shouldGenerateTitle) {
-      queueThreadTitleGeneration({
-        threadId: thread.id,
-        projectId,
-        firstMessage: content,
-        currentName: thread.name,
-        client: prisma,
+      const lastMessage = thread.messages[thread.messages.length - 1];
+      if (!lastMessage || lastMessage.id !== targetMessage.id) {
+        return NextResponse.json(
+          { error: "Can only regenerate the latest assistant message" },
+          { status: 400 }
+        );
+      }
+
+      const userIndex = thread.messages
+        .slice(0, targetIndex)
+        .map((msg) => msg.role)
+        .lastIndexOf("USER");
+      if (userIndex === -1) {
+        return NextResponse.json(
+          { error: "No user message found to regenerate from" },
+          { status: 400 }
+        );
+      }
+
+      userMessage = thread.messages[userIndex] ?? null;
+      allMessages = thread.messages.slice(0, userIndex + 1);
+    } else {
+      const shouldGenerateTitle =
+        thread.messages.length === 0 && isPlaceholderThreadName(thread.name);
+
+      if (!content) {
+        return NextResponse.json(
+          { error: "Content is required" },
+          { status: 400 }
+        );
+      }
+
+      // Save user message
+      userMessage = await prisma.chatMessage.create({
+        data: {
+          threadId: thread.id,
+          role: "USER",
+          content,
+        },
       });
-    }
 
-    // Get all messages including the new one
-    const allMessages = [...thread.messages, userMessage];
+      logger.info("User message saved", { messageId: userMessage.id });
+
+      await prisma.chatThread.update({
+        where: { id: thread.id },
+        data: {
+          lastChattedAt: userMessage.createdAt,
+        },
+      });
+
+      if (shouldGenerateTitle) {
+        queueThreadTitleGeneration({
+          threadId: thread.id,
+          projectId,
+          firstMessage: content,
+          currentName: thread.name,
+          client: prisma,
+        });
+      }
+
+      // Get all messages including the new one
+      allMessages = [...thread.messages, userMessage];
+    }
 
     // Check if we need to summarize
     const historyTokens = calculateHistoryTokens(allMessages);
@@ -246,6 +302,21 @@ export async function POST(request: Request) {
       });
     }
 
+    const modelMetadata = overrideKey
+      ? modelRegistry.getMetadata(overrideKey)
+      : undefined;
+    const assistantModelData = modelMetadata
+      ? {
+          modelKey: modelMetadata.key,
+          modelLabel: modelMetadata.label,
+          modelProvider: modelMetadata.providerId,
+        }
+      : {
+          modelKey: null,
+          modelLabel: "Auto routing",
+          modelProvider: null,
+        };
+
     // Get the chat model
     const chatModel = getModelFor("project_chat", overrideKey);
 
@@ -267,6 +338,7 @@ export async function POST(request: Request) {
           threadId: thread.id,
           role: "ASSISTANT",
           content: result.text,
+          ...assistantModelData,
         },
       });
 
@@ -327,6 +399,7 @@ export async function POST(request: Request) {
               threadId: activeThreadId,
               role: "ASSISTANT",
               content: accumulatedText,
+              ...assistantModelData,
             },
           });
 
@@ -338,7 +411,7 @@ export async function POST(request: Request) {
           });
 
           logger.info("Chat stream completed", {
-            userMessageId: userMessage.id,
+            userMessageId: userMessage?.id,
             assistantMessageId: assistantMessage.id,
             responseLength: accumulatedText.length,
             durationMs: Date.now() - start,
@@ -370,6 +443,7 @@ export async function POST(request: Request) {
                   threadId: activeThreadId,
                   role: "ASSISTANT",
                   content: accumulatedText + "\n\n[Response interrupted]",
+                  ...assistantModelData,
                 },
               });
 

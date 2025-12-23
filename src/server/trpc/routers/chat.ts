@@ -788,6 +788,21 @@ export const chatRouter = router({
           });
         }
 
+        const modelMetadata = overrideKey
+          ? modelRegistry.getMetadata(overrideKey)
+          : undefined;
+        const assistantModelData = modelMetadata
+          ? {
+              modelKey: modelMetadata.key,
+              modelLabel: modelMetadata.label,
+              modelProvider: modelMetadata.providerId,
+            }
+          : {
+              modelKey: null,
+              modelLabel: "Auto routing",
+              modelProvider: null,
+            };
+
         // Call AI model
         const chatModel = getModelFor("project_chat", overrideKey);
         const aiResult = await chatModel.call({
@@ -801,6 +816,7 @@ export const chatRouter = router({
             threadId: thread.id,
             role: "ASSISTANT",
             content: aiResult.text,
+            ...assistantModelData,
           },
         });
 

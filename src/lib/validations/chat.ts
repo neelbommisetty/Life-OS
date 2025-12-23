@@ -36,17 +36,23 @@ export const listMessagesSchema = z.object({
 });
 
 // Schema for streaming chat request
-export const streamMessageSchema = z.object({
-  projectId: z.string().cuid(),
-  threadId: z.string().cuid().optional(),
-  content: z
-    .string()
-    .min(1, "Message cannot be empty")
-    .max(10000)
-    .refine((val) => val.trim().length > 0, {
-      message: "Message cannot be only whitespace",
-    }),
-});
+export const streamMessageSchema = z
+  .object({
+    projectId: z.string().cuid(),
+    threadId: z.string().cuid().optional(),
+    content: z
+      .string()
+      .min(1, "Message cannot be empty")
+      .max(10000)
+      .refine((val) => val.trim().length > 0, {
+        message: "Message cannot be only whitespace",
+      })
+      .optional(),
+    regenerateFromMessageId: z.string().cuid().optional(),
+  })
+  .refine((data) => data.content || data.regenerateFromMessageId, {
+    message: "Content or regenerateFromMessageId is required",
+  });
 
 export const listThreadsSchema = z.object({
   projectId: z.string().cuid(),

@@ -9,6 +9,7 @@ import {
   CheckCircle2Icon,
   CalendarIcon,
   AlertCircleIcon,
+  RotateCcwIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PriorityBadge } from "./priority-badge";
@@ -20,6 +21,10 @@ type MessageBubbleProps = {
   hasAccentColor: boolean;
   onApproveTask: (messageId: string, task: ProposedTask) => void;
   onApproveAll: (messageId: string, tasks: ProposedTask[]) => void;
+  onRegenerate?: (messageId: string) => void;
+  canRegenerate?: boolean;
+  modelLabel?: string;
+  modelProvider?: string | null;
   isPending: boolean;
 };
 
@@ -29,6 +34,10 @@ export function MessageBubble({
   hasAccentColor,
   onApproveTask,
   onApproveAll,
+  onRegenerate,
+  canRegenerate,
+  modelLabel,
+  modelProvider,
   isPending,
 }: MessageBubbleProps) {
   const isUser = message.role === "USER";
@@ -67,6 +76,34 @@ export function MessageBubble({
     if (!isAssistant) return message.content;
     return message.content.replace(/```json[\s\S]*?```/, "").trim();
   }, [message.content, isAssistant]);
+
+  const timestampLabel = useMemo(() => {
+    const date =
+      message.createdAt instanceof Date
+        ? message.createdAt
+        : new Date(message.createdAt);
+    return new Intl.DateTimeFormat(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(date);
+  }, [message.createdAt]);
+
+  const effectiveModelLabel = message.modelLabel ?? modelLabel ?? null;
+  const effectiveModelProvider = message.modelProvider ?? modelProvider ?? null;
+
+  const modelLabelText = useMemo(() => {
+    if (!effectiveModelLabel) return "Auto routing";
+    if (!effectiveModelProvider) return effectiveModelLabel;
+    const providerName =
+      effectiveModelProvider === "openai"
+        ? "OpenAI"
+        : effectiveModelProvider === "anthropic"
+          ? "Anthropic"
+          : effectiveModelProvider === "google"
+            ? "Google"
+            : effectiveModelProvider;
+    return `${effectiveModelLabel} (${providerName})`;
+  }, [effectiveModelLabel, effectiveModelProvider]);
 
   if (isSystem) {
     return (
@@ -121,6 +158,29 @@ export function MessageBubble({
           />
         </div>
       </div>
+
+      {isAssistant && (
+        <div className="ml-11 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+          <span className="inline-flex items-center gap-1">
+            <span className="font-medium text-foreground/80">Model</span>
+            <span>{modelLabelText}</span>
+          </span>
+          <span className="text-muted-foreground/60">•</span>
+          <span title={timestampLabel}>{timestampLabel}</span>
+          {onRegenerate && (
+            <button
+              type="button"
+              onClick={() => onRegenerate(message.id)}
+              disabled={!canRegenerate || isPending}
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-foreground/80 transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              title="Regenerate response"
+            >
+              <RotateCcwIcon className="h-3 w-3" />
+              Regenerate
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Task Proposals */}
       {proposedTasks && proposedTasks.length > 0 && (
@@ -271,4 +331,3 @@ export function MessageBubble({
     </div>
   );
 }
-

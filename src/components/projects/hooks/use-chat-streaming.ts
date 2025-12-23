@@ -55,12 +55,19 @@ export function useChatStreaming({
     }
   }, []);
 
-  const handleStreamingSubmit = useCallback(
-    async (content: string, threadId: string) => {
-      const activeThreadId = threadId;
+  const handleStreamRequest = useCallback(
+    async ({
+      threadId,
+      content,
+      regenerateFromMessageId,
+    }: {
+      threadId: string;
+      content?: string;
+      regenerateFromMessageId?: string;
+    }) => {
       setIsStreaming(true);
       setStreamingContent("");
-      setOptimisticUserMessage(content);
+      setOptimisticUserMessage(content ?? null);
       setPendingAssistantId(null);
       setStreamError(null);
       setStreamingThreadId(threadId);
@@ -73,7 +80,14 @@ export function useChatStreaming({
         const response = await fetch("/api/chat/stream", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ projectId, threadId: activeThreadId, content }),
+          body: JSON.stringify({
+            projectId,
+            threadId,
+            ...(content ? { content } : {}),
+            ...(regenerateFromMessageId
+              ? { regenerateFromMessageId }
+              : {}),
+          }),
           signal: abortControllerRef.current.signal,
         });
 
@@ -117,7 +131,7 @@ export function useChatStreaming({
                   didInvalidateAfterStreamRef.current = true;
                   utils.chat.listMessages.invalidate({
                     projectId,
-                    threadId: activeThreadId,
+                    threadId,
                     limit: pageSize,
                   });
                   utils.chat.listThreads.invalidate({ projectId });
@@ -129,7 +143,7 @@ export function useChatStreaming({
                   didInvalidateAfterStreamRef.current = true;
                   utils.chat.listMessages.invalidate({
                     projectId,
-                    threadId: activeThreadId,
+                    threadId,
                     limit: pageSize,
                   });
                   utils.chat.listThreads.invalidate({ projectId });
@@ -151,7 +165,7 @@ export function useChatStreaming({
             didInvalidateAfterStreamRef.current = true;
             utils.chat.listMessages.invalidate({
               projectId,
-              threadId: activeThreadId,
+              threadId,
               limit: pageSize,
             });
             utils.chat.listThreads.invalidate({ projectId });
@@ -162,15 +176,17 @@ export function useChatStreaming({
           setStreamError(errorMessage);
 
           // Fallback to blocking mutation
-          console.warn(
-            "Streaming failed, falling back to blocking mutation:",
-            error
-          );
-          sendMessageMutation.mutate({
-            projectId,
-            threadId: activeThreadId,
-            content,
-          });
+          if (content) {
+            console.warn(
+              "Streaming failed, falling back to blocking mutation:",
+              error
+            );
+            sendMessageMutation.mutate({
+              projectId,
+              threadId,
+              content,
+            });
+          }
         }
 
         setIsStreaming(false);
@@ -189,6 +205,23 @@ export function useChatStreaming({
     ]
   );
 
+  const handleStreamingSubmit = useCallback(
+    async (content: string, threadId: string) => {
+      await handleStreamRequest({ threadId, content });
+    },
+    [handleStreamRequest]
+  );
+
+  const handleRegenerate = useCallback(
+    async (messageId: string, threadId: string) => {
+      await handleStreamRequest({
+        threadId,
+        regenerateFromMessageId: messageId,
+      });
+    },
+    [handleStreamRequest]
+  );
+
   return {
     isStreaming,
     streamingThreadId,
@@ -198,5 +231,6 @@ export function useChatStreaming({
     streamError,
     handleStreamingSubmit,
     handleStopStreaming,
+    handleRegenerate,
   };
 }

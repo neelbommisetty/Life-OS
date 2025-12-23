@@ -103,6 +103,9 @@ model ChatMessage {
   thread         ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   role           ChatRole
   content        String
+  modelKey       String?
+  modelLabel     String?
+  modelProvider  String?
   taskResolution Json?
   createdAt      DateTime   @default(now())
 
