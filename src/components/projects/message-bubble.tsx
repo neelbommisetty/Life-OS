@@ -25,6 +25,7 @@ type MessageBubbleProps = {
   canRegenerate?: boolean;
   modelLabel?: string;
   modelProvider?: string | null;
+  messageStatus?: "sending" | "delivered" | "failed";
   isPending: boolean;
 };
 
@@ -38,6 +39,7 @@ export function MessageBubble({
   canRegenerate,
   modelLabel,
   modelProvider,
+  messageStatus,
   isPending,
 }: MessageBubbleProps) {
   const isUser = message.role === "USER";
@@ -105,6 +107,13 @@ export function MessageBubble({
     return `${effectiveModelLabel} (${providerName})`;
   }, [effectiveModelLabel, effectiveModelProvider]);
 
+  const statusLabel = useMemo(() => {
+    if (!messageStatus) return null;
+    if (messageStatus === "sending") return "Sending...";
+    if (messageStatus === "failed") return "Failed";
+    return "Delivered";
+  }, [messageStatus]);
+
   if (isSystem) {
     return (
       <div className="flex justify-center my-2">
@@ -158,6 +167,22 @@ export function MessageBubble({
           />
         </div>
       </div>
+
+      {statusLabel && (
+        <div
+          className={cn(
+            "text-[11px]",
+            messageStatus === "failed"
+              ? "text-red-600 dark:text-red-400"
+              : "text-muted-foreground",
+            isUser ? "mr-11 text-right" : "ml-11 text-left"
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          {statusLabel}
+        </div>
+      )}
 
       {isAssistant && (
         <div className="ml-11 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">

@@ -4,7 +4,7 @@ import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
 import type { ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef } from 'react';
 import { getProjectTheme } from '@/lib/project-theme';
 import { useParams } from 'next/navigation';
 import {
@@ -43,17 +43,12 @@ export function ProjectTabs({ overview, tasks, brainstorm, artifacts, accentColo
     }, {} as Record<ProjectTabKey, number>);
   }, []);
 
-  const [selectedIndex, setSelectedIndex] = useState(() => {
+  const selectedIndex = useMemo(() => {
     const initialKey = resolveProjectTabKey(tabParam);
     return tabIndexByKey[initialKey] ?? tabIndexByKey[defaultProjectTabKey];
-  });
+  }, [tabIndexByKey, tabParam]);
 
   const lastTrackedKey = useRef<ProjectTabKey | null>(null);
-
-  useEffect(() => {
-    const nextKey = resolveProjectTabKey(tabParam);
-    setSelectedIndex(tabIndexByKey[nextKey] ?? tabIndexByKey[defaultProjectTabKey]);
-  }, [tabParam, tabIndexByKey]);
 
   const selectedKey = projectTabs[selectedIndex]?.key ?? defaultProjectTabKey;
 
@@ -81,7 +76,6 @@ export function ProjectTabs({ overview, tasks, brainstorm, artifacts, accentColo
       selectedIndex={selectedIndex}
       onChange={(index) => {
         const nextKey = projectTabs[index]?.key ?? defaultProjectTabKey;
-        setSelectedIndex(index);
         if (nextKey !== selectedKey) {
           const nextUrl = buildProjectTabUrl(projectId, searchParams, nextKey);
           pushUrl(nextUrl);

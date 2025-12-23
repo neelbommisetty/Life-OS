@@ -1,7 +1,7 @@
 'use client';
 
 import { Dialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
-import { useCallback, useMemo, useState, Fragment, useEffect } from 'react';
+import { useCallback, useMemo, useState, Fragment } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -69,7 +69,10 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(() => createEmptyDraft());
-  const [activeView, setActiveView] = useState<TaskView>('KANBAN');
+  const activeView = useMemo(() => {
+    const viewParam = resolveTasksViewParam(searchParams.get('tasksView'));
+    return viewParam.toUpperCase() as TaskView;
+  }, [searchParams]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
 
   const syncTasks = useCallback(
@@ -158,14 +161,8 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const backlogTasks = tasksByStatus.BACKLOG ?? [];
   const archivedTasks = tasksByStatus.ARCHIVED ?? [];
 
-  useEffect(() => {
-    const viewParam = resolveTasksViewParam(searchParams.get('tasksView'));
-    setActiveView(viewParam.toUpperCase() as TaskView);
-  }, [searchParams]);
-
   const updateTasksView = useCallback(
     (nextView: TaskView) => {
-      setActiveView(nextView);
       const nextParams = new URLSearchParams(searchParams.toString());
       if (nextView === 'KANBAN') {
         nextParams.delete('tasksView');

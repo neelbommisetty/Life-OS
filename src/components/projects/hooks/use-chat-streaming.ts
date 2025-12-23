@@ -23,6 +23,9 @@ export function useChatStreaming({
   const [optimisticUserMessage, setOptimisticUserMessage] = useState<
     string | null
   >(null);
+  const [optimisticStatus, setOptimisticStatus] = useState<
+    "sending" | "failed" | null
+  >(null);
   const [pendingAssistantId, setPendingAssistantId] = useState<string | null>(
     null
   );
@@ -44,9 +47,21 @@ export function useChatStreaming({
     setPendingAssistantId(null);
     setStreamingContent("");
     setOptimisticUserMessage(null);
+    setOptimisticStatus(null);
     setStreamError(null);
     didInvalidateAfterStreamRef.current = false;
   }, [messages, pendingAssistantId]);
+
+  useEffect(() => {
+    if (!optimisticUserMessage || optimisticStatus !== "failed") return;
+    const found = messages.some(
+      (m) => m.role === "USER" && m.content === optimisticUserMessage
+    );
+    if (!found) return;
+    setOptimisticUserMessage(null);
+    setOptimisticStatus(null);
+    setStreamError(null);
+  }, [messages, optimisticStatus, optimisticUserMessage]);
 
   const handleStopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -68,6 +83,7 @@ export function useChatStreaming({
       setIsStreaming(true);
       setStreamingContent("");
       setOptimisticUserMessage(content ?? null);
+      setOptimisticStatus(content ? "sending" : null);
       setPendingAssistantId(null);
       setStreamError(null);
       setStreamingThreadId(threadId);
@@ -157,6 +173,9 @@ export function useChatStreaming({
         setIsStreaming(false);
         abortControllerRef.current = null;
       } catch (error) {
+        const shouldKeepOptimistic =
+          Boolean(content) &&
+          !(error instanceof Error && error.name === "AbortError");
         // Handle abort gracefully
         if (error instanceof Error && error.name === "AbortError") {
           // User cancelled - keep whatever we've rendered, and refresh in background.
@@ -174,6 +193,7 @@ export function useChatStreaming({
           // On error, fall back to blocking mutation
           const errorMessage = handleStreamError(error);
           setStreamError(errorMessage);
+          setOptimisticStatus(content ? "failed" : null);
 
           // Fallback to blocking mutation
           if (content) {
@@ -191,7 +211,10 @@ export function useChatStreaming({
 
         setIsStreaming(false);
         setStreamingContent("");
-        setOptimisticUserMessage(null);
+        if (!shouldKeepOptimistic) {
+          setOptimisticUserMessage(null);
+          setOptimisticStatus(null);
+        }
         setPendingAssistantId(null);
         abortControllerRef.current = null;
       }
@@ -227,6 +250,7 @@ export function useChatStreaming({
     streamingThreadId,
     streamingContent,
     optimisticUserMessage,
+    optimisticStatus,
     pendingAssistantId,
     streamError,
     handleStreamingSubmit,

@@ -11,7 +11,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getProjectTheme } from "@/lib/project-theme";
 import { MessageBubble } from "./message-bubble";
-import { ModelSelector } from "./model-selector";
+import { ModelSelector, type ModelOption } from "./model-selector";
 import { ChatMarkdown } from "./chat-markdown";
 import { ThreadSelector } from "./thread-selector";
 import { useChatStreaming } from "./hooks/use-chat-streaming";
@@ -34,8 +34,6 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pageSize = 30;
-  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-
   const threadsQuery = api.chat.listThreads.useQuery({
     projectId,
   });
@@ -43,9 +41,14 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const modelsQuery = api.chat.listModels.useQuery();
 
   const utils = api.useUtils();
-  const threads = threadsQuery.data ?? [];
+  const threads = useMemo(() => threadsQuery.data ?? [], [threadsQuery.data]);
   const threadIdParam = searchParams.get("threadId");
-  const effectiveThreadId = activeThreadId ?? threads[0]?.id ?? null;
+  const effectiveThreadId = useMemo(() => {
+    if (!threads.length) return null;
+    const paramIsValid =
+      !!threadIdParam && threads.some((thread) => thread.id === threadIdParam);
+    return paramIsValid ? threadIdParam : threads[0]?.id ?? null;
+  }, [threadIdParam, threads]);
   const activeThread =
     threads.find((thread) => thread.id === effectiveThreadId) ?? null;
   const messagesQuery = api.chat.listMessages.useInfiniteQuery(
@@ -111,7 +114,6 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         if (!existing) return [thread];
         return [thread, ...existing.filter((item) => item.id !== thread.id)];
       });
-      setActiveThreadId(thread.id);
       setThreadIdInUrl(thread.id);
     },
   });
@@ -119,7 +121,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const archiveThreadMutation = api.chat.archiveThread.useMutation({
     onSuccess: () => {
       utils.chat.listThreads.invalidate({ projectId });
-      setActiveThreadId(null);
+      setThreadIdInUrl(null, true);
     },
   });
 
@@ -141,12 +143,16 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   );
 
   const modelLookup = useMemo(() => {
-    const entries = (modelsQuery.data ?? []).map((model) => [
-      model.key,
-      model,
-    ]);
-    return new Map(entries);
+    const entries = (modelsQuery.data ?? []).map(
+      (model) => [model.key, model] as const
+    );
+    return new Map<string, ModelOption>(entries);
   }, [modelsQuery.data]);
+  const activeModel = useMemo(() => {
+    if (!activeThread?.modelKey) return undefined;
+    const key = activeThread.modelKey as ModelOption["key"];
+    return modelLookup.get(key);
+  }, [activeThread?.modelKey, modelLookup]);
 
   // Custom hooks
   const {
@@ -154,6 +160,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     streamingThreadId,
     streamingContent,
     optimisticUserMessage,
+    optimisticStatus,
     pendingAssistantId,
     streamError,
     handleStreamingSubmit,
@@ -286,18 +293,16 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     if (tabParam !== "brainstorm") {
       return;
     }
+    if (!effectiveThreadId) {
+      return;
+    }
     const paramIsValid =
       !!threadIdParam && threads.some((thread) => thread.id === threadIdParam);
-    const candidate = paramIsValid ? threadIdParam : threads[0]?.id ?? null;
-    if (candidate !== activeThreadId) {
-      setActiveThreadId(candidate);
-    }
-    if (candidate && !paramIsValid) {
-      setThreadIdInUrl(candidate, true);
+    if (!paramIsValid) {
+      setThreadIdInUrl(effectiveThreadId, true);
     }
   }, [
-    activeThreadId,
-    searchParams,
+    effectiveThreadId,
     setThreadIdInUrl,
     tabParam,
     threadIdParam,
@@ -311,7 +316,6 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         threads={threads}
         value={effectiveThreadId}
         onChange={(threadId) => {
-          setActiveThreadId(threadId);
           setThreadIdInUrl(threadId);
         }}
         onCreate={() => createThreadMutation.mutate({ projectId })}
@@ -390,49 +394,42 @@ export function ProjectChat({ projectId, accentColor }: Props) {
                 !isPending
               }
               modelLabel={
-                activeThread?.modelKey
-                  ? modelLookup.get(activeThread.modelKey)?.label
-                  : undefined
+                activeModel?.label
               }
               modelProvider={
-                activeThread?.modelKey
-                  ? modelLookup.get(activeThread.modelKey)?.provider
-                  : null
+                activeModel?.provider ?? null
               }
+              messageStatus={message.role === "USER" ? "delivered" : undefined}
               isPending={isPending || tasksPending}
             />
           </div>
         ))}
 
         {/* Optimistic user message during streaming */}
-        {optimisticUserMessage && isActiveThreadStreaming && (
-          <div className="flex flex-col gap-2 items-end">
-            <div className="flex items-start gap-3 max-w-[85%] flex-row-reverse">
-              <div
-                className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                  hasAccentColor
-                    ? "bg-[rgb(var(--project-accent))] text-white"
-                    : "bg-primary text-primary-foreground"
-                )}
-                style={hasAccentColor ? themeStyle : undefined}
-              >
-                You
-              </div>
-              <div
-                className={cn(
-                  "rounded-lg px-4 py-3 text-sm shadow-sm",
-                  hasAccentColor
-                    ? "bg-[rgb(var(--project-accent))] text-white"
-                    : "bg-primary text-primary-foreground"
-                )}
-                style={hasAccentColor ? themeStyle : undefined}
-              >
-                <ChatMarkdown content={optimisticUserMessage} tone="inverted" />
-              </div>
+        {optimisticUserMessage &&
+          (isActiveThreadStreaming || optimisticStatus === "failed") && (
+            <div className="flex flex-col gap-2 items-end">
+              <MessageBubble
+                message={{
+                  id: "optimistic-user-message",
+                  threadId: effectiveThreadId ?? "",
+                  role: "USER",
+                  content: optimisticUserMessage,
+                  taskResolution: null,
+                  createdAt: new Date(),
+                  modelKey: null,
+                  modelLabel: null,
+                  modelProvider: null,
+                }}
+                themeStyle={themeStyle}
+                hasAccentColor={hasAccentColor}
+                onApproveTask={handleApproveTask}
+                onApproveAll={handleApproveAll}
+                messageStatus={optimisticStatus ?? "sending"}
+                isPending={isPending || tasksPending}
+              />
             </div>
-          </div>
-        )}
+          )}
 
         {/* Streaming AI response (and post-stream optimistic assistant bubble until DB message arrives) */}
         {isActiveThreadStreaming &&
@@ -448,6 +445,16 @@ export function ProjectChat({ projectId, accentColor }: Props) {
                   {/* Pulsing cursor only while actively streaming */}
                   {isStreaming && (
                     <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse rounded-sm" />
+                  )}
+                  {isStreaming && (
+                    <div
+                      className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <LoaderIcon className="h-3 w-3 animate-spin" />
+                      AI is typing...
+                    </div>
                   )}
                 </div>
               ) : (
