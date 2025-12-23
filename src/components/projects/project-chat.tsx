@@ -131,6 +131,15 @@ export function ProjectChat({ projectId, accentColor }: Props) {
       .flatMap((page) => page.messages);
   }, [messagesQuery.data]);
 
+  const messageTimestampFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }),
+    []
+  );
+
   const modelLookup = useMemo(() => {
     const entries = (modelsQuery.data ?? []).map((model) => [
       model.key,
@@ -181,6 +190,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   const isPending = sendMessageMutation.isPending || isStreaming;
   const isActiveThreadStreaming =
     isStreaming && streamingThreadId === effectiveThreadId;
+  const lastMessageId = messages[messages.length - 1]?.id ?? null;
   const lastAssistantMessageId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
       if (messages[i]?.role === "ASSISTANT") {
@@ -204,6 +214,12 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSubmit(e);
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSubmit(e);
@@ -235,6 +251,32 @@ export function ProjectChat({ projectId, accentColor }: Props) {
       handleRegenerate(messageId, effectiveThreadId);
     },
     [effectiveThreadId, handleRegenerate, isPending]
+  );
+
+  const handleMessagesKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+      const container = messagesContainerRef.current;
+      if (!container) return;
+      const items = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-message-id]")
+      );
+      if (!items.length) return;
+      const activeElement = document.activeElement as HTMLElement | null;
+      const currentIndex = items.findIndex((item) => item === activeElement);
+      const fallbackIndex = items.length - 1;
+      const direction = event.key === "ArrowUp" ? -1 : 1;
+      const nextIndex =
+        currentIndex === -1
+          ? fallbackIndex
+          : Math.max(0, Math.min(items.length - 1, currentIndex + direction));
+      const nextItem = items[nextIndex];
+      if (nextItem) {
+        event.preventDefault();
+        nextItem.focus();
+      }
+    },
+    [messagesContainerRef]
   );
 
   useEffect(() => {
@@ -288,7 +330,12 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
+          onKeyDown={handleMessagesKeyDown}
           className="flex-1 overflow-y-auto p-4 space-y-4"
+          role="list"
+          aria-label="Chat messages"
+          aria-live="polite"
+          tabIndex={0}
         >
         {messagesQuery.isFetchingNextPage && (
           <div className="flex justify-center">
@@ -320,31 +367,41 @@ export function ProjectChat({ projectId, accentColor }: Props) {
 
         {!messagesQuery.isLoading &&
           messages.map((message) => (
-          <MessageBubble
+          <div
             key={message.id}
-            message={message}
-            themeStyle={themeStyle}
-            hasAccentColor={hasAccentColor}
-            onApproveTask={handleApproveTask}
-            onApproveAll={handleApproveAll}
-            onRegenerate={handleRegenerateClick}
-            canRegenerate={
-              message.role === "ASSISTANT" &&
-              message.id === lastAssistantMessageId &&
-              !isPending
-            }
-            modelLabel={
-              activeThread?.modelKey
-                ? modelLookup.get(activeThread.modelKey)?.label
-                : undefined
-            }
-            modelProvider={
-              activeThread?.modelKey
-                ? modelLookup.get(activeThread.modelKey)?.provider
-                : null
-            }
-            isPending={isPending || tasksPending}
-          />
+            data-message-id={message.id}
+            role="listitem"
+            tabIndex={message.id === lastMessageId ? 0 : -1}
+            aria-label={`${message.role.toLowerCase()} message at ${messageTimestampFormatter.format(
+              new Date(message.createdAt)
+            )}`}
+            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg"
+          >
+            <MessageBubble
+              message={message}
+              themeStyle={themeStyle}
+              hasAccentColor={hasAccentColor}
+              onApproveTask={handleApproveTask}
+              onApproveAll={handleApproveAll}
+              onRegenerate={handleRegenerateClick}
+              canRegenerate={
+                message.role === "ASSISTANT" &&
+                message.id === lastAssistantMessageId &&
+                !isPending
+              }
+              modelLabel={
+                activeThread?.modelKey
+                  ? modelLookup.get(activeThread.modelKey)?.label
+                  : undefined
+              }
+              modelProvider={
+                activeThread?.modelKey
+                  ? modelLookup.get(activeThread.modelKey)?.provider
+                  : null
+              }
+              isPending={isPending || tasksPending}
+            />
+          </div>
         ))}
 
         {/* Optimistic user message during streaming */}
@@ -406,6 +463,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
                 onClick={handleStopStreaming}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
                 title="Stop generating"
+                aria-label="Stop generating"
               >
                 <StopCircleIcon className="h-4 w-4" />
               </button>
@@ -464,7 +522,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message... (Shift+Enter for new line)"
+              placeholder="Type your message... (Shift+Enter for new line, Ctrl/Cmd+Enter to send)"
+              aria-label="Message input"
               disabled={isPending || !effectiveThreadId}
               rows={1}
               className={cn(
@@ -489,6 +548,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
                   : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary"
               )}
               style={hasAccentColor ? themeStyle : undefined}
+              aria-label="Send message"
             >
               <SendIcon className="h-5 w-5" />
             </button>
