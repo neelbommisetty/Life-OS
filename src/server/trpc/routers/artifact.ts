@@ -8,6 +8,10 @@ import {
 import { publicProcedure, router } from "../trpc";
 import { createLogger } from "@/lib/logger";
 import { UTApi } from "uploadthing/server";
+import {
+  SYSTEM_CONTEXT_ARTIFACT_TITLE,
+  isSystemContextTitle,
+} from "@/lib/system-context";
 
 const logger = createLogger("trpc:artifact");
 const utapi = new UTApi();
@@ -84,12 +88,38 @@ export const artifactRouter = router({
     .input(createArtifactSchema)
     .mutation(async ({ ctx, input }) => {
       const start = Date.now();
+      const isSystemContext = isSystemContextTitle(input.title);
       logger.debug("Creating artifact", {
         projectId: input.projectId,
         type: input.type,
       });
 
       try {
+        if (isSystemContext) {
+          const existing = await ctx.prisma.artifact.findFirst({
+            where: {
+              projectId: input.projectId,
+              title: {
+                equals: SYSTEM_CONTEXT_ARTIFACT_TITLE,
+                mode: "insensitive",
+              },
+            },
+            select: { id: true },
+          });
+          if (existing) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "System context already exists",
+            });
+          }
+          if (input.type !== "TEXT") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "System context must be a text artifact",
+            });
+          }
+        }
+
         const artifact = await ctx.prisma.artifact.create({
           data: {
             projectId: input.projectId,
@@ -130,18 +160,81 @@ export const artifactRouter = router({
       logger.debug("Updating artifact", { artifactId: id });
 
       try {
+        const existing = await ctx.prisma.artifact.findUnique({
+          where: { id },
+        });
+
+        if (!existing) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Artifact not found",
+          });
+        }
+
+        const nextData = { ...data };
+        const isExistingSystemContext = isSystemContextTitle(existing.title);
+        const isNextSystemContext = nextData.title
+          ? isSystemContextTitle(nextData.title)
+          : isExistingSystemContext;
+
+        if (isExistingSystemContext) {
+          if (nextData.title && !isSystemContextTitle(nextData.title)) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "System context title cannot be changed",
+            });
+          }
+          if (nextData.type && nextData.type !== "TEXT") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "System context must be a text artifact",
+            });
+          }
+          nextData.title = SYSTEM_CONTEXT_ARTIFACT_TITLE;
+          nextData.type = "TEXT";
+        } else if (isNextSystemContext) {
+          const existingSystem = await ctx.prisma.artifact.findFirst({
+            where: {
+              projectId: existing.projectId,
+              title: {
+                equals: SYSTEM_CONTEXT_ARTIFACT_TITLE,
+                mode: "insensitive",
+              },
+              NOT: { id },
+            },
+            select: { id: true },
+          });
+
+          if (existingSystem) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "System context already exists",
+            });
+          }
+
+          if (nextData.type && nextData.type !== "TEXT") {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "System context must be a text artifact",
+            });
+          }
+
+          nextData.title = SYSTEM_CONTEXT_ARTIFACT_TITLE;
+          nextData.type = "TEXT";
+        }
+
         const updated = await ctx.prisma.artifact.update({
           where: { id },
           data: {
-            type: data.type,
-            title: data.title,
-            content: data.content,
-            url: data.url,
-            fileKey: data.fileKey,
-            fileName: data.fileName,
-            fileSize: data.fileSize,
-            fileType: data.fileType,
-            fileUrl: data.fileUrl,
+            type: nextData.type,
+            title: nextData.title,
+            content: nextData.content,
+            url: nextData.url,
+            fileKey: nextData.fileKey,
+            fileName: nextData.fileName,
+            fileSize: nextData.fileSize,
+            fileType: nextData.fileType,
+            fileUrl: nextData.fileUrl,
           },
         });
 
@@ -176,6 +269,13 @@ export const artifactRouter = router({
           throw new TRPCError({
             code: "NOT_FOUND",
             message: "Artifact not found",
+          });
+        }
+
+        if (isSystemContextTitle(artifact.title)) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "System context cannot be deleted",
           });
         }
 

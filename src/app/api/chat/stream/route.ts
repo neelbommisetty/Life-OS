@@ -22,6 +22,7 @@ import {
   isPlaceholderThreadName,
   queueThreadTitleGeneration,
 } from "@/server/chat-thread-utils";
+import { SYSTEM_CONTEXT_ARTIFACT_TITLE } from "@/lib/system-context";
 
 const logger = createLogger("api:chat:stream");
 
@@ -268,7 +269,20 @@ export async function POST(request: Request) {
     }
 
     // Build prompt with system context + history
-    const systemPrompt = buildSystemPrompt(project);
+    const systemContextArtifact = await prisma.artifact.findFirst({
+      where: {
+        projectId: project.id,
+        title: {
+          equals: SYSTEM_CONTEXT_ARTIFACT_TITLE,
+          mode: "insensitive",
+        },
+      },
+      select: { content: true },
+    });
+    const systemPrompt = buildSystemPrompt(
+      project,
+      systemContextArtifact?.content ?? null
+    );
     const messagesForAI = allMessages.filter((msg) => {
       // If we have a summary, only include messages after summaryUpTo
       if (thread.summaryUpTo) {

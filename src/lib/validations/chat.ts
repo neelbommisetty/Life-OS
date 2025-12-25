@@ -59,9 +59,13 @@ export const listThreadsSchema = z.object({
   includeArchived: z.boolean().optional(),
 });
 
+const seedRoleEnum = z.enum(["SYSTEM", "USER"]);
+
 export const createThreadSchema = z.object({
   projectId: z.string().cuid(),
   name: z.string().min(1).max(120).optional(),
+  seedMessage: z.string().min(1).max(8000).optional(),
+  seedMessageRole: seedRoleEnum.optional(),
 });
 
 export const archiveThreadSchema = z.object({

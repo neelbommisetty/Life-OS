@@ -48,6 +48,28 @@ describe("Chat Utils", () => {
       expect(prompt).toContain("test, demo");
     });
 
+    it("prefers system context when provided", () => {
+      const project = {
+        id: "test-id",
+        name: "Context Project",
+        description: "Should be ignored",
+        status: "IN_PROGRESS",
+        priority: "HIGH",
+        tags: ["alpha"],
+        color: null,
+        icon: null,
+        dueDate: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as Project;
+
+      const prompt = buildSystemPrompt(project, "System context goes here.");
+
+      expect(prompt).toContain("System context (authoritative)");
+      expect(prompt).toContain("System context goes here.");
+      expect(prompt).not.toContain("Project Details:");
+    });
+
     it("handles missing optional fields", () => {
       const project = {
         id: "test-id",
@@ -256,4 +278,3 @@ Let me know if this looks good.`;
     });
   });
 });
-

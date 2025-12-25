@@ -32,14 +32,23 @@ export function estimateTokens(text: string): number {
 /**
  * Build system prompt for chat with project context
  */
-export function buildSystemPrompt(project: Project): string {
-  return `You are a helpful AI assistant for the project "${project.name}".
-
-Project Details:
+export function buildSystemPrompt(
+  project: Project,
+  systemContext?: string | null
+): string {
+  const trimmedContext = systemContext?.trim();
+  const contextBlock = trimmedContext
+    ? `System context (authoritative):
+${trimmedContext}`
+    : `Project Details:
 - Status: ${project.status}
 - Priority: ${project.priority || "Not set"}
 - Description: ${project.description || "No description"}
-${project.tags.length > 0 ? `- Tags: ${project.tags.join(", ")}` : ""}
+${project.tags.length > 0 ? `- Tags: ${project.tags.join(", ")}` : ""}`;
+
+  return `You are a helpful AI assistant for the project "${project.name}".
+
+${contextBlock}
 
 Your role is to help brainstorm ideas, answer questions, and provide guidance related to this project. Be concise, helpful, and creative.
 

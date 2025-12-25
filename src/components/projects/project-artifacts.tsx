@@ -8,6 +8,7 @@ import {
   FileText,
   ImageIcon,
   Link2,
+  LockIcon,
   Paperclip,
   Plus,
   Save,
@@ -20,6 +21,11 @@ import { formatDate } from "@/lib/project-utils";
 import { getProjectTheme } from "@/lib/project-theme";
 import { ChatMarkdown } from "@/components/projects/chat-markdown";
 import { useUploadThing } from "@/lib/uploadthing";
+import {
+  SYSTEM_CONTEXT_ARTIFACT_TITLE,
+  isSystemContextArtifact,
+  isSystemContextTitle,
+} from "@/lib/system-context";
 
 type Props = {
   projectId: string;
@@ -70,6 +76,14 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
   const utils = api.useUtils();
   const { data, isLoading } = api.artifact.list.useQuery({ projectId });
   const artifacts = useMemo(() => data ?? [], [data]);
+  const systemContextArtifact = useMemo(
+    () => artifacts.find((artifact) => isSystemContextArtifact(artifact)) ?? null,
+    [artifacts]
+  );
+  const otherArtifacts = useMemo(
+    () => artifacts.filter((artifact) => !isSystemContextArtifact(artifact)),
+    [artifacts]
+  );
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<ArtifactType | "ALL">("ALL");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -103,7 +117,7 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
 
   const visibleArtifacts = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return artifacts.filter((artifact) => {
+    return otherArtifacts.filter((artifact) => {
       const matchesType = typeFilter === "ALL" || artifact.type === typeFilter;
       const matchesSearch =
         !query ||
@@ -113,20 +127,26 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
         (artifact.fileName ?? "").toLowerCase().includes(query);
       return matchesType && matchesSearch;
     });
-  }, [artifacts, search, typeFilter]);
+  }, [otherArtifacts, search, typeFilter]);
 
   useEffect(() => {
-    if (!visibleArtifacts.length) {
+    const hasArtifacts =
+      visibleArtifacts.length > 0 || !!systemContextArtifact;
+    if (!hasArtifacts) {
       setSelectedId(null);
       if (draft.mode === "edit") {
         setDraft(createEmptyDraft());
       }
       return;
     }
-    if (selectedId && !visibleArtifacts.some((item) => item.id === selectedId)) {
+    if (
+      selectedId &&
+      !visibleArtifacts.some((item) => item.id === selectedId) &&
+      selectedId !== systemContextArtifact?.id
+    ) {
       setSelectedId(null);
     }
-  }, [draft.mode, selectedId, visibleArtifacts]);
+  }, [draft.mode, selectedId, systemContextArtifact?.id, visibleArtifacts]);
 
   useEffect(() => {
     if (draft.mode === "edit") {
@@ -208,6 +228,32 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
     setConfirmDeleteId(artifactId);
   };
 
+  const openSystemContextPanel = () => {
+    if (systemContextArtifact) {
+      setSelectedId(systemContextArtifact.id);
+      setDraft({
+        id: systemContextArtifact.id,
+        mode: "edit",
+        type: "TEXT",
+        title: SYSTEM_CONTEXT_ARTIFACT_TITLE,
+        content: systemContextArtifact.content ?? "",
+        url: "",
+        fileKey: "",
+        fileName: "",
+        fileSize: null,
+        fileType: "",
+        fileUrl: "",
+      });
+    } else {
+      setSelectedId(null);
+      setDraft({
+        ...createEmptyDraft("TEXT"),
+        title: SYSTEM_CONTEXT_ARTIFACT_TITLE,
+      });
+    }
+    setPanelOpen(true);
+  };
+
   const handleDeleteConfirmed = () => {
     if (!confirmDeleteId) return;
     deleteArtifact.mutate({ id: confirmDeleteId });
@@ -215,18 +261,27 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
   };
 
   const handleSave = () => {
+    const contentValue = effectiveType === "TEXT" ? draft.content : undefined;
+    const urlValue = effectiveType === "LINK" ? draft.url : undefined;
+    const filePayload =
+      effectiveType === "FILE"
+        ? {
+            fileKey: draft.fileKey,
+            fileName: draft.fileName,
+            fileSize: draft.fileSize ?? undefined,
+            fileType: draft.fileType,
+            fileUrl: draft.fileUrl,
+          }
+        : {};
+
     if (draft.mode === "create") {
       createArtifact.mutate({
         projectId,
-        type: draft.type,
-        title: draft.title.trim(),
-        content: draft.type === "TEXT" ? draft.content : undefined,
-        url: draft.type === "LINK" ? draft.url : undefined,
-        fileKey: draft.type === "FILE" ? draft.fileKey : undefined,
-        fileName: draft.type === "FILE" ? draft.fileName : undefined,
-        fileSize: draft.type === "FILE" ? draft.fileSize ?? undefined : undefined,
-        fileType: draft.type === "FILE" ? draft.fileType : undefined,
-        fileUrl: draft.type === "FILE" ? draft.fileUrl : undefined,
+        type: effectiveType,
+        title: effectiveTitle.trim(),
+        content: contentValue,
+        url: urlValue,
+        ...filePayload,
       });
       return;
     }
@@ -234,25 +289,32 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
     if (!draft.id) return;
     updateArtifact.mutate({
       id: draft.id,
-      type: draft.type,
-      title: draft.title.trim(),
-      content: draft.type === "TEXT" ? draft.content : undefined,
-      url: draft.type === "LINK" ? draft.url : undefined,
-      fileKey: draft.type === "FILE" ? draft.fileKey : undefined,
-      fileName: draft.type === "FILE" ? draft.fileName : undefined,
-      fileSize: draft.type === "FILE" ? draft.fileSize ?? undefined : undefined,
-      fileType: draft.type === "FILE" ? draft.fileType : undefined,
-      fileUrl: draft.type === "FILE" ? draft.fileUrl : undefined,
+      type: effectiveType,
+      title: effectiveTitle.trim(),
+      content: contentValue,
+      url: urlValue,
+      ...filePayload,
     });
   };
 
-  const saveLabel = draft.mode === "create" ? "Create artifact" : "Save changes";
-  const ActiveIcon = artifactTypeIcons[draft.type];
+  const isSystemContextDraft = isSystemContextTitle(draft.title);
+  const effectiveTitle = isSystemContextDraft
+    ? SYSTEM_CONTEXT_ARTIFACT_TITLE
+    : draft.title;
+  const effectiveType = isSystemContextDraft ? "TEXT" : draft.type;
+  const saveLabel = isSystemContextDraft
+    ? draft.mode === "create"
+      ? "Create system context"
+      : "Save system context"
+    : draft.mode === "create"
+      ? "Create artifact"
+      : "Save changes";
+  const ActiveIcon = artifactTypeIcons[effectiveType];
   const isDraftValid = (() => {
-    if (!draft.title.trim()) return false;
-    if (draft.type === "TEXT") return !!draft.content.trim();
-    if (draft.type === "LINK") return !!draft.url.trim();
-    if (draft.type === "FILE") return !!draft.fileKey && !!draft.fileUrl;
+    if (!effectiveTitle.trim()) return false;
+    if (effectiveType === "TEXT") return !!draft.content.trim();
+    if (effectiveType === "LINK") return !!draft.url.trim();
+    if (effectiveType === "FILE") return !!draft.fileKey && !!draft.fileUrl;
     return true;
   })();
   const previewArtifact = useMemo(
@@ -305,6 +367,39 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
           </select>
         </div>
 
+        <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                System context
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Guides every brainstorm thread for this project.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={openSystemContextPanel}
+              className="inline-flex items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
+            >
+              {systemContextArtifact ? "Edit" : "Create"}
+            </button>
+          </div>
+          <div className="mt-3 rounded-md border border-border bg-background/70 px-3 py-2 text-xs text-muted-foreground">
+            {isLoading
+              ? "Loading system context..."
+              : systemContextArtifact?.content?.trim()
+                ? systemContextArtifact.content
+                : "No system context yet. Add it to align AI responses."}
+          </div>
+          {systemContextArtifact && (
+            <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+              <LockIcon className="h-3 w-3" />
+              Locked
+            </div>
+          )}
+        </div>
+
         <div className="space-y-2">
           {isLoading && (
             <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
@@ -313,7 +408,9 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
           )}
           {!isLoading && !visibleArtifacts.length && (
             <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
-              No artifacts yet. Add a note, link, or file to get started.
+              {systemContextArtifact
+                ? "No additional artifacts yet. Add a note, link, or file to get started."
+                : "No artifacts yet. Add a note, link, or file to get started."}
             </div>
           )}
           {visibleArtifacts.map((artifact) => {
@@ -457,12 +554,12 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
                         {draft.mode === "create" ? "New artifact" : "Artifact details"}
                       </p>
                       <h3 className="text-lg font-semibold text-foreground">
-                        {draft.title || "Untitled"}
+                        {effectiveTitle || "Untitled"}
                       </h3>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {draft.mode === "edit" && draft.id && (
+                    {draft.mode === "edit" && draft.id && !isSystemContextDraft && (
                       <button
                         className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-semibold text-muted-foreground transition hover:text-foreground"
                         onClick={() => confirmDelete(draft.id ?? "")}
@@ -486,7 +583,7 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
                     </label>
                     <select
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
-                      value={draft.type}
+                      value={effectiveType}
                       onChange={(event) => {
                         const nextType = event.target.value as ArtifactType;
                         setDraft((prev) => ({
@@ -496,6 +593,7 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
                           id: prev.id,
                         }));
                       }}
+                      disabled={isSystemContextDraft}
                     >
                       {Object.entries(artifactTypeLabels).map(([type, label]) => (
                         <option key={type} value={type}>
@@ -512,10 +610,11 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
                     <input
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
                       placeholder="Name this artifact"
-                      value={draft.title}
+                      value={effectiveTitle}
                       onChange={(event) =>
                         setDraft((prev) => ({ ...prev, title: event.target.value }))
                       }
+                      disabled={isSystemContextDraft}
                     />
                   </div>
 
@@ -749,7 +848,7 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
               leaveFrom="scale-100 opacity-100"
               leaveTo="scale-95 opacity-0"
             >
-              <DialogPanel className="w-full max-w-2xl rounded-xl border border-border bg-card p-6 shadow-xl">
+              <DialogPanel className="w-full max-w-2xl max-h-[80vh] rounded-xl border border-border bg-card p-6 shadow-xl flex flex-col overflow-hidden">
                 <DialogTitle className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -767,7 +866,7 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
                   </button>
                 </DialogTitle>
 
-                <div className="mt-4 space-y-4">
+                <div className="mt-4 space-y-4 overflow-y-auto pr-1">
                   {previewArtifact?.type === "TEXT" && (
                     <div className="rounded-lg border border-border bg-background px-4 py-3">
                       {previewArtifact.content ? (
