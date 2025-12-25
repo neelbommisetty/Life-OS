@@ -21,7 +21,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type { Priority, Task, TaskStatus } from '@prisma/client';
-import { Calendar, Filter, Plus, Search, Trash2, X } from 'lucide-react';
+import { Calendar, Filter, MessageSquareIcon, Plus, Search, Trash2, X } from 'lucide-react';
 import { api } from '@/trpc/client';
 import {
   TASK_KANBAN_STATUS_ORDER,
@@ -64,6 +64,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const urlState = useUrlState();
   const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
   const { data, isLoading } = api.task.list.useQuery({ projectId });
+  const threadsQuery = api.chat.listThreads.useQuery({ projectId });
   const tasks = useMemo(() => data ?? [], [data]);
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
@@ -74,6 +75,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     return viewParam.toUpperCase() as TaskView;
   }, [searchParams]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [creatingThreadId, setCreatingThreadId] = useState<string | null>(null);
 
   const syncTasks = useCallback(
     (next: Task[]) => {
@@ -111,6 +113,58 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
       syncTasks(next);
     },
   });
+
+  const createThread = api.chat.createThread.useMutation({
+    onSuccess: () => {
+      utils.chat.listThreads.invalidate({ projectId });
+    },
+  });
+
+  const setThreadIdInUrl = useCallback(
+    (threadId: string, draftMessage?: string) => {
+      const nextParams = new URLSearchParams(searchParams.toString());
+      nextParams.set('threadId', threadId);
+      if (draftMessage) {
+        nextParams.set('chatDraft', draftMessage);
+      }
+      const query = nextParams.toString();
+      const basePath = urlState.pathname || `/projects/${projectId}/tasks`;
+      pushUrl(query ? `${basePath}?${query}` : basePath);
+    },
+    [projectId, searchParams, urlState.pathname]
+  );
+
+  const handleCreateTaskThread = useCallback(
+    (task: Task) => {
+      if (createThread.isPending) {
+        return;
+      }
+      const existingThreadId = findTaskThreadId(
+        threadsQuery.data ?? [],
+        task.id
+      );
+      if (existingThreadId) {
+        setThreadIdInUrl(existingThreadId, buildTaskMessageTemplate(task));
+        return;
+      }
+      setCreatingThreadId(task.id);
+      createThread.mutate(
+        {
+          projectId,
+          name: buildTaskThreadName(task),
+        },
+        {
+          onSuccess: (thread) => {
+            setThreadIdInUrl(thread.id, buildTaskMessageTemplate(task));
+          },
+          onSettled: () => {
+            setCreatingThreadId(null);
+          },
+        }
+      );
+    },
+    [createThread, projectId, setThreadIdInUrl, threadsQuery.data]
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -378,6 +432,8 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
                 tasks={tasksByStatus[status] ?? []}
                 onAdd={() => openCreatePanel(status)}
                 onSelect={openEditPanel}
+                onBrainstorm={handleCreateTaskThread}
+                creatingThreadId={creatingThreadId}
               />
             ))}
           </div>
@@ -391,12 +447,16 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
           onAdd={() => openCreatePanel('BACKLOG')}
           onSelect={openEditPanel}
           onMove={(task, status) => handleQuickStatusChange(task, status)}
+          onBrainstorm={handleCreateTaskThread}
+          creatingThreadId={creatingThreadId}
         />
       ) : (
         <ArchivedList
           tasks={archivedTasks}
           onSelect={openEditPanel}
           onMove={(task, status) => handleQuickStatusChange(task, status)}
+          onBrainstorm={handleCreateTaskThread}
+          creatingThreadId={creatingThreadId}
         />
       )}
 
@@ -423,6 +483,8 @@ type TaskColumnProps = {
   tasks: Task[];
   onAdd: () => void;
   onSelect: (task: Task) => void;
+  onBrainstorm: (task: Task) => void;
+  creatingThreadId: string | null;
 };
 
 type BacklogListProps = {
@@ -430,9 +492,18 @@ type BacklogListProps = {
   onAdd: () => void;
   onSelect: (task: Task) => void;
   onMove: (task: Task, status: TaskStatus) => void;
+  onBrainstorm: (task: Task) => void;
+  creatingThreadId: string | null;
 };
 
-function BacklogList({ tasks, onAdd, onSelect, onMove }: BacklogListProps) {
+function BacklogList({
+  tasks,
+  onAdd,
+  onSelect,
+  onMove,
+  onBrainstorm,
+  creatingThreadId,
+}: BacklogListProps) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between">
@@ -466,6 +537,11 @@ function BacklogList({ tasks, onAdd, onSelect, onMove }: BacklogListProps) {
               onSelect={() => onSelect(task)}
               actions={[
                 {
+                  label: "Brainstorm",
+                  onClick: () => onBrainstorm(task),
+                  disabled: creatingThreadId === task.id,
+                },
+                {
                   label: "Move to To Do",
                   onClick: () => onMove(task, 'TODO'),
                 },
@@ -486,9 +562,17 @@ type ArchivedListProps = {
   tasks: Task[];
   onSelect: (task: Task) => void;
   onMove: (task: Task, status: TaskStatus) => void;
+  onBrainstorm: (task: Task) => void;
+  creatingThreadId: string | null;
 };
 
-function ArchivedList({ tasks, onSelect, onMove }: ArchivedListProps) {
+function ArchivedList({
+  tasks,
+  onSelect,
+  onMove,
+  onBrainstorm,
+  creatingThreadId,
+}: ArchivedListProps) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between">
@@ -515,6 +599,11 @@ function ArchivedList({ tasks, onSelect, onMove }: ArchivedListProps) {
               onSelect={() => onSelect(task)}
               actions={[
                 {
+                  label: "Brainstorm",
+                  onClick: () => onBrainstorm(task),
+                  disabled: creatingThreadId === task.id,
+                },
+                {
                   label: "Move to Backlog",
                   onClick: () => onMove(task, 'BACKLOG'),
                 },
@@ -534,6 +623,7 @@ function ArchivedList({ tasks, onSelect, onMove }: ArchivedListProps) {
 type TaskListAction = {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
 };
 
 type TaskListItemProps = {
@@ -584,7 +674,11 @@ function TaskListItem({ task, onSelect, actions }: TaskListItemProps) {
               event.stopPropagation();
               action.onClick();
             }}
-            className="rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted"
+            disabled={action.disabled}
+            className={cn(
+              "rounded-full border border-border px-3 py-1 text-[11px] font-semibold text-foreground transition-colors hover:bg-muted",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
           >
             {action.label}
           </button>
@@ -594,7 +688,14 @@ function TaskListItem({ task, onSelect, actions }: TaskListItemProps) {
   );
 }
 
-function TaskColumn({ status, tasks, onAdd, onSelect }: TaskColumnProps) {
+function TaskColumn({
+  status,
+  tasks,
+  onAdd,
+  onSelect,
+  onBrainstorm,
+  creatingThreadId,
+}: TaskColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${status}`,
   });
@@ -637,7 +738,13 @@ function TaskColumn({ status, tasks, onAdd, onSelect }: TaskColumnProps) {
             </p>
           ) : (
             tasks.map((task) => (
-              <SortableTaskCard key={task.id} task={task} onSelect={() => onSelect(task)} />
+              <SortableTaskCard
+                key={task.id}
+                task={task}
+                onSelect={() => onSelect(task)}
+                onBrainstorm={() => onBrainstorm(task)}
+                isBrainstorming={creatingThreadId === task.id}
+              />
             ))
           )}
         </div>
@@ -649,9 +756,16 @@ function TaskColumn({ status, tasks, onAdd, onSelect }: TaskColumnProps) {
 type SortableTaskCardProps = {
   task: Task;
   onSelect: () => void;
+  onBrainstorm: () => void;
+  isBrainstorming: boolean;
 };
 
-function SortableTaskCard({ task, onSelect }: SortableTaskCardProps) {
+function SortableTaskCard({
+  task,
+  onSelect,
+  onBrainstorm,
+  isBrainstorming,
+}: SortableTaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: task.id,
@@ -674,7 +788,11 @@ function SortableTaskCard({ task, onSelect }: SortableTaskCardProps) {
         isDragging && "opacity-0"
       )}
     >
-      <TaskCardContent task={task} />
+      <TaskCardContent
+        task={task}
+        onBrainstorm={onBrainstorm}
+        isBrainstorming={isBrainstorming}
+      />
     </article>
   );
 }
@@ -697,7 +815,15 @@ function TaskCard({ task, isOverlay }: TaskCardProps) {
   );
 }
 
-function TaskCardContent({ task }: { task: Task }) {
+function TaskCardContent({
+  task,
+  onBrainstorm,
+  isBrainstorming,
+}: {
+  task: Task;
+  onBrainstorm?: () => void;
+  isBrainstorming?: boolean;
+}) {
   return (
     <>
       <div className="flex items-start justify-between gap-3">
@@ -720,12 +846,32 @@ function TaskCardContent({ task }: { task: Task }) {
         <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-medium text-foreground">
           {PRIORITY_LABELS[task.priority]}
         </span>
-        {task.dueDate && (
-          <span className="inline-flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            {formatDate(task.dueDate)}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {task.dueDate && (
+            <span className="inline-flex items-center gap-1">
+              <Calendar className="h-3 w-3" />
+              {formatDate(task.dueDate)}
+            </span>
+          )}
+          {onBrainstorm && (
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onBrainstorm();
+              }}
+              disabled={isBrainstorming}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border border-border px-2 py-1 text-[10px] font-semibold text-foreground transition hover:bg-muted",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+            >
+              <MessageSquareIcon className="h-3 w-3" />
+              {isBrainstorming ? "Starting..." : "Brainstorm"}
+            </button>
+          )}
+        </div>
       </div>
     </>
   );
@@ -959,4 +1105,43 @@ function reorderTasks(
   });
 
   return nextTasks;
+}
+
+function buildTaskThreadName(task: Task) {
+  const prefix = buildTaskThreadPrefix(task.id);
+  return `${prefix}${task.title}`.slice(0, 120);
+}
+
+function buildTaskThreadPrefix(taskId: string) {
+  return `Task:${taskId}::`;
+}
+
+function findTaskThreadId(
+  threads: Array<{ id: string; name: string }>,
+  taskId: string
+) {
+  const prefix = buildTaskThreadPrefix(taskId);
+  return threads.find((thread) => thread.name.startsWith(prefix))?.id ?? null;
+}
+
+function buildTaskMessageTemplate(task: Task) {
+  const details = [
+    `Task: ${task.title}`,
+    task.description ? `Description: ${task.description}` : null,
+    `Status: ${TASK_STATUS_LABELS[task.status]}`,
+    `Priority: ${PRIORITY_LABELS[task.priority]}`,
+    task.dueDate ? `Due date: ${formatDate(task.dueDate)}` : null,
+  ].filter(Boolean);
+
+  return [
+    "Brainstorm this task:",
+    ...details,
+    "",
+    "Suggested focus:",
+    "- Goal and success criteria",
+    "- Approach and key steps",
+    "- Dependencies or blockers",
+    "- Risks and mitigations",
+    "- Acceptance checklist",
+  ].join("\n");
 }

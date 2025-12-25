@@ -37,7 +37,7 @@ describe("project tabs > getProjectTabKeyFromPathname", () => {
   });
 
   test("extracts the tab segment", () => {
-    expect(getProjectTabKeyFromPathname("/projects/123/brainstorm")).toBe("brainstorm");
+    expect(getProjectTabKeyFromPathname("/projects/123/tasks")).toBe("tasks");
     expect(getProjectTabKeyFromPathname("/projects/123/unknown")).toBeNull();
   });
 });
@@ -52,7 +52,7 @@ describe("project tabs > buildProjectTabUrl", () => {
   test("drops unrelated query params on tab switch", () => {
     const searchParams = new URLSearchParams("tasksView=backlog&threadId=abc&foo=bar");
     const nextUrl = buildProjectTabUrl("123", searchParams, "overview");
-    expect(nextUrl).toBe("/projects/123/overview?foo=bar");
+    expect(nextUrl).toBe("/projects/123/overview?threadId=abc&foo=bar");
   });
 
   test("round-trips with resolveProjectTabKey", () => {

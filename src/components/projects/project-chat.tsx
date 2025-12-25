@@ -18,19 +18,25 @@ import { useChatStreaming } from "./hooks/use-chat-streaming";
 import { useChatTasks } from "./hooks/use-chat-tasks";
 import { useChatScroll } from "./hooks/use-chat-scroll";
 import { useUrlState, pushUrl, replaceUrl } from "@/lib/url-state";
-import { getProjectTabKeyFromPathname } from "@/lib/project-tabs";
 
 type Props = {
   projectId: string;
   accentColor?: string | null;
+  layout?: "default" | "drawer";
+  className?: string;
 };
 
-export function ProjectChat({ projectId, accentColor }: Props) {
+export function ProjectChat({
+  projectId,
+  accentColor,
+  layout = "default",
+  className,
+}: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const hasAccentColor = !!accentColor && Object.keys(themeStyle).length > 0;
+  const isDrawer = layout === "drawer";
   const urlState = useUrlState();
   const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
-  const tabParam = getProjectTabKeyFromPathname(urlState.pathname);
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pageSize = 30;
@@ -74,11 +80,18 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     },
   });
 
+  const createArtifactMutation = api.artifact.create.useMutation({
+    onSuccess: () => {
+      utils.artifact.list.invalidate({ projectId });
+    },
+  });
+
+  const [artifactStatusByMessageId, setArtifactStatusByMessageId] = useState<
+    Record<string, "saving" | "saved" | "error">
+  >({});
+
   const setThreadIdInUrl = useCallback(
     (threadId: string | null, replace = false) => {
-      if (tabParam !== "brainstorm") {
-        return;
-      }
       const nextParams = new URLSearchParams(searchParams.toString());
       if (threadId) {
         nextParams.set("threadId", threadId);
@@ -86,7 +99,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         nextParams.delete("threadId");
       }
       const query = nextParams.toString();
-      const basePath = `/projects/${projectId}/brainstorm`;
+      const basePath = urlState.pathname || `/projects/${projectId}`;
       const nextUrl = query ? `${basePath}?${query}` : basePath;
       if (replace) {
         replaceUrl(nextUrl);
@@ -94,7 +107,7 @@ export function ProjectChat({ projectId, accentColor }: Props) {
       }
       pushUrl(nextUrl);
     },
-    [projectId, searchParams, tabParam]
+    [projectId, searchParams, urlState.pathname]
   );
 
   const setThreadModelMutation = api.chat.setThreadModel.useMutation({
@@ -290,9 +303,6 @@ export function ProjectChat({ projectId, accentColor }: Props) {
     if (threadsQuery.isLoading) {
       return;
     }
-    if (tabParam !== "brainstorm") {
-      return;
-    }
     if (!effectiveThreadId) {
       return;
     }
@@ -304,14 +314,86 @@ export function ProjectChat({ projectId, accentColor }: Props) {
   }, [
     effectiveThreadId,
     setThreadIdInUrl,
-    tabParam,
     threadIdParam,
     threads,
     threadsQuery.isLoading,
   ]);
 
+  useEffect(() => {
+    const draftParam = searchParams.get("chatDraft");
+    if (!draftParam) {
+      return;
+    }
+    if (!input.trim()) {
+      setInput(draftParam);
+    }
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("chatDraft");
+    const query = nextParams.toString();
+    const basePath = urlState.pathname || `/projects/${projectId}`;
+    replaceUrl(query ? `${basePath}?${query}` : basePath);
+  }, [input, projectId, searchParams, urlState.pathname]);
+
+  const stripJsonBlock = useCallback((content: string) => {
+    return content.replace(/```json[\s\S]*?```/g, "").trim();
+  }, []);
+
+  const deriveArtifactTitle = useCallback((content: string) => {
+    const firstLine = content.split("\n").find((line) => line.trim().length > 0) ?? "";
+    return firstLine.trim().slice(0, 80) || "Brainstorm note";
+  }, []);
+
+  const handleSaveArtifact = useCallback(
+    (messageId: string, content: string) => {
+      const cleaned = stripJsonBlock(content);
+      if (!cleaned) {
+        setArtifactStatusByMessageId((prev) => ({
+          ...prev,
+          [messageId]: "error",
+        }));
+        return;
+      }
+      const title = deriveArtifactTitle(cleaned);
+      setArtifactStatusByMessageId((prev) => ({
+        ...prev,
+        [messageId]: "saving",
+      }));
+      createArtifactMutation.mutate(
+        {
+          projectId,
+          type: "TEXT",
+          title,
+          content: cleaned,
+        },
+        {
+          onSuccess: () => {
+            setArtifactStatusByMessageId((prev) => ({
+              ...prev,
+              [messageId]: "saved",
+            }));
+          },
+          onError: () => {
+            setArtifactStatusByMessageId((prev) => ({
+              ...prev,
+              [messageId]: "error",
+            }));
+          },
+        }
+      );
+    },
+    [createArtifactMutation, deriveArtifactTitle, projectId, stripJsonBlock]
+  );
+
   return (
-    <div className="flex h-[600px] flex-col rounded-xl border border-border bg-card shadow-sm sm:flex-row">
+    <div
+      className={cn(
+        "flex min-h-0 flex-col",
+        isDrawer
+          ? "h-full bg-transparent"
+          : "h-[600px] rounded-xl border border-border bg-card shadow-sm",
+        className
+      )}
+    >
       <ThreadSelector
         threads={threads}
         value={effectiveThreadId}
@@ -328,14 +410,15 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         isLocked={false}
         isStreaming={isStreaming}
         streamingThreadId={streamingThreadId}
+        layout={isDrawer ? "stacked" : "side"}
       />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         {/* Messages area */}
         <div
           ref={messagesContainerRef}
           onScroll={handleScroll}
           onKeyDown={handleMessagesKeyDown}
-          className="flex-1 overflow-y-auto p-4 space-y-4"
+          className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4"
           role="list"
           aria-label="Chat messages"
           aria-live="polite"
@@ -388,6 +471,8 @@ export function ProjectChat({ projectId, accentColor }: Props) {
               onApproveTask={handleApproveTask}
               onApproveAll={handleApproveAll}
               onRegenerate={handleRegenerateClick}
+              onSaveArtifact={(content) => handleSaveArtifact(message.id, content)}
+              artifactStatus={artifactStatusByMessageId[message.id] ?? "idle"}
               canRegenerate={
                 message.role === "ASSISTANT" &&
                 message.id === lastAssistantMessageId &&
@@ -513,7 +598,10 @@ export function ProjectChat({ projectId, accentColor }: Props) {
         {/* Input area */}
         <form
           onSubmit={(e) => handleSubmit(e)}
-          className="border-t border-border bg-muted/50 p-4"
+          className={cn(
+            "border-t border-border p-4",
+            isDrawer ? "bg-card" : "bg-muted/50"
+          )}
         >
           <div className="flex items-end gap-2">
             <ModelSelector

@@ -10,6 +10,7 @@ import {
   CalendarIcon,
   AlertCircleIcon,
   RotateCcwIcon,
+  SaveIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PriorityBadge } from "./priority-badge";
@@ -22,6 +23,8 @@ type MessageBubbleProps = {
   onApproveTask: (messageId: string, task: ProposedTask) => void;
   onApproveAll: (messageId: string, tasks: ProposedTask[]) => void;
   onRegenerate?: (messageId: string) => void;
+  onSaveArtifact?: (content: string) => void;
+  artifactStatus?: "idle" | "saving" | "saved" | "error";
   canRegenerate?: boolean;
   modelLabel?: string;
   modelProvider?: string | null;
@@ -36,6 +39,8 @@ export function MessageBubble({
   onApproveTask,
   onApproveAll,
   onRegenerate,
+  onSaveArtifact,
+  artifactStatus = "idle",
   canRegenerate,
   modelLabel,
   modelProvider,
@@ -113,6 +118,13 @@ export function MessageBubble({
     if (messageStatus === "failed") return "Failed";
     return "Delivered";
   }, [messageStatus]);
+
+  const artifactActionLabel = useMemo(() => {
+    if (artifactStatus === "saved") return "Saved";
+    if (artifactStatus === "saving") return "Saving...";
+    if (artifactStatus === "error") return "Retry save";
+    return "Save to artifacts";
+  }, [artifactStatus]);
 
   if (isSystem) {
     return (
@@ -202,6 +214,24 @@ export function MessageBubble({
             >
               <RotateCcwIcon className="h-3 w-3" />
               Regenerate
+            </button>
+          )}
+          {isAssistant && onSaveArtifact && (
+            <button
+              type="button"
+              onClick={() => onSaveArtifact(message.content)}
+              disabled={artifactStatus === "saving" || artifactStatus === "saved"}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium transition",
+                artifactStatus === "saved"
+                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                  : "text-foreground/80 hover:bg-muted",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+              title="Save as artifact"
+            >
+              <SaveIcon className="h-3 w-3" />
+              {artifactActionLabel}
             </button>
           )}
         </div>

@@ -1,7 +1,6 @@
 export const projectTabs = [
   { key: "overview", label: "Overview" },
   { key: "tasks", label: "Tasks" },
-  { key: "brainstorm", label: "Brainstorm" },
   { key: "artifacts", label: "Artifacts" },
 ] as const;
 
@@ -42,9 +41,6 @@ export function buildProjectTabUrl(
   const nextParams = new URLSearchParams(searchParams.toString());
   if (tabKey !== "tasks") {
     nextParams.delete("tasksView");
-  }
-  if (tabKey !== "brainstorm") {
-    nextParams.delete("threadId");
   }
   const query = nextParams.toString();
   const basePath = `/projects/${projectId}/${tabKey}`;

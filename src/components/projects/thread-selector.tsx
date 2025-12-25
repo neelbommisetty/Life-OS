@@ -1,7 +1,14 @@
 "use client";
 
-import { useCallback, useMemo, useRef } from "react";
-import { ArchiveIcon, LoaderIcon, MessageSquareIcon, PlusIcon } from "lucide-react";
+import { Listbox } from "@headlessui/react";
+import { useMemo } from "react";
+import {
+  ArchiveIcon,
+  ChevronDownIcon,
+  LoaderIcon,
+  MessageSquareIcon,
+  PlusIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type ThreadOption = {
@@ -20,6 +27,7 @@ type Props = {
   isLocked?: boolean;
   isStreaming?: boolean;
   streamingThreadId?: string | null;
+  layout?: "side" | "stacked";
 };
 
 export function ThreadSelector({
@@ -33,136 +41,126 @@ export function ThreadSelector({
   isLocked,
   isStreaming,
   streamingThreadId,
+  layout = "side",
 }: Props) {
-  const buttonRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const orderedThreadIds = useMemo(() => threads.map((thread) => thread.id), [threads]);
-  const activeIndex = useMemo(() => {
-    if (!orderedThreadIds.length) return -1;
-    if (!value) return 0;
-    const index = orderedThreadIds.indexOf(value);
-    return index >= 0 ? index : 0;
-  }, [orderedThreadIds, value]);
-
-  const focusThreadAt = useCallback(
-    (index: number) => {
-      const clampedIndex = Math.max(0, Math.min(index, orderedThreadIds.length - 1));
-      const nextId = orderedThreadIds[clampedIndex];
-      if (!nextId) return;
-      onChange(nextId);
-      buttonRefs.current[nextId]?.focus();
-    },
-    [orderedThreadIds, onChange]
-  );
-
-  const handleListKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!orderedThreadIds.length || isLocked) return;
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        focusThreadAt(activeIndex + 1);
-      } else if (event.key === "ArrowUp") {
-        event.preventDefault();
-        focusThreadAt(activeIndex - 1);
-      } else if (event.key === "Home") {
-        event.preventDefault();
-        focusThreadAt(0);
-      } else if (event.key === "End") {
-        event.preventDefault();
-        focusThreadAt(orderedThreadIds.length - 1);
-      }
-    },
-    [activeIndex, focusThreadAt, orderedThreadIds.length, isLocked]
-  );
+  const activeLabel = useMemo(() => {
+    if (!value) return "Select thread";
+    const activeThread = threads.find((thread) => thread.id === value);
+    return formatThreadLabel(activeThread?.name ?? "Thread");
+  }, [threads, value]);
 
   return (
-    <div className="flex w-full flex-col border-b border-border bg-muted/30 sm:h-full sm:w-64 sm:border-b-0 sm:border-r">
+    <div
+      className={cn(
+        "flex w-full flex-col bg-muted/30",
+        layout === "stacked"
+          ? "max-h-56 min-h-0 border-b border-border"
+          : "border-b border-border sm:h-full sm:w-64 sm:border-b-0 sm:border-r"
+      )}
+    >
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <MessageSquareIcon className="h-4 w-4" />
           Threads
         </div>
-        <button
-          type="button"
-          onClick={onCreate}
-          disabled={isCreating || isLocked}
-          className={cn(
-            "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition",
-            "hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30",
-            "disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="flex items-center gap-2">
+          {value && (
+            <button
+              type="button"
+              onClick={onArchive}
+              disabled={isArchiving || isLocked}
+              className={cn(
+                "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition",
+                "hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30",
+                "disabled:cursor-not-allowed disabled:opacity-60"
+              )}
+              title="Archive thread"
+              aria-label="Archive thread"
+            >
+              <ArchiveIcon className="h-4 w-4" />
+            </button>
           )}
-          title="New thread"
-          aria-label="Create new thread"
-        >
-          <PlusIcon className="h-4 w-4" />
-        </button>
+          <button
+            type="button"
+            onClick={onCreate}
+            disabled={isCreating || isLocked}
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition",
+              "hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30",
+              "disabled:cursor-not-allowed disabled:opacity-60"
+            )}
+            title="New thread"
+            aria-label="Create new thread"
+          >
+            <PlusIcon className="h-4 w-4" />
+          </button>
+        </div>
       </div>
-      <div
-        className="flex-1 overflow-y-auto p-2"
-        role="listbox"
-        aria-label="Chat threads"
-        tabIndex={0}
-        onKeyDown={handleListKeyDown}
-      >
-        {threads.length === 0 && (
-          <div className="px-2 py-3 text-xs text-muted-foreground">
-            No threads yet.
-          </div>
-        )}
-        {threads.map((thread) => {
-          const isActive = thread.id === value;
-          const showStreaming =
-            isStreaming && streamingThreadId === thread.id;
-          return (
-            <div key={thread.id} className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => onChange(thread.id)}
-                disabled={isLocked}
-                ref={(node) => {
-                  buttonRefs.current[thread.id] = node;
-                }}
+
+      <div className="p-3">
+        <Listbox value={value ?? ""} onChange={onChange} disabled={isLocked}>
+          {({ open }) => (
+            <div className="relative">
+              <Listbox.Button
                 className={cn(
-                  "flex-1 truncate rounded-md px-3 py-2 text-left text-sm transition",
-                  isActive
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground"
+                  "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-foreground",
+                  "focus:outline-none focus:ring-2 focus:ring-primary/30",
+                  isLocked && "cursor-not-allowed opacity-60"
                 )}
-                title={thread.name}
-                aria-label={`Thread ${thread.name}`}
-                role="option"
-                aria-selected={isActive}
               >
-                {thread.name}
-              </button>
-              {showStreaming && (
-                <span
-                  className="flex h-8 w-8 items-center justify-center text-muted-foreground"
-                  title="Generating response"
-                  aria-label="Generating response"
-                >
-                  <LoaderIcon className="h-4 w-4 animate-spin" />
-                </span>
-              )}
-              {isActive && (
-                <button
-                  type="button"
-                  onClick={onArchive}
-                  disabled={isArchiving || isLocked}
-                  className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition",
-                    "hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30",
-                    "disabled:cursor-not-allowed disabled:opacity-60"
-                  )}
-                  title="Archive thread"
-                  aria-label="Archive thread"
-                >
-                  <ArchiveIcon className="h-4 w-4" />
-                </button>
-              )}
+                <span className="truncate">{activeLabel}</span>
+                <ChevronDownIcon className="h-4 w-4 text-muted-foreground" />
+              </Listbox.Button>
+
+              <Listbox.Options
+                className={cn(
+                  "absolute z-20 mt-2 max-h-60 w-full overflow-auto rounded-lg border border-border bg-card p-1 shadow-lg",
+                  open ? "opacity-100" : "pointer-events-none opacity-0"
+                )}
+              >
+                {threads.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    No threads yet.
+                  </div>
+                )}
+                {threads.map((thread) => {
+                  const label = formatThreadLabel(thread.name);
+                  const showStreaming =
+                    isStreaming && streamingThreadId === thread.id;
+                  return (
+                    <Listbox.Option key={thread.id} value={thread.id}>
+                      {({ active, selected }) => (
+                        <div
+                          className={cn(
+                            "flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm",
+                            selected
+                              ? "bg-muted text-foreground"
+                              : "text-muted-foreground",
+                            active && "bg-muted/70 text-foreground"
+                          )}
+                        >
+                          <span className="truncate">{label}</span>
+                          {showStreaming && (
+                            <LoaderIcon className="h-4 w-4 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                      )}
+                    </Listbox.Option>
+                  );
+                })}
+              </Listbox.Options>
             </div>
-          );
-        })}
+          )}
+        </Listbox>
       </div>
     </div>
   );
+}
+
+function formatThreadLabel(name: string) {
+  if (name.startsWith("Task:") && name.includes("::")) {
+    const [, tail] = name.split("::");
+    return tail?.trim() || "Task brainstorm";
+  }
+  return name;
 }

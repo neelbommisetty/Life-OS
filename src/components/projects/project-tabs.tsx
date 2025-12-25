@@ -22,12 +22,11 @@ import { pushUrl, replaceUrl, useUrlState } from '@/lib/url-state';
 type Props = {
   overview: ReactNode;
   tasks: ReactNode;
-  brainstorm: ReactNode;
   artifacts: ReactNode;
   accentColor?: string | null;
 };
 
-export function ProjectTabs({ overview, tasks, brainstorm, artifacts, accentColor }: Props) {
+export function ProjectTabs({ overview, tasks, artifacts, accentColor }: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const hasColor = !!accentColor;
   const params = useParams();
@@ -115,7 +114,6 @@ export function ProjectTabs({ overview, tasks, brainstorm, artifacts, accentColo
       <TabPanels className="mt-6">
         <TabPanel className="focus:outline-none">{overview}</TabPanel>
         <TabPanel className="focus:outline-none">{tasks}</TabPanel>
-        <TabPanel className="focus:outline-none">{brainstorm}</TabPanel>
         <TabPanel className="focus:outline-none">{artifacts}</TabPanel>
       </TabPanels>
     </TabGroup>
