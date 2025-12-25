@@ -5,6 +5,7 @@ import { ProjectTabs } from "@/components/projects/project-tabs";
 import { StatusTimeline } from "@/components/projects/status-timeline";
 import { ProjectTasksBoard } from "@/components/projects/project-tasks-board";
 import { ProjectChat } from "@/components/projects/project-chat";
+import { ProjectArtifacts } from "@/components/projects/project-artifacts";
 import { formatDate } from "@/lib/project-utils";
 import { serverCaller } from "@/server/trpc/server";
 
@@ -82,26 +83,9 @@ export async function ProjectDetail({ id }: Props) {
         tasks={<ProjectTasksBoard projectId={project.id} accentColor={project.color} />}
         brainstorm={<ProjectChat projectId={project.id} accentColor={project.color} />}
         artifacts={
-          <PlaceholderCard title="Artifacts">
-            Store links to docs, designs, and deliverables in one place.
-          </PlaceholderCard>
+          <ProjectArtifacts projectId={project.id} accentColor={project.color} />
         }
       />
     </main>
-  );
-}
-
-function PlaceholderCard({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground shadow-sm">
-      <h3 className="mb-2 text-base font-semibold text-foreground">{title}</h3>
-      <p>{children}</p>
-    </div>
   );
 }

@@ -37,6 +37,12 @@ enum ChatRole {
   ASSISTANT
 }
 
+enum ArtifactType {
+  TEXT
+  LINK
+  FILE
+}
+
 model Project {
   id            String          @id @default(cuid())
   name          String
@@ -52,6 +58,7 @@ model Project {
   statusHistory StatusHistory[]
   tasks         Task[]
   chatThreads   ChatThread[]
+  artifacts     Artifact[]
 }
 
 model StatusHistory {
@@ -110,4 +117,23 @@ model ChatMessage {
   createdAt      DateTime   @default(now())
 
   @@index([threadId, createdAt])
+}
+
+model Artifact {
+  id        String       @id @default(cuid())
+  projectId String
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type      ArtifactType
+  title     String
+  content   String?
+  url       String?
+  fileKey   String?
+  fileName  String?
+  fileSize  Int?
+  fileType  String?
+  fileUrl   String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@index([projectId, createdAt])
 }
