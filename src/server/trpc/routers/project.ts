@@ -18,26 +18,51 @@ export const projectRouter = router({
     .input(listProjectsSchema.optional())
     .query(async ({ ctx, input }) => {
       const start = Date.now();
-      logger.debug("Listing projects", { status: input?.status });
+      const {
+        status,
+        search,
+        sortBy = "updatedAt",
+        sortOrder = "desc",
+        limit = 50,
+        cursor,
+      } = input ?? {};
+
+      logger.debug("Listing projects", { status, search, sortBy, sortOrder, limit, cursor });
 
       try {
-        const result = await ctx.prisma.project.findMany({
-          where: {
-            status: input?.status,
-          },
-          orderBy: { updatedAt: "desc" },
+        const where = {
+          ...(status && { status }),
+          ...(search && {
+            OR: [
+              { name: { contains: search, mode: "insensitive" as const } },
+              { description: { contains: search, mode: "insensitive" as const } },
+            ],
+          }),
+        };
+
+        const projects = await ctx.prisma.project.findMany({
+          where,
+          orderBy: { [sortBy]: sortOrder },
+          take: limit + 1,
+          ...(cursor && { cursor: { id: cursor }, skip: 1 }),
         });
 
+        const hasMore = projects.length > limit;
+        const items = hasMore ? projects.slice(0, -1) : projects;
+        const nextCursor = hasMore ? items[items.length - 1]?.id : undefined;
+
         logger.info("Projects listed successfully", {
-          count: result.length,
-          status: input?.status,
+          count: items.length,
+          hasMore,
           durationMs: Date.now() - start,
         });
 
-        return result;
+        return {
+          items,
+          nextCursor,
+        };
       } catch (error) {
         logger.error("Failed to list projects", {
-          status: input?.status,
           error: error instanceof Error ? error.message : String(error),
           durationMs: Date.now() - start,
         });

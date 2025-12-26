@@ -34,5 +34,10 @@ export const updateStatusSchema = z.object({
 
 export const listProjectsSchema = z.object({
   status: projectStatusEnum.optional(),
+  search: z.string().optional(),
+  sortBy: z.enum(['updatedAt', 'createdAt', 'name', 'dueDate', 'priority']).default('updatedAt').optional(),
+  sortOrder: z.enum(['asc', 'desc']).default('desc').optional(),
+  limit: z.number().min(1).max(100).default(50).optional(),
+  cursor: z.string().cuid().optional(),
 });
 
