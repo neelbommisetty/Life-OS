@@ -11,8 +11,7 @@ import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("trpc:project");
 
-const coerceDate = (value?: string | null) =>
-  value ? new Date(value) : undefined;
+import { coerceDate } from "@/lib/date-utils";
 
 export const projectRouter = router({
   list: publicProcedure

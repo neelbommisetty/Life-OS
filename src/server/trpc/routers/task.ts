@@ -12,10 +12,7 @@ import { createLogger } from "@/lib/logger";
 
 const logger = createLogger("trpc:task");
 
-const coerceDate = (value?: string | null) => {
-  if (value === null) return null;
-  return value ? new Date(value) : undefined;
-};
+import { coerceDate } from "@/lib/date-utils";
 
 export const taskRouter = router({
   list: publicProcedure.input(listTasksSchema).query(async ({ ctx, input }) => {
