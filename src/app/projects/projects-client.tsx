@@ -1,54 +1,168 @@
 'use client';
 
-import { useState } from "react";
-import type { ProjectStatus } from "@prisma/client";
+import { useCallback } from "react";
+
+import { useQueryState } from "@/hooks/use-query-state";
 import { api } from "@/trpc/client";
 import { CreateProjectDialog } from "@/components/projects/create-project-dialog";
 import { ProjectCard } from "@/components/projects/project-card";
-import { StatusFilter } from "@/components/projects/status-filter";
+import { ProjectToolbar } from "@/components/projects/project-toolbar";
+import { ProjectListView } from "@/components/projects/project-list-view";
+import type { ProjectStatus } from "@prisma/client";
+import type { SortBy, SortOrder } from "@/components/projects/sort-menu";
+import { motion, AnimatePresence } from "framer-motion";
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export function ProjectsClient() {
-  const [status, setStatus] = useState<ProjectStatus | null>(null);
-  const { data, isLoading } = api.project.list.useQuery(
-    status ? { status } : undefined,
+  const router = useRouter();
+  const [search, setSearch] = useQueryState<string>('q', '');
+  const [status, setStatus] = useQueryState<ProjectStatus>('status');
+  const [sortBy, setSortBy] = useQueryState<SortBy>('sort', 'updatedAt');
+  const [sortOrder, setSortOrder] = useQueryState<SortOrder>('order', 'desc');
+  const [viewMode, setViewMode] = useQueryState<'grid' | 'list'>('view', 'grid');
+
+  const {
+    data,
+    isLoading,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
+  } = api.project.list.useInfiniteQuery(
+    {
+      status: status || undefined,
+      search: search || undefined,
+      sortBy: sortBy as any,
+      sortOrder: sortOrder as any,
+      limit: 12
+    },
+    {
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+    }
   );
 
+  const projects = data?.pages.flatMap((page) => page.items) ?? [];
+
+  const handleSearchChange = useCallback((val: string) => setSearch(val), [setSearch]);
+  const handleStatusChange = useCallback((val: ProjectStatus | null) => setStatus(val), [setStatus]);
+  const handleSortChange = useCallback((newSort: SortBy, newOrder: SortOrder) => {
+    const params = new URLSearchParams(window.location.search);
+
+    // Update sortBy
+    if (newSort === 'updatedAt') params.delete('sort');
+    else params.set('sort', newSort);
+
+    // Update sortOrder
+    if (newOrder === 'desc') params.delete('order');
+    else params.set('order', newOrder);
+
+    const queryString = params.toString();
+    const url = `${window.location.pathname}${queryString ? `?${queryString}` : ''}`;
+    router.push(url, { scroll: false });
+  }, [router]);
+  const handleViewModeChange = useCallback((mode: 'grid' | 'list') => setViewMode(mode), [setViewMode]);
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 pb-20">
+      {/* Header Section */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Projects</h1>
-          <p className="text-sm text-muted-foreground">
-            Track project lifecycle, quick status changes, and last updates.
+        <div className="space-y-1">
+          <h1 className="text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">Projects</h1>
+          <p className="text-sm font-medium text-muted-foreground">
+            Manage your workspace and track project status in real-time.
           </p>
         </div>
-        <CreateProjectDialog />
+        <div className="flex items-center gap-3">
+          <CreateProjectDialog />
+        </div>
       </div>
 
-      <StatusFilter value={status} onChange={setStatus} />
+      {/* Control Toolbar */}
+      <ProjectToolbar
+        search={search || ''}
+        onSearchChange={handleSearchChange}
+        status={status}
+        onStatusChange={handleStatusChange}
+        sortBy={sortBy as SortBy}
+        sortOrder={sortOrder as SortOrder}
+        onSortChange={handleSortChange}
+        viewMode={viewMode as 'grid' | 'list' || 'grid'}
+        onViewModeChange={handleViewModeChange}
+      />
 
-      {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-40 animate-pulse rounded-xl border border-border bg-muted"
-            />
-          ))}
-        </div>
-      ) : data && data.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {data.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-border bg-card p-10 text-center">
-          <p className="text-sm text-muted-foreground">
-            No projects yet. Create your first project to get started.
-          </p>
-        </div>
-      )}
+      {/* Main Content */}
+      <div className="relative min-h-[400px]">
+        {isLoading ? (
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="h-48 animate-pulse rounded-2xl border border-border bg-muted/30"
+              />
+            ))}
+          </div>
+        ) : projects.length > 0 ? (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={viewMode}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              {viewMode === 'list' ? (
+                <ProjectListView projects={projects} />
+              ) : (
+                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {projects.map((project) => (
+                    <ProjectCard key={project.id} project={project} />
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
+        ) : (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-border bg-muted/10 p-20 text-center"
+          >
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 text-3xl">
+              {search ? '🔍' : '📂'}
+            </div>
+            <h3 className="text-lg font-bold text-foreground">
+              {search ? `No results for "${search}"` : "No projects found"}
+            </h3>
+            <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+              {search
+                ? "Try adjusting your search or filters to find what you're looking for."
+                : "Get started by creating your first project using the button above."}
+            </p>
+          </motion.div>
+        )}
+
+        {/* Loading More & Sentinel */}
+        {hasNextPage && (
+          <div className="mt-12 flex justify-center">
+            <button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="group flex items-center gap-2 rounded-xl border border-border bg-card px-6 py-3 text-sm font-bold text-foreground shadow-sm transition-all hover:bg-muted hover:shadow-md disabled:opacity-50"
+            >
+              {isFetchingNextPage ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading more...
+                </>
+              ) : (
+                <>
+                  Load More Projects
+                </>
+              )}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
