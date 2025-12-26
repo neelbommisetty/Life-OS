@@ -1,6 +1,7 @@
 export const projectTabs = [
   { key: "overview", label: "Overview" },
   { key: "tasks", label: "Tasks" },
+  { key: "chat", label: "AI Chat" },
   { key: "artifacts", label: "Artifacts" },
 ] as const;
 

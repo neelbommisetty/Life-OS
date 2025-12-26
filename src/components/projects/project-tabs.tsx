@@ -1,12 +1,12 @@
 'use client';
 
 import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
+import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
-import { motion } from 'framer-motion';
-import { cn } from '@/lib/utils';
 import { Fragment, useEffect, useMemo, useRef } from 'react';
-import { getProjectTheme } from '@/lib/project-theme';
 import { useParams } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import { getProjectTheme } from '@/lib/project-theme';
 import {
   buildProjectTabUrl,
   defaultProjectTabKey,
@@ -22,11 +22,18 @@ import { pushUrl, replaceUrl, useUrlState } from '@/lib/url-state';
 type Props = {
   overview: ReactNode;
   tasks: ReactNode;
+  chat: ReactNode;
   artifacts: ReactNode;
   accentColor?: string | null;
 };
 
-export function ProjectTabs({ overview, tasks, artifacts, accentColor }: Props) {
+export function ProjectTabs({
+  overview,
+  tasks,
+  chat,
+  artifacts,
+  accentColor,
+}: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const hasColor = !!accentColor;
   const params = useParams();
@@ -42,14 +49,12 @@ export function ProjectTabs({ overview, tasks, artifacts, accentColor }: Props) 
     }, {} as Record<ProjectTabKey, number>);
   }, []);
 
+  const selectedKey = useMemo(() => resolveProjectTabKey(tabParam), [tabParam]);
   const selectedIndex = useMemo(() => {
-    const initialKey = resolveProjectTabKey(tabParam);
-    return tabIndexByKey[initialKey] ?? tabIndexByKey[defaultProjectTabKey];
-  }, [tabIndexByKey, tabParam]);
+    return tabIndexByKey[selectedKey] ?? tabIndexByKey[defaultProjectTabKey];
+  }, [tabIndexByKey, selectedKey]);
 
   const lastTrackedKey = useRef<ProjectTabKey | null>(null);
-
-  const selectedKey = projectTabs[selectedIndex]?.key ?? defaultProjectTabKey;
 
   useEffect(() => {
     if (!projectId) {
@@ -90,13 +95,23 @@ export function ProjectTabs({ overview, tasks, artifacts, accentColor }: Props) 
             {({ selected }) => (
               <button
                 className={cn(
-                  "relative px-4 py-3 text-sm font-medium transition-colors focus:outline-none",
+                  "relative px-4 py-3 text-sm font-medium transition-colors focus:outline-none flex items-center gap-1.5",
                   selected
                     ? (hasColor ? "text-[rgb(var(--project-accent))]" : "text-primary")
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {tab.label}
+                {tab.key === 'chat' && (
+                  <span className={cn(
+                    "rounded-full px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none",
+                    selected
+                      ? (hasColor ? "bg-[rgb(var(--project-accent))/0.1] text-[rgb(var(--project-accent))]" : "bg-primary/10 text-primary")
+                      : "bg-muted text-muted-foreground"
+                  )}>
+                    AI
+                  </span>
+                )}
                 {selected && (
                   <motion.div
                     layoutId="activeTab"
@@ -111,11 +126,67 @@ export function ProjectTabs({ overview, tasks, artifacts, accentColor }: Props) 
           </Tab>
         ))}
       </TabList>
-      <TabPanels className="mt-6">
-        <TabPanel className="focus:outline-none">{overview}</TabPanel>
-        <TabPanel className="focus:outline-none">{tasks}</TabPanel>
-        <TabPanel className="focus:outline-none">{artifacts}</TabPanel>
-      </TabPanels>
+
+      <AnimatePresence mode="wait">
+        <TabPanels as={Fragment}>
+          <TabPanel static className="focus:outline-none">
+            {selectedKey === 'overview' && (
+              <motion.div
+                key="overview"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="mt-6"
+              >
+                {overview}
+              </motion.div>
+            )}
+          </TabPanel>
+          <TabPanel static className="focus:outline-none">
+            {selectedKey === 'tasks' && (
+              <motion.div
+                key="tasks"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="mt-6"
+              >
+                {tasks}
+              </motion.div>
+            )}
+          </TabPanel>
+          <TabPanel static className="focus:outline-none">
+            {selectedKey === 'chat' && (
+              <motion.div
+                key="chat"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="mt-6"
+              >
+                {chat}
+              </motion.div>
+            )}
+          </TabPanel>
+          <TabPanel static className="focus:outline-none">
+            {selectedKey === 'artifacts' && (
+              <motion.div
+                key="artifacts"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+                className="mt-6"
+              >
+                {artifacts}
+              </motion.div>
+            )}
+          </TabPanel>
+        </TabPanels>
+      </AnimatePresence>
     </TabGroup>
   );
 }
