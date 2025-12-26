@@ -42,6 +42,14 @@
 - Avoid long-running work in request handlers; offload to background jobs where applicable.
 - Keep imports absolute per tsconfig paths if configured; avoid deep relative paths.
 
+## Git Workflow
+
+- **Graphite**: Use [Graphite](https://docs.graphite.dev/) for all git branch management and PR workflows. Use `gt` CLI commands instead of raw git commands.
+- **Branch creation**: Use `gt branch create <name>` or `gt bc <name>` to create branches. Use `--stack` flag for dependent branches.
+- **PR submission**: Use `gt submit` or `gt s` to create PRs. Graphite handles stacked PRs automatically.
+- **Syncing**: Use `gt sync` to update branches with parent changes and rebase dependents.
+- **Commits**: Follow Conventional Commits (`feat:`, `fix:`, `chore:`). Never commit directly to `main`; always work in feature branches.
+
 ## Misc
 
 - Environment variables: document in `.env.example` and access via Next.js env conventions.

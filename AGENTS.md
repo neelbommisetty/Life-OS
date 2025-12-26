@@ -22,6 +22,18 @@ Stick to TypeScript, avoid `any`, and prefer server components plus server actio
 ## Testing Guidelines
 Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Mirror source paths (`src/lib/foo.test.ts`, `src/components/foo.test.tsx`) and favor descriptive suites like `describe("project router > list")`. Each tRPC procedure needs zod validation tests plus both success and failure paths. Validate drag-and-drop helpers with integration-style tests when logic is non-trivial. Run `bun test` before merging and call out any intentional gaps in the PR body.
 
+## Git Workflow (Graphite)
+This project uses [Graphite](https://docs.graphite.dev/) for branch management and PR workflows. Use Graphite CLI commands (`gt`) instead of raw git commands for branch operations.
+
+- **Create branches**: Use `gt branch create <branch-name>` or `gt bc` to create a new branch from the current branch.
+- **Stack branches**: Use `gt branch create <branch-name> --stack` or `gt bc <branch-name> -s` to create a branch that depends on the current branch.
+- **Submit PRs**: Use `gt submit` or `gt s` to create a PR for the current branch. Graphite will automatically detect dependencies and create stacked PRs.
+- **Sync branches**: Use `gt sync` to update the current branch with changes from its parent branch and rebase dependent branches.
+- **Log**: Use `gt log` to visualize the branch stack and dependencies.
+- **Switch branches**: Use `gt checkout <branch-name>` or `gt co <branch-name>` to switch between branches.
+
+Always work in feature branches, never commit directly to `main`. Use Graphite's stacking feature for dependent changes. Before submitting, ensure `bun run lint`, `bun test`, and relevant migration commands pass locally.
+
 ## Commit & Pull Request Guidelines
 History follows Conventional Commits (`feat:`, `fix:`, `chore:`). Keep PRs focused, reference issues, and include: summary, screenshots or recordings for UI work, schema/env changes, and rollout notes for AI provider toggles. Confirm `bun run lint`, `bun test`, and relevant migration commands pass locally. Request review before merge—even for small fixes.
 
