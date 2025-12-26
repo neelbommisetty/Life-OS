@@ -387,10 +387,10 @@ export function ProjectChat({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col",
+        "flex min-h-0",
         isDrawer
-          ? "h-full bg-transparent"
-          : "h-[600px] rounded-xl border border-border bg-card shadow-sm",
+          ? "h-full flex-col bg-transparent"
+          : "h-[600px] flex-col sm:flex-row rounded-xl border border-border bg-card shadow-sm",
         className
       )}
     >
@@ -599,11 +599,11 @@ export function ProjectChat({
         <form
           onSubmit={(e) => handleSubmit(e)}
           className={cn(
-            "border-t border-border p-4",
-            isDrawer ? "bg-card" : "bg-muted/50"
+            "border-t border-border p-4 transition-colors",
+            isDrawer ? "bg-card" : "bg-muted/20"
           )}
         >
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-3">
             <ModelSelector
               models={modelsQuery.data ?? []}
               value={activeThread?.modelKey ?? null}
@@ -611,36 +611,43 @@ export function ProjectChat({
               isLoading={modelsQuery.isLoading}
               isUpdating={setThreadModelMutation.isPending}
               errorMessage={modelErrorMessage}
+              buttonClassName="h-12 w-12 shadow-none border-border/60 bg-background/50 backdrop-blur-sm"
             />
             <textarea
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value);
+                // Simple auto-resize
+                e.target.style.height = 'auto';
+                e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+              }}
               onKeyDown={handleKeyDown}
-              placeholder="Type your message... (Shift+Enter for new line, Ctrl/Cmd+Enter to send)"
+              placeholder="Type your message..."
               aria-label="Message input"
               disabled={isPending || !effectiveThreadId}
               rows={1}
               className={cn(
-                "flex-1 resize-none rounded-lg border border-border bg-background px-4 py-3 text-sm",
-                "focus:outline-none focus:ring-2 focus:ring-offset-2",
+                "flex-1 resize-none rounded-lg border border-border bg-background/50 backdrop-blur-sm px-4 py-3.5 text-sm transition-all",
+                "focus:outline-none focus:ring-2 focus:ring-offset-0",
                 "disabled:cursor-not-allowed disabled:opacity-50",
+                "min-h-[48px] max-h-[200px]",
                 hasAccentColor
-                  ? "focus:ring-[rgb(var(--project-accent))]"
-                  : "focus:ring-primary"
+                  ? "focus:border-[rgb(var(--project-accent))] focus:ring-[rgb(var(--project-accent))/0.3]"
+                  : "focus:border-primary focus:ring-primary/30"
               )}
-              style={hasAccentColor ? themeStyle : undefined}
+              style={hasAccentColor ? { ...themeStyle } : undefined}
             />
             <button
               type="submit"
               disabled={!input.trim() || isPending || !effectiveThreadId}
               className={cn(
-                "flex h-[48px] w-[48px] items-center justify-center rounded-lg font-medium text-sm",
-                "transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2",
+                "flex h-12 w-12 shrink-0 items-center justify-center rounded-lg font-medium text-sm",
+                "transition-all focus:outline-none focus:ring-2 focus:ring-offset-0",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 hasAccentColor
-                  ? "bg-[rgb(var(--project-accent))] text-white hover:opacity-90 focus:ring-[rgb(var(--project-accent))]"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary"
+                  ? "bg-[rgb(var(--project-accent))] text-white hover:opacity-90 focus:ring-[rgb(var(--project-accent))/0.3]"
+                  : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary/30"
               )}
               style={hasAccentColor ? themeStyle : undefined}
               aria-label="Send message"

@@ -27,6 +27,7 @@ type Props = {
   isLoading?: boolean;
   isUpdating?: boolean;
   errorMessage?: string | null;
+  buttonClassName?: string;
 };
 
 const PROVIDER_META: Record<
@@ -91,6 +92,7 @@ export function ModelSelector({
   isLoading,
   isUpdating,
   errorMessage,
+  buttonClassName,
 }: Props) {
   const hasError = Boolean(errorMessage);
   const currentModel = useMemo(
@@ -155,7 +157,8 @@ export function ModelSelector({
               "inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-background text-muted-foreground shadow-sm transition",
               "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
               "disabled:cursor-not-allowed disabled:opacity-60",
-              hasError && "border-red-500 text-red-500"
+              hasError && "border-red-500 text-red-500",
+              buttonClassName
             )}
           >
             {isBusy ? (
