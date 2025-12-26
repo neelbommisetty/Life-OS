@@ -1,10 +1,8 @@
 "use client";
 
-import { Listbox } from "@headlessui/react";
 import { useMemo } from "react";
 import {
   ArchiveIcon,
-  ChevronDownIcon,
   LoaderIcon,
   MessageSquareIcon,
   PlusIcon,
@@ -43,12 +41,6 @@ export function ThreadSelector({
   streamingThreadId,
   layout = "side",
 }: Props) {
-  const activeLabel = useMemo(() => {
-    if (!value) return "Select thread";
-    const activeThread = threads.find((thread) => thread.id === value);
-    return formatThreadLabel(activeThread?.name ?? "Thread");
-  }, [threads, value]);
-
   return (
     <div
       className={cn(
@@ -58,7 +50,7 @@ export function ThreadSelector({
           : "border-b border-border sm:h-full sm:w-64 sm:border-b-0 sm:border-r"
       )}
     >
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <MessageSquareIcon className="h-4 w-4" />
           Threads
@@ -97,61 +89,41 @@ export function ThreadSelector({
         </div>
       </div>
 
-      <div className="p-3">
-        <Listbox value={value ?? ""} onChange={onChange} disabled={isLocked}>
-          {({ open }) => (
-            <div className="relative">
-              <Listbox.Button
-                className={cn(
-                  "flex w-full items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-2 text-left text-sm text-foreground",
-                  "focus:outline-none focus:ring-2 focus:ring-primary/30",
-                  isLocked && "cursor-not-allowed opacity-60"
-                )}
-              >
-                <span className="truncate">{activeLabel}</span>
-                <ChevronDownIcon className="h-4 w-4 text-muted-foreground" />
-              </Listbox.Button>
-
-              <Listbox.Options
-                className={cn(
-                  "absolute z-20 mt-2 max-h-60 w-full overflow-auto rounded-lg border border-border bg-card p-1 shadow-lg",
-                  open ? "opacity-100" : "pointer-events-none opacity-0"
-                )}
-              >
-                {threads.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">
-                    No threads yet.
-                  </div>
-                )}
-                {threads.map((thread) => {
-                  const label = formatThreadLabel(thread.name);
-                  const showStreaming =
-                    isStreaming && streamingThreadId === thread.id;
-                  return (
-                    <Listbox.Option key={thread.id} value={thread.id}>
-                      {({ active, selected }) => (
-                        <div
-                          className={cn(
-                            "flex items-center justify-between gap-2 rounded-md px-3 py-2 text-sm",
-                            selected
-                              ? "bg-muted text-foreground"
-                              : "text-muted-foreground",
-                            active && "bg-muted/70 text-foreground"
-                          )}
-                        >
-                          <span className="truncate">{label}</span>
-                          {showStreaming && (
-                            <LoaderIcon className="h-4 w-4 animate-spin text-muted-foreground" />
-                          )}
-                        </div>
-                      )}
-                    </Listbox.Option>
-                  );
-                })}
-              </Listbox.Options>
-            </div>
-          )}
-        </Listbox>
+      <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-1">
+        {threads.length === 0 && (
+          <div className="px-3 py-4 text-center text-xs text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border">
+            No threads yet.
+          </div>
+        )}
+        {threads.map((thread) => {
+          const label = formatThreadLabel(thread.name);
+          const isSelected = value === thread.id;
+          const showStreaming =
+            isStreaming && streamingThreadId === thread.id;
+          return (
+            <button
+              key={thread.id}
+              onClick={() => onChange(thread.id)}
+              disabled={isLocked}
+              className={cn(
+                "group w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-all",
+                isSelected
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                isLocked && "cursor-not-allowed opacity-60"
+              )}
+            >
+              <span className="truncate flex-1">{label}</span>
+              {showStreaming ? (
+                <LoaderIcon className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
+              ) : (
+                isSelected && (
+                  <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                )
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
