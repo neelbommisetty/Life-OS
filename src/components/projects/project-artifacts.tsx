@@ -428,12 +428,20 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
                     : "border-border bg-background hover:border-foreground/20"
                 )}
               >
-                <button
-                  className="flex flex-1 items-start gap-3 text-left"
-                  type="button"
+                <div
+                  className="flex flex-1 cursor-pointer items-start gap-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => {
                     setSelectedId(artifact.id);
                     setPanelOpen(true);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setSelectedId(artifact.id);
+                      setPanelOpen(true);
+                    }
                   }}
                 >
                   {isImage && artifact.fileUrl ? (
@@ -492,7 +500,7 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
                     </div>
                   )}
                   </div>
-                </button>
+                </div>
                 <div className="ml-auto flex items-center gap-2">
                   <button
                     type="button"
