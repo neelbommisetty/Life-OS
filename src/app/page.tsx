@@ -3,26 +3,22 @@ import { serverCaller } from "@/server/trpc/server";
 import { StatsCards } from "@/components/home/stats-cards";
 import { RecentProjects } from "@/components/home/recent-projects";
 import { WelcomeHeader } from "@/components/home/welcome-header";
+import { ContinueCard } from "@/components/home/continue-card";
+import { QuickActions } from "@/components/home/quick-actions";
 import { ArrowRight } from "lucide-react";
 
 export default async function Home() {
-  const projects = await serverCaller().project.list();
-
-  // Compute summary stats
-  const total = projects.length;
-  const inProgress = projects.filter((p) => p.status === "IN_PROGRESS").length;
-  const completed = projects.filter((p) => p.status === "COMPLETE").length;
-  const ideas = projects.filter((p) => p.status === "IDEA").length;
-
-  // Recent projects (top 6)
-  const recentProjects = projects.slice(0, 6);
+  const data = await serverCaller().dashboard.getSummary();
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <WelcomeHeader />
-        <div className="flex items-center gap-3">
+    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-12">
+      {/* Header and Welcome */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <WelcomeHeader
+          upcomingTaskCount={data.upcomingTasks.length}
+          lastEditedProject={data.lastEdited}
+        />
+        <div className="flex items-center gap-3 pt-2">
           <Link
             href="/projects"
             className="flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -33,22 +29,30 @@ export default async function Home() {
         </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="mb-10">
-        <StatsCards
-          total={total}
-          inProgress={inProgress}
-          ideas={ideas}
-          completed={completed}
-        />
+      {/* Primary Context: Continue Working */}
+      {data.lastEdited && (
+        <ContinueCard project={data.lastEdited} />
+      )}
+
+      {/* Quick Access */}
+      <QuickActions />
+
+      {/* Insights and Progress */}
+      <div>
+        <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          Project Insights
+        </h2>
+        <StatsCards stats={data.stats} />
       </div>
 
-      {/* Recent Projects */}
+      {/* Recent Activity Grid */}
       <div>
-        <h2 className="mb-6 text-xl font-semibold text-foreground">
-          Recent Activity
-        </h2>
-        <RecentProjects projects={recentProjects} />
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-foreground">
+            Recent Activity
+          </h2>
+        </div>
+        <RecentProjects projects={data.recentProjects} />
       </div>
     </main>
   );
