@@ -13,6 +13,7 @@ import {
   setOpenAIDefaults,
   setAnthropicDefaults,
   setGeminiDefaults,
+  setXAIDefaults,
 } from "./providers/config";
 
 export const aiConfig = {
@@ -24,6 +25,9 @@ export const aiConfig = {
   },
   gemini: {
     apiKey: process.env.GOOGLE_AI_API_KEY,
+  },
+  xai: {
+    apiKey: process.env.XAI_API_KEY,
   },
 } as const;
 
@@ -75,5 +79,10 @@ export function initializeProviders(): void {
   // Initialize Gemini if API key is present
   if (aiConfig.gemini.apiKey) {
     setGeminiDefaults({ apiKey: aiConfig.gemini.apiKey });
+  }
+
+  // Initialize xAI if API key is present
+  if (aiConfig.xai.apiKey) {
+    setXAIDefaults({ apiKey: aiConfig.xai.apiKey });
   }
 }

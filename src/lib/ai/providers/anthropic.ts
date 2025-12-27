@@ -377,7 +377,7 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     description:
       'Latest cost-efficient Claude Haiku 4.5 model delivering near-frontier performance at one-third the cost and more than twice the speed of Sonnet 4.',
     releaseStage: 'ga',
-    maxOutputTokens: 8192,
+    maxOutputTokens: 65536,
     contextWindow: 200000,
     costTier: CostTier.Economy,
     tags: ['claude', 'haiku', '4.5', 'responses', 'economy'],
@@ -389,7 +389,7 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     description:
       'Latest Claude Sonnet 4.5 release balancing quality reasoning, coding assistance, and long-context orchestration. Supports 1M token context window when using the context-1m-2025-08-07 beta header.',
     releaseStage: 'ga',
-    maxOutputTokens: 8192,
+    maxOutputTokens: 65536,
     contextWindow: 200000,
     costTier: CostTier.Standard,
     tags: ['claude', 'sonnet', '4.5', 'responses', 'standard'],
@@ -401,7 +401,7 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     description:
       'Flagship Claude Opus 4.5 tier delivering premium reasoning depth, reliability, and tool-use orchestration. Excels in complex reasoning, programming, and agentic tasks.',
     releaseStage: 'ga',
-    maxOutputTokens: 8192,
+    maxOutputTokens: 65536,
     contextWindow: 200000,
     costTier: CostTier.Premium,
     tags: ['claude', 'opus', '4.5', 'responses', 'premium'],

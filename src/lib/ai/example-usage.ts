@@ -175,7 +175,7 @@ export function setupServiceRoutes() {
     models: [
       ModelKeyName.OpenAIGpt5Mini,
       ModelKeyName.AnthropicClaudeHaiku45,
-      ModelKeyName.GoogleGemini25FlashLite,
+      ModelKeyName.GoogleGemini25Flash,
     ],
     retry: { retries: 2, delayMs: 500 },
   });
@@ -193,7 +193,7 @@ export function setupServiceRoutes() {
   registerServiceRoute('balanced-reliable', {
     strategy: ServiceRouteStrategy.RotatingFailover,
     models: [
-      ModelKeyName.OpenAIGpt4o,
+      ModelKeyName.OpenAIGpt5,
       ModelKeyName.AnthropicClaudeSonnet45,
       ModelKeyName.GoogleGemini25Flash,
     ],
