@@ -1,9 +1,9 @@
-import { Calendar, Plus } from 'lucide-react';
-import type { Task, TaskStatus } from '@prisma/client';
-import { cn } from '@/lib/utils';
-import { TASK_STATUS_LABELS, TASK_STATUS_TONES } from '@/lib/task-utils';
-import { PRIORITY_LABELS, formatDate } from '@/lib/project-utils';
-import type { TaskListAction } from './types';
+import { Calendar, Plus } from "lucide-react";
+import type { Task, TaskStatus } from "@prisma/client";
+import { cn } from "@/lib/utils";
+import { TASK_STATUS_LABELS, TASK_STATUS_TONES } from "@/lib/task-utils";
+import { PRIORITY_LABELS, formatDate } from "@/lib/project-utils";
+import type { TaskListAction } from "./types";
 
 export type TaskListItemProps = {
   task: Task;
@@ -18,7 +18,7 @@ export function TaskListItem({
   onSelect,
   onToggle,
   isSelected,
-  actions
+  actions,
 }: TaskListItemProps) {
   return (
     <article
@@ -32,7 +32,8 @@ export function TaskListItem({
       }}
       className={cn(
         "group rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-all hover:border-primary/40",
-        isSelected && "border-primary/60 ring-1 ring-primary/20 bg-primary/[0.02]"
+        isSelected &&
+          "border-primary/60 ring-1 ring-primary/20 bg-primary/[0.02]"
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -116,7 +117,7 @@ export function BacklogList({
             {TASK_STATUS_LABELS.BACKLOG}
           </p>
           <p className="text-xs text-muted-foreground">
-            {tasks.length} task{tasks.length === 1 ? '' : 's'}
+            {tasks.length} task{tasks.length === 1 ? "" : "s"}
           </p>
         </div>
         <button
@@ -140,7 +141,9 @@ export function BacklogList({
               task={task}
               onSelect={() => onSelect(task)}
               onToggle={() => onToggleSelection(task.id)}
-              isSelected={selectedTaskId === task.id || selectedTaskIds.has(task.id)}
+              isSelected={
+                selectedTaskId === task.id || selectedTaskIds.has(task.id)
+              }
               actions={[
                 {
                   label: "Brainstorm",
@@ -149,11 +152,11 @@ export function BacklogList({
                 },
                 {
                   label: "Move to To Do",
-                  onClick: () => onMove(task, 'TODO'),
+                  onClick: () => onMove(task, "TODO"),
                 },
                 {
                   label: "Archive",
-                  onClick: () => onMove(task, 'ARCHIVED'),
+                  onClick: () => onMove(task, "ARCHIVED"),
                 },
               ]}
             />
@@ -193,7 +196,7 @@ export function ArchivedList({
             {TASK_STATUS_LABELS.ARCHIVED}
           </p>
           <p className="text-xs text-muted-foreground">
-            {tasks.length} task{tasks.length === 1 ? '' : 's'}
+            {tasks.length} task{tasks.length === 1 ? "" : "s"}
           </p>
         </div>
       </div>
@@ -210,7 +213,9 @@ export function ArchivedList({
               task={task}
               onSelect={() => onSelect(task)}
               onToggle={() => onToggleSelection(task.id)}
-              isSelected={selectedTaskId === task.id || selectedTaskIds.has(task.id)}
+              isSelected={
+                selectedTaskId === task.id || selectedTaskIds.has(task.id)
+              }
               actions={[
                 {
                   label: "Brainstorm",
@@ -219,11 +224,11 @@ export function ArchivedList({
                 },
                 {
                   label: "Move to Backlog",
-                  onClick: () => onMove(task, 'BACKLOG'),
+                  onClick: () => onMove(task, "BACKLOG"),
                 },
                 {
                   label: "Move to To Do",
-                  onClick: () => onMove(task, 'TODO'),
+                  onClick: () => onMove(task, "TODO"),
                 },
               ]}
             />

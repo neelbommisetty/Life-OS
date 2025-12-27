@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { Transition } from '@headlessui/react';
-import { useCallback, useMemo, useState, Fragment } from 'react';
+import { Transition } from "@headlessui/react";
+import { useCallback, useMemo, useState, Fragment } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,23 +13,23 @@ import {
   type DragEndEvent,
   type DragStartEvent,
   type CollisionDetection,
-} from '@dnd-kit/core';
-import type { Priority, Task, TaskStatus } from '@prisma/client';
-import { Filter, Plus, Search, X } from 'lucide-react';
-import { api } from '@/trpc/client';
+} from "@dnd-kit/core";
+import type { Priority, Task, TaskStatus } from "@prisma/client";
+import { Filter, Plus, Search, X } from "lucide-react";
+import { api } from "@/trpc/client";
 import {
   TASK_KANBAN_STATUS_ORDER,
   TASK_STATUS_LABELS,
   TASK_STATUS_ORDER,
-} from '@/lib/task-utils';
-import { PRIORITY_LABELS } from '@/lib/project-utils';
-import { priorityEnum } from '@/lib/validations/project';
-import { taskStatusEnum } from '@/lib/validations/task';
-import { cn } from '@/lib/utils';
-import { getProjectTheme } from '@/lib/project-theme';
-import { resolveTasksViewParam } from '@/lib/project-deeplinks';
-import { pushUrl } from '@/lib/url-state';
-import { usePathname, useSearchParams } from 'next/navigation';
+} from "@/lib/task-utils";
+import { PRIORITY_LABELS } from "@/lib/project-utils";
+import { priorityEnum } from "@/lib/validations/project";
+import { taskStatusEnum } from "@/lib/validations/task";
+import { cn } from "@/lib/utils";
+import { getProjectTheme } from "@/lib/project-theme";
+import { resolveTasksViewParam } from "@/lib/project-deeplinks";
+import { pushUrl } from "@/lib/url-state";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   ArchivedList,
   BacklogList,
@@ -39,8 +39,15 @@ import {
   TaskBoardSkeleton,
   type TaskDraft,
   type TaskView,
-} from './task-board';
-import { createEmptyDraft, reorderTasks, toDateInput, findTaskThreadId, buildTaskThreadName, buildTaskMessageTemplate } from './project-tasks-board-utils';
+} from "./task-board";
+import {
+  createEmptyDraft,
+  reorderTasks,
+  toDateInput,
+  findTaskThreadId,
+  buildTaskThreadName,
+  buildTaskMessageTemplate,
+} from "./project-tasks-board-utils";
 
 const priorityOptions = priorityEnum.options as Priority[];
 const statusOptions = taskStatusEnum.options as TaskStatus[];
@@ -53,17 +60,19 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const { data, isLoading } = api.task.list.useQuery({ projectId });
   const threadsQuery = api.chat.listThreads.useQuery({ projectId });
   const tasks = useMemo(() => data ?? [], [data]);
-  const [search, setSearch] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
+  const [search, setSearch] = useState("");
+  const [priorityFilter, setPriorityFilter] = useState<Priority | "ALL">("ALL");
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(() => createEmptyDraft());
   const activeView = useMemo(() => {
-    const viewParam = resolveTasksViewParam(searchParams.get('tasksView'));
+    const viewParam = resolveTasksViewParam(searchParams.get("tasksView"));
     return viewParam.toUpperCase() as TaskView;
   }, [searchParams]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
+    new Set()
+  );
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [creatingThreadId, setCreatingThreadId] = useState<string | null>(null);
 
@@ -84,7 +93,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
 
   const updateTask = api.task.update.useMutation({
     onSuccess: (updated) => {
-      const next = tasks.map((task) => (task.id === updated.id ? updated : task));
+      const next = tasks.map((task) =>
+        task.id === updated.id ? updated : task
+      );
       syncTasks(next);
       setPanelOpen(false);
     },
@@ -113,9 +124,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const setThreadIdInUrl = useCallback(
     (threadId: string, draftMessage?: string) => {
       const nextParams = new URLSearchParams(searchParams.toString());
-      nextParams.set('threadId', threadId);
+      nextParams.set("threadId", threadId);
       if (draftMessage) {
-        nextParams.set('chatDraft', draftMessage);
+        nextParams.set("chatDraft", draftMessage);
       }
       const query = nextParams.toString();
       const basePath = pathname || `/projects/${projectId}/tasks`;
@@ -173,11 +184,12 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const visibleTasks = useMemo(() => {
     const query = search.trim().toLowerCase();
     return tasks.filter((task) => {
-      const matchesPriority = priorityFilter === 'ALL' || task.priority === priorityFilter;
+      const matchesPriority =
+        priorityFilter === "ALL" || task.priority === priorityFilter;
       const matchesSearch =
         !query ||
         task.title.toLowerCase().includes(query) ||
-        (task.description ?? '').toLowerCase().includes(query);
+        (task.description ?? "").toLowerCase().includes(query);
       return matchesPriority && matchesSearch;
     });
   }, [priorityFilter, search, tasks]);
@@ -196,7 +208,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     });
 
     TASK_STATUS_ORDER.forEach((status) => {
-      grouped[status] = grouped[status].sort((a, b) => a.sortOrder - b.sortOrder);
+      grouped[status] = grouped[status].sort(
+        (a, b) => a.sortOrder - b.sortOrder
+      );
     });
 
     return grouped;
@@ -208,10 +222,10 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const updateTasksView = useCallback(
     (nextView: TaskView) => {
       const nextParams = new URLSearchParams(searchParams.toString());
-      if (nextView === 'KANBAN') {
-        nextParams.delete('tasksView');
+      if (nextView === "KANBAN") {
+        nextParams.delete("tasksView");
       } else {
-        nextParams.set('tasksView', nextView.toLowerCase());
+        nextParams.set("tasksView", nextView.toLowerCase());
       }
       const query = nextParams.toString();
       const basePath = `/projects/${projectId}/tasks`;
@@ -233,15 +247,17 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     let targetStatus: TaskStatus = activeTask.status;
     let targetIndex = 0;
 
-    if (overId.startsWith('column-')) {
-      const status = overId.replace('column-', '') as TaskStatus;
+    if (overId.startsWith("column-")) {
+      const status = overId.replace("column-", "") as TaskStatus;
       targetStatus = status;
       targetIndex = tasksByStatus[status]?.length ?? 0;
     } else {
       const overTask = tasks.find((task) => task.id === overId);
       if (!overTask) return;
       targetStatus = overTask.status;
-      targetIndex = tasksByStatus[targetStatus]?.findIndex((task) => task.id === overId) ?? 0;
+      targetIndex =
+        tasksByStatus[targetStatus]?.findIndex((task) => task.id === overId) ??
+        0;
     }
 
     const nextTasks = reorderTasks(tasks, activeId, targetStatus, targetIndex);
@@ -264,7 +280,8 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   };
 
   const activeTask = useMemo(
-    () => (activeTaskId ? tasks.find((task) => task.id === activeTaskId) : null),
+    () =>
+      activeTaskId ? tasks.find((task) => task.id === activeTaskId) : null,
     [activeTaskId, tasks]
   );
 
@@ -276,12 +293,12 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const openEditPanel = (task: Task) => {
     setDraft({
       id: task.id,
-      mode: 'edit',
+      mode: "edit",
       title: task.title,
-      description: task.description ?? '',
+      description: task.description ?? "",
       status: task.status,
       priority: task.priority,
-      dueDate: task.dueDate ? toDateInput(task.dueDate) : '',
+      dueDate: task.dueDate ? toDateInput(task.dueDate) : "",
     });
     setPanelOpen(true);
   };
@@ -290,19 +307,21 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     e.preventDefault();
     const dueDateValue = draft.dueDate
       ? new Date(draft.dueDate).toISOString()
-      : draft.mode === 'edit'
-        ? null
-        : undefined;
+      : draft.mode === "edit"
+      ? null
+      : undefined;
 
     const payload = {
       title: draft.title.trim(),
-      description: draft.description.trim() ? draft.description.trim() : undefined,
+      description: draft.description.trim()
+        ? draft.description.trim()
+        : undefined,
       status: draft.status,
       priority: draft.priority,
       dueDate: dueDateValue,
     };
 
-    if (draft.mode === 'create') {
+    if (draft.mode === "create") {
       await createTask.mutateAsync({
         ...payload,
         projectId,
@@ -350,15 +369,17 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     setIsBulkMode(true);
   }, []);
 
-  const handleBulkStatusChange = useCallback((status: TaskStatus) => {
-    const ids = Array.from(selectedTaskIds);
-    ids.forEach((id) => {
-      updateTask.mutate({ id, status });
-    });
-    setSelectedTaskIds(new Set());
-    setIsBulkMode(false);
-  }, [selectedTaskIds, updateTask]);
-
+  const handleBulkStatusChange = useCallback(
+    (status: TaskStatus) => {
+      const ids = Array.from(selectedTaskIds);
+      ids.forEach((id) => {
+        updateTask.mutate({ id, status });
+      });
+      setSelectedTaskIds(new Set());
+      setIsBulkMode(false);
+    },
+    [selectedTaskIds, updateTask]
+  );
 
   return (
     <section className="space-y-4" style={themeStyle}>
@@ -377,7 +398,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
             <Filter className="h-4 w-4 text-muted-foreground" />
             <select
               value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value as Priority | 'ALL')}
+              onChange={(e) =>
+                setPriorityFilter(e.target.value as Priority | "ALL")
+              }
               className="bg-transparent text-sm focus:outline-none"
             >
               <option value="ALL">All priorities</option>
@@ -392,10 +415,10 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <div className="inline-flex rounded-lg border border-border bg-muted/60 p-1 text-xs font-semibold text-foreground">
             <button
-              onClick={() => updateTasksView('KANBAN')}
+              onClick={() => updateTasksView("KANBAN")}
               className={cn(
                 "rounded-md px-3 py-1 transition-colors",
-                activeView === 'KANBAN'
+                activeView === "KANBAN"
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
@@ -403,10 +426,10 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
               Board
             </button>
             <button
-              onClick={() => updateTasksView('BACKLOG')}
+              onClick={() => updateTasksView("BACKLOG")}
               className={cn(
                 "rounded-md px-3 py-1 transition-colors",
-                activeView === 'BACKLOG'
+                activeView === "BACKLOG"
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
@@ -414,10 +437,10 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
               Backlog
             </button>
             <button
-              onClick={() => updateTasksView('ARCHIVED')}
+              onClick={() => updateTasksView("ARCHIVED")}
               className={cn(
                 "rounded-md px-3 py-1 transition-colors",
-                activeView === 'ARCHIVED'
+                activeView === "ARCHIVED"
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground hover:text-foreground"
               )}
@@ -426,7 +449,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
             </button>
           </div>
           <button
-            onClick={() => openCreatePanel('BACKLOG')}
+            onClick={() => openCreatePanel("BACKLOG")}
             className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
           >
             <Plus className="h-4 w-4" />
@@ -437,7 +460,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
 
       {isLoading ? (
         <TaskBoardSkeleton />
-      ) : activeView === 'KANBAN' ? (
+      ) : activeView === "KANBAN" ? (
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}
@@ -462,7 +485,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
                 selectedTaskIds={selectedTaskIds}
                 onStatusChange={handleQuickStatusChange}
                 onDelete={(task) => {
-                  if (confirm(`Are you sure you want to delete "${task.title}"?`)) {
+                  if (
+                    confirm(`Are you sure you want to delete "${task.title}"?`)
+                  ) {
                     deleteTask.mutate({ id: task.id });
                   }
                 }}
@@ -474,10 +499,10 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
             {activeTask ? <TaskCard task={activeTask} isOverlay /> : null}
           </DragOverlay>
         </DndContext>
-      ) : activeView === 'BACKLOG' ? (
+      ) : activeView === "BACKLOG" ? (
         <BacklogList
           tasks={backlogTasks}
-          onAdd={() => openCreatePanel('BACKLOG')}
+          onAdd={() => openCreatePanel("BACKLOG")}
           onSelect={(task) => {
             setSelectedTaskId(task.id);
             openEditPanel(task);
@@ -534,10 +559,14 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
             <div className="flex items-center gap-6 rounded-2xl border border-border bg-card/80 p-4 shadow-2xl backdrop-blur-md">
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-foreground">
-                  {selectedTaskIds.size} task{selectedTaskIds.size !== 1 ? 's' : ''} selected
+                  {selectedTaskIds.size} task
+                  {selectedTaskIds.size !== 1 ? "s" : ""} selected
                 </span>
                 <button
-                  onClick={() => { setSelectedTaskIds(new Set()); setIsBulkMode(false); }}
+                  onClick={() => {
+                    setSelectedTaskIds(new Set());
+                    setIsBulkMode(false);
+                  }}
                   className="text-left text-[10px] font-semibold text-muted-foreground uppercase hover:text-foreground"
                 >
                   Clear Selection
@@ -545,7 +574,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
               </div>
               <div className="h-8 w-px bg-border" />
               <div className="flex items-center gap-2">
-                {[ 'TODO', 'IN_PROGRESS', 'DONE', 'ARCHIVED' ].map((status) => (
+                {["TODO", "IN_PROGRESS", "DONE", "ARCHIVED"].map((status) => (
                   <button
                     key={status}
                     onClick={() => handleBulkStatusChange(status as TaskStatus)}
@@ -568,7 +597,6 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     </section>
   );
 }
-
 
 export type Props = {
   projectId: string;
