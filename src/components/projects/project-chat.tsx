@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  startTransition,
+} from "react";
 import { api } from "@/trpc/client";
 import {
   SendIcon,
@@ -342,7 +349,8 @@ export function ProjectChat({
   }, []);
 
   const deriveArtifactTitle = useCallback((content: string) => {
-    const firstLine = content.split("\n").find((line) => line.trim().length > 0) ?? "";
+    const firstLine =
+      content.split("\n").find((line) => line.trim().length > 0) ?? "";
     return firstLine.trim().slice(0, 80) || "Brainstorm note";
   }, []);
 
@@ -406,7 +414,10 @@ export function ProjectChat({
         onCreate={() => createThreadMutation.mutate({ projectId })}
         onArchive={() => {
           if (!effectiveThreadId) return;
-          archiveThreadMutation.mutate({ projectId, threadId: effectiveThreadId });
+          archiveThreadMutation.mutate({
+            projectId,
+            threadId: effectiveThreadId,
+          });
         }}
         isCreating={createThreadMutation.isPending}
         isArchiving={archiveThreadMutation.isPending}
@@ -427,175 +438,177 @@ export function ProjectChat({
           aria-live="polite"
           tabIndex={0}
         >
-        {messagesQuery.isFetchingNextPage && (
-          <div className="flex justify-center">
-            <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
-              <LoaderIcon className="h-3 w-3 animate-spin" />
-              Loading older messages...
-            </div>
-          </div>
-        )}
-
-        {(threadsQuery.isLoading || messagesQuery.isLoading) && (
-          <div className="flex h-full items-center justify-center">
-            <LoaderIcon className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        )}
-
-        {!messagesQuery.isLoading && !threadsQuery.isLoading && isEmpty && (
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <p className="text-sm font-medium text-foreground">
-                Start a conversation
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Ask questions, brainstorm ideas, or get help with your project
-              </p>
-            </div>
-          </div>
-        )}
-
-        {!messagesQuery.isLoading &&
-          messages.map((message) => (
-          <div
-            key={message.id}
-            data-message-id={message.id}
-            role="listitem"
-            tabIndex={message.id === lastMessageId ? 0 : -1}
-            aria-label={`${message.role.toLowerCase()} message at ${messageTimestampFormatter.format(
-              new Date(message.createdAt)
-            )}`}
-            className="focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg"
-          >
-            <MessageBubble
-              message={message}
-              themeStyle={themeStyle}
-              hasAccentColor={hasAccentColor}
-              onApproveTask={handleApproveTask}
-              onApproveAll={handleApproveAll}
-              onRegenerate={handleRegenerateClick}
-              onSaveArtifact={(content) => handleSaveArtifact(message.id, content)}
-              artifactStatus={artifactStatusByMessageId[message.id] ?? "idle"}
-              canRegenerate={
-                message.role === "ASSISTANT" &&
-                message.id === lastAssistantMessageId &&
-                !isPending
-              }
-              modelLabel={
-                activeModel?.label
-              }
-              modelProvider={
-                activeModel?.provider ?? null
-              }
-              messageStatus={message.role === "USER" ? "delivered" : undefined}
-              isPending={isPending || tasksPending}
-            />
-          </div>
-        ))}
-
-        {/* Optimistic user message during streaming */}
-        {optimisticUserMessage &&
-          (isActiveThreadStreaming || optimisticStatus === "failed") && (
-            <div className="flex flex-col gap-2 items-end">
-              <MessageBubble
-                message={{
-                  id: "optimistic-user-message",
-                  threadId: effectiveThreadId ?? "",
-                  role: "USER",
-                  content: optimisticUserMessage,
-                  taskResolution: null,
-                  createdAt: new Date(),
-                  modelKey: null,
-                  modelLabel: null,
-                  modelProvider: null,
-                }}
-                themeStyle={themeStyle}
-                hasAccentColor={hasAccentColor}
-                onApproveTask={handleApproveTask}
-                onApproveAll={handleApproveAll}
-                messageStatus={optimisticStatus ?? "sending"}
-                isPending={isPending || tasksPending}
-              />
+          {messagesQuery.isFetchingNextPage && (
+            <div className="flex justify-center">
+              <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
+                <LoaderIcon className="h-3 w-3 animate-spin" />
+                Loading older messages...
+              </div>
             </div>
           )}
 
-        {/* Streaming AI response (and post-stream optimistic assistant bubble until DB message arrives) */}
-        {isActiveThreadStreaming &&
-          (isStreaming || (streamingContent && pendingAssistantId)) && (
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
-              AI
+          {(threadsQuery.isLoading || messagesQuery.isLoading) && (
+            <div className="flex h-full items-center justify-center">
+              <LoaderIcon className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-            <div className="flex-1 rounded-lg bg-card border border-border px-4 py-3 text-sm shadow-sm">
-              {streamingContent ? (
-                <div className="relative">
-                  <ChatMarkdown content={streamingContent} tone="default" />
-                  {/* Pulsing cursor only while actively streaming */}
-                  {isStreaming && (
-                    <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse rounded-sm" />
-                  )}
-                  {isStreaming && (
-                    <div
-                      className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"
-                      role="status"
-                      aria-live="polite"
-                    >
-                      <LoaderIcon className="h-3 w-3 animate-spin" />
-                      AI is typing...
+          )}
+
+          {!messagesQuery.isLoading && !threadsQuery.isLoading && isEmpty && (
+            <div className="flex h-full items-center justify-center">
+              <div className="text-center">
+                <p className="text-sm font-medium text-foreground">
+                  Start a conversation
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Ask questions, brainstorm ideas, or get help with your project
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!messagesQuery.isLoading &&
+            messages.map((message) => (
+              <div
+                key={message.id}
+                data-message-id={message.id}
+                role="listitem"
+                tabIndex={message.id === lastMessageId ? 0 : -1}
+                aria-label={`${message.role.toLowerCase()} message at ${messageTimestampFormatter.format(
+                  new Date(message.createdAt)
+                )}`}
+                className="focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg"
+              >
+                <MessageBubble
+                  message={message}
+                  themeStyle={themeStyle}
+                  hasAccentColor={hasAccentColor}
+                  onApproveTask={handleApproveTask}
+                  onApproveAll={handleApproveAll}
+                  onRegenerate={handleRegenerateClick}
+                  onSaveArtifact={(content) =>
+                    handleSaveArtifact(message.id, content)
+                  }
+                  artifactStatus={
+                    artifactStatusByMessageId[message.id] ?? "idle"
+                  }
+                  canRegenerate={
+                    message.role === "ASSISTANT" &&
+                    message.id === lastAssistantMessageId &&
+                    !isPending
+                  }
+                  modelLabel={activeModel?.label}
+                  modelProvider={activeModel?.provider}
+                  messageStatus={
+                    message.role === "USER" ? "delivered" : undefined
+                  }
+                  isPending={isPending || tasksPending}
+                />
+              </div>
+            ))}
+
+          {/* Optimistic user message during streaming */}
+          {optimisticUserMessage &&
+            (isActiveThreadStreaming || optimisticStatus === "failed") && (
+              <div className="flex flex-col gap-2 items-end">
+                <MessageBubble
+                  message={{
+                    id: "optimistic-user-message",
+                    threadId: effectiveThreadId ?? "",
+                    role: "USER",
+                    content: optimisticUserMessage,
+                    taskResolution: null,
+                    createdAt: new Date(),
+                    modelKey: null,
+                    modelLabel: null,
+                    modelProvider: null,
+                  }}
+                  themeStyle={themeStyle}
+                  hasAccentColor={hasAccentColor}
+                  onApproveTask={handleApproveTask}
+                  onApproveAll={handleApproveAll}
+                  messageStatus={optimisticStatus ?? "sending"}
+                  isPending={isPending || tasksPending}
+                />
+              </div>
+            )}
+
+          {/* Streaming AI response (and post-stream optimistic assistant bubble until DB message arrives) */}
+          {isActiveThreadStreaming &&
+            (isStreaming || (streamingContent && pendingAssistantId)) && (
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
+                  AI
+                </div>
+                <div className="flex-1 rounded-lg bg-card border border-border px-4 py-3 text-sm shadow-sm">
+                  {streamingContent ? (
+                    <div className="relative">
+                      <ChatMarkdown content={streamingContent} tone="default" />
+                      {/* Pulsing cursor only while actively streaming */}
+                      {isStreaming && (
+                        <span className="inline-block w-2 h-4 ml-0.5 bg-primary/70 animate-pulse rounded-sm" />
+                      )}
+                      {isStreaming && (
+                        <div
+                          className="mt-3 flex items-center gap-2 text-xs text-muted-foreground"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <LoaderIcon className="h-3 w-3 animate-spin" />
+                          AI is typing...
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <LoaderIcon className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">Thinking...</span>
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <LoaderIcon className="h-4 w-4 animate-spin" />
-                  <span className="text-xs">Thinking...</span>
-                </div>
-              )}
-            </div>
-            {/* Stop button (only while actively streaming) */}
-            {isStreaming && (
-              <button
-                onClick={handleStopStreaming}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
-                title="Stop generating"
-                aria-label="Stop generating"
-              >
-                <StopCircleIcon className="h-4 w-4" />
-              </button>
+                {/* Stop button (only while actively streaming) */}
+                {isStreaming && (
+                  <button
+                    onClick={handleStopStreaming}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted hover:bg-muted/80 text-muted-foreground transition-colors"
+                    title="Stop generating"
+                    aria-label="Stop generating"
+                  >
+                    <StopCircleIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             )}
-          </div>
-        )}
 
-        {/* Blocking mutation pending state (fallback) */}
-        {sendMessageMutation.isPending && !isStreaming && (
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
-              AI
+          {/* Blocking mutation pending state (fallback) */}
+          {sendMessageMutation.isPending && !isStreaming && (
+            <div className="flex items-start gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
+                AI
+              </div>
+              <div className="flex-1 rounded-lg bg-muted px-4 py-3">
+                <LoaderIcon className="h-4 w-4 animate-spin text-muted-foreground" />
+              </div>
             </div>
-            <div className="flex-1 rounded-lg bg-muted px-4 py-3">
-              <LoaderIcon className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
-          </div>
-        )}
+          )}
 
-        {/* Stream error message */}
-        {streamError && streamingThreadId === effectiveThreadId && (
-          <div className="flex justify-center my-2">
-            <div className="flex items-center gap-2 rounded-full bg-red-100 dark:bg-red-900/30 px-4 py-1.5 text-xs text-red-700 dark:text-red-300">
-              <AlertCircleIcon className="h-3 w-3" />
-              {streamError}
+          {/* Stream error message */}
+          {streamError && streamingThreadId === effectiveThreadId && (
+            <div className="flex justify-center my-2">
+              <div className="flex items-center gap-2 rounded-full bg-destructive/10 text-destructive px-4 py-1.5 text-xs border border-destructive/20">
+                <AlertCircleIcon className="h-3 w-3" />
+                {streamError}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {tasksPending && (
-          <div className="flex justify-center my-2">
-            <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
-              <LoaderIcon className="h-3 w-3 animate-spin" />
-              Creating tasks...
+          {tasksPending && (
+            <div className="flex justify-center my-2">
+              <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
+                <LoaderIcon className="h-3 w-3 animate-spin" />
+                Creating tasks...
+              </div>
             </div>
-          </div>
-        )}
+          )}
         </div>
 
         {/* Input area */}
@@ -622,8 +635,11 @@ export function ProjectChat({
               onChange={(e) => {
                 setInput(e.target.value);
                 // Simple auto-resize
-                e.target.style.height = 'auto';
-                e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+                e.target.style.height = "auto";
+                e.target.style.height = `${Math.min(
+                  e.target.scrollHeight,
+                  200
+                )}px`;
               }}
               onKeyDown={handleKeyDown}
               placeholder="Type your message..."
@@ -649,7 +665,7 @@ export function ProjectChat({
                 "transition-all focus:outline-none focus:ring-2 focus:ring-offset-0",
                 "disabled:cursor-not-allowed disabled:opacity-50",
                 hasAccentColor
-                  ? "bg-[rgb(var(--project-accent))] text-white hover:opacity-90 focus:ring-[rgb(var(--project-accent))/0.3]"
+                  ? "bg-[rgb(var(--project-accent))] text-[rgb(var(--project-accent-foreground))] hover:opacity-90 focus:ring-[rgb(var(--project-accent))/0.3]"
                   : "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary/30"
               )}
               style={hasAccentColor ? themeStyle : undefined}

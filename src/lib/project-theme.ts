@@ -27,7 +27,35 @@ export function hexToRgb(hex: string): string | null {
 }
 
 /**
- * Returns a style object containing the CSS variable for the project accent color.
+ * Calculates the relative luminance of an RGB color (0-1 scale).
+ * Uses the WCAG formula for relative luminance.
+ */
+function getLuminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((val) => {
+    const v = val / 255;
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/**
+ * Determines if a color is light or dark based on its luminance.
+ * Returns "255 255 255" (white) for dark colors, "0 0 0" (black) for light colors.
+ */
+function getForegroundRgb(hex: string): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return "255 255 255"; // Default to white
+
+  const [r, g, b] = rgb.split(" ").map(Number);
+  const luminance = getLuminance(r, g, b);
+
+  // Use white text on dark backgrounds (luminance < 0.5), black on light backgrounds
+  return luminance < 0.5 ? "255 255 255" : "0 0 0";
+}
+
+/**
+ * Returns a style object containing CSS variables for the project accent color
+ * and its computed foreground color (for AA contrast).
  * Use this on the root element of the component you want to theme.
  *
  * Usage:
@@ -36,6 +64,7 @@ export function hexToRgb(hex: string): string | null {
  * Then in Tailwind:
  * border-[rgb(var(--project-accent)/0.2)]
  * text-[rgb(var(--project-accent))]
+ * text-[rgb(var(--project-accent-foreground))] (for text on accent backgrounds)
  */
 export function getProjectTheme(color?: string | null) {
   if (!color) return {};
@@ -43,8 +72,11 @@ export function getProjectTheme(color?: string | null) {
   const rgb = hexToRgb(color);
   if (!rgb) return {};
 
+  const foregroundRgb = getForegroundRgb(color);
+
   return {
     '--project-accent': rgb,
+    '--project-accent-foreground': foregroundRgb,
   } as React.CSSProperties;
 }
 

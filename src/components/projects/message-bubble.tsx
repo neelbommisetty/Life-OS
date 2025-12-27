@@ -99,16 +99,19 @@ export function MessageBubble({
   const effectiveModelProvider = message.modelProvider ?? modelProvider ?? null;
 
   const modelLabelText = useMemo(() => {
+    // If no label is set, it's autorouting
     if (!effectiveModelLabel) return "Auto routing";
     if (!effectiveModelProvider) return effectiveModelLabel;
     const providerName =
       effectiveModelProvider === "openai"
         ? "OpenAI"
         : effectiveModelProvider === "anthropic"
-          ? "Anthropic"
-          : effectiveModelProvider === "google"
-            ? "Google"
-            : effectiveModelProvider;
+        ? "Anthropic"
+        : effectiveModelProvider === "google"
+        ? "Google"
+        : effectiveModelProvider === "xai"
+        ? "xAI"
+        : effectiveModelProvider;
     return `${effectiveModelLabel} (${providerName})`;
   }, [effectiveModelLabel, effectiveModelProvider]);
 
@@ -154,7 +157,7 @@ export function MessageBubble({
             "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
             isUser
               ? hasAccentColor
-                ? "bg-[rgb(var(--project-accent))] text-white"
+                ? "bg-[rgb(var(--project-accent))] text-[rgb(var(--project-accent-foreground))]"
                 : "bg-primary text-primary-foreground"
               : "bg-muted text-foreground"
           )}
@@ -167,7 +170,7 @@ export function MessageBubble({
             "rounded-lg px-4 py-3 text-sm shadow-sm",
             isUser
               ? hasAccentColor
-                ? "bg-[rgb(var(--project-accent))] text-white"
+                ? "bg-[rgb(var(--project-accent))] text-[rgb(var(--project-accent-foreground))]"
                 : "bg-primary text-primary-foreground"
               : "bg-card border border-border text-foreground"
           )}
@@ -185,7 +188,7 @@ export function MessageBubble({
           className={cn(
             "text-[11px]",
             messageStatus === "failed"
-              ? "text-red-600 dark:text-red-400"
+              ? "text-destructive"
               : "text-muted-foreground",
             isUser ? "mr-11 text-right" : "ml-11 text-left"
           )}
@@ -209,7 +212,7 @@ export function MessageBubble({
               type="button"
               onClick={() => onRegenerate(message.id)}
               disabled={!canRegenerate || isPending}
-              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-foreground/80 transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-foreground/80 transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
               title="Regenerate response"
             >
               <RotateCcwIcon className="h-3 w-3" />
@@ -220,12 +223,15 @@ export function MessageBubble({
             <button
               type="button"
               onClick={() => onSaveArtifact(message.content)}
-              disabled={artifactStatus === "saving" || artifactStatus === "saved"}
+              disabled={
+                artifactStatus === "saving" || artifactStatus === "saved"
+              }
               className={cn(
                 "inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium transition",
                 artifactStatus === "saved"
-                  ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300"
+                  ? "bg-muted/50 text-muted-foreground border-muted-foreground/20"
                   : "text-foreground/80 hover:bg-muted",
+                "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
                 "disabled:cursor-not-allowed disabled:opacity-60"
               )}
               title="Save as artifact"
@@ -250,7 +256,7 @@ export function MessageBubble({
                 <button
                   onClick={() => onApproveAll(message.id, proposedTasks)}
                   disabled={isPending}
-                  className="text-xs font-medium text-primary hover:underline disabled:opacity-50"
+                  className="text-xs font-medium text-primary hover:underline focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 focus:ring-offset-background rounded disabled:opacity-50"
                 >
                   Approve All
                 </button>
@@ -258,12 +264,12 @@ export function MessageBubble({
             </div>
 
             {taskResolution?.created && (
-              <div className="rounded-lg bg-green-100 dark:bg-green-900/30 px-3 py-2 text-xs text-green-700 dark:text-green-300">
+              <div className="rounded-lg bg-muted/50 border border-border px-3 py-2 text-xs text-foreground">
                 <div className="flex items-center gap-2 font-medium mb-1">
-                  <CheckCircle2Icon className="h-3 w-3" />
+                  <CheckCircle2Icon className="h-3 w-3 text-muted-foreground" />
                   Tasks Created Successfully
                 </div>
-                <p className="text-[10px] opacity-80">
+                <p className="text-[10px] text-muted-foreground">
                   {taskResolution.created.length} task
                   {taskResolution.created.length !== 1 ? "s" : ""} created
                 </p>
@@ -271,7 +277,7 @@ export function MessageBubble({
             )}
 
             {taskResolution?.error && (
-              <div className="rounded-lg bg-red-100 dark:bg-red-900/30 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              <div className="rounded-lg bg-destructive/10 text-destructive px-3 py-2 text-xs border border-destructive/20">
                 <div className="flex items-center gap-2 font-medium mb-1">
                   <AlertCircleIcon className="h-3 w-3" />
                   Creation Failed
@@ -282,7 +288,7 @@ export function MessageBubble({
                 <button
                   onClick={() => onApproveAll(message.id, proposedTasks)}
                   disabled={isPending}
-                  className="text-xs font-medium underline hover:no-underline disabled:opacity-50"
+                  className="text-xs font-medium underline hover:no-underline focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded disabled:opacity-50"
                 >
                   Retry
                 </button>
@@ -310,17 +316,17 @@ export function MessageBubble({
                     className={cn(
                       "group relative rounded-lg border p-3 transition-colors",
                       isCreated
-                        ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20"
+                        ? "border-border bg-muted/40"
                         : "border-border bg-muted/30 hover:bg-muted/50"
                     )}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="space-y-1 min-w-0 flex-1">
-                        <p className="text-sm font-medium text-foreground break-words">
+                        <p className="text-sm font-medium text-foreground wrap-break-word">
                           {task.title}
                         </p>
                         {task.description && (
-                          <p className="text-xs text-muted-foreground break-words line-clamp-2">
+                          <p className="text-xs text-muted-foreground wrap-break-word line-clamp-2">
                             {task.description}
                           </p>
                         )}
@@ -340,7 +346,7 @@ export function MessageBubble({
                         </div>
                       </div>
                       {isCreated ? (
-                        <span className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium bg-green-600 text-white">
+                        <span className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium bg-muted text-muted-foreground border border-border">
                           Created
                         </span>
                       ) : (
@@ -351,7 +357,7 @@ export function MessageBubble({
                           <button
                             onClick={() => onApproveTask(message.id, task)}
                             disabled={isPending}
-                            className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
+                            className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 focus:ring-offset-background disabled:opacity-50"
                             title="Create this task"
                           >
                             Create task
@@ -373,6 +379,7 @@ export function MessageBubble({
                 className={cn(
                   "w-full flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium transition-colors",
                   "bg-primary text-primary-foreground hover:bg-primary/90",
+                  "focus:outline-none focus:ring-2 focus:ring-primary/30 focus:ring-offset-2 focus:ring-offset-background",
                   "disabled:cursor-not-allowed disabled:opacity-50"
                 )}
               >

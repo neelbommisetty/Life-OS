@@ -125,10 +125,16 @@ body {
 }
 
 .chat-markdown--inverted {
-  --chat-code-bg: rgba(255, 255, 255, 0.12);
-  --chat-code-border: rgba(255, 255, 255, 0.2);
-  --chat-code-fg: #ffffff;
-  --chat-code-muted: rgba(255, 255, 255, 0.65);
+  /* Use accent foreground if available (from parent theme), otherwise fallback to white */
+  --chat-inverted-fg: rgb(var(--project-accent-foreground, 255 255 255));
+  /* For code blocks, use semi-transparent versions of the foreground */
+  /* Since foreground is computed for contrast, these will work for both light/dark accents */
+  /* Using opacity on the element itself for better browser compatibility */
+  --chat-code-bg: var(--chat-inverted-fg);
+  --chat-code-border: var(--chat-inverted-fg);
+  --chat-code-fg: var(--chat-inverted-fg);
+  --chat-code-muted: var(--chat-inverted-fg);
+  /* Syntax highlighting colors adjusted for inverted backgrounds (light colors for dark backgrounds) */
   --chat-code-keyword: #67e8f9; /* cyan-200 */
   --chat-code-title: #a7f3d0; /* emerald-200 */
   --chat-code-string: #fde68a; /* amber-200 */
@@ -196,6 +202,11 @@ body {
   padding: 0.1rem 0.35rem;
 }
 
+.chat-markdown--inverted code {
+  background: color-mix(in srgb, var(--chat-code-bg) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chat-code-border) 20%, transparent);
+}
+
 .chat-markdown pre {
   background: var(--chat-code-bg);
   color: var(--chat-code-fg);
@@ -203,6 +214,11 @@ body {
   border-radius: 0.6rem;
   padding: 0.75rem;
   overflow-x: auto;
+}
+
+.chat-markdown--inverted pre {
+  background: color-mix(in srgb, var(--chat-code-bg) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chat-code-border) 20%, transparent);
 }
 
 .chat-markdown pre code {
@@ -238,6 +254,11 @@ body {
 .chat-markdown .hljs-quote {
   color: var(--chat-code-muted);
   font-style: italic;
+}
+
+.chat-markdown--inverted .hljs-comment,
+.chat-markdown--inverted .hljs-quote {
+  color: color-mix(in srgb, var(--chat-code-muted) 65%, transparent);
 }
 
 .chat-markdown .hljs-keyword,

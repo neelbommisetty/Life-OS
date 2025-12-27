@@ -59,22 +59,19 @@ const PROVIDER_META: Record<
 const COST_TIER_META: Record<string, { label: string; className: string }> = {
   economy: {
     label: "Economy",
-    className:
-      "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-200",
+    className: "bg-muted text-muted-foreground",
   },
   standard: {
     label: "Standard",
-    className: "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200",
+    className: "bg-muted text-muted-foreground",
   },
   premium: {
     label: "Premium",
-    className:
-      "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-200",
+    className: "bg-muted text-muted-foreground",
   },
   enterprise: {
     label: "Enterprise",
-    className:
-      "bg-slate-200 text-slate-700 dark:bg-slate-500/20 dark:text-slate-200",
+    className: "bg-muted text-muted-foreground",
   },
 };
 
@@ -124,8 +121,7 @@ export function ModelSelector({
         tierModels,
         meta: getCostTierMeta(tierKey) ?? {
           label: "Unrated",
-          className:
-            "bg-muted text-muted-foreground dark:bg-muted/40 dark:text-muted-foreground",
+          className: "bg-muted text-muted-foreground",
         },
       }));
   }, [models]);
