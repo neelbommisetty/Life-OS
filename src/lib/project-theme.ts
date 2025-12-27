@@ -3,7 +3,7 @@
  * CSS variable compatible RGB values ("59 130 246").
  */
 export function hexToRgb(hex: string): string | null {
-  const cleanHex = hex.replace('#', '');
+  const cleanHex = hex.replace("#", "");
 
   // Handle short hex: #abc -> #aabbcc
   if (cleanHex.length === 3) {
@@ -75,8 +75,7 @@ export function getProjectTheme(color?: string | null) {
   const foregroundRgb = getForegroundRgb(color);
 
   return {
-    '--project-accent': rgb,
-    '--project-accent-foreground': foregroundRgb,
+    "--project-accent": rgb,
+    "--project-accent-foreground": foregroundRgb,
   } as React.CSSProperties;
 }
-
