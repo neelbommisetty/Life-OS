@@ -5,7 +5,7 @@ import { StatusFilter } from './status-filter';
 import { SortMenu, type SortBy, type SortOrder } from './sort-menu';
 import { ViewToggle } from './view-toggle';
 import type { ProjectStatus } from '@prisma/client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 
 type Props = {

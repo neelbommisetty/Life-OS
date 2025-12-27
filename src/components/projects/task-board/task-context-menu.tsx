@@ -1,17 +1,15 @@
 'use client';
 
 import { Menu, MenuButton, MenuItem, MenuItems, Transition } from '@headlessui/react';
-import type { Task, TaskStatus, Priority } from '@prisma/client';
+import type { TaskStatus } from '@prisma/client';
 import { TASK_STATUS_LABELS, TASK_KANBAN_STATUS_ORDER } from '@/lib/task-utils';
-import { PRIORITY_LABELS } from '@/lib/project-utils';
 import { cn } from '@/lib/utils';
-import { Edit, Trash2, ArrowRight, MoreVertical, Flag } from 'lucide-react';
+import { Edit, Trash2, ArrowRight } from 'lucide-react';
 import { Fragment } from 'react';
 
 type Props = {
-  task: Task;
+  task: { id: string; status: TaskStatus };
   onStatusChange: (status: TaskStatus) => void;
-  onPriorityChange?: (priority: Priority) => void;
   onEdit: () => void;
   onDelete: () => void;
   children: React.ReactNode;
@@ -20,22 +18,13 @@ type Props = {
 export function TaskContextMenu({
   task,
   onStatusChange,
-  onPriorityChange,
   onEdit,
   onDelete,
   children,
 }: Props) {
   return (
     <Menu as="div" className="relative w-full">
-      <MenuButton as="div" className="w-full" onContextMenu={(e) => {
-        // We want this to trigger on right click, but Headless UI Menu usually triggers on click.
-        // For a true context menu we might need a different approach or a wrapper.
-        // However, for now, let's treat the card click as the trigger or add a trigger button.
-        // To make it a REAL context menu, we'd need to position it at the mouse coordinates.
-        // Given Headless UI v2 Menu limitations, I'll stick to a trigger button for now
-        // OR use a custom context menu implementation if a real one is needed.
-        // Let's use a trigger button 'MoreVertical' hidden until hover.
-      }}>
+      <MenuButton as="div" className="w-full">
         {children}
       </MenuButton>
 

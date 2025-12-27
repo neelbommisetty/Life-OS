@@ -1,7 +1,6 @@
 'use client';
 
-import { cn } from "@/lib/utils";
-import { TASK_KANBAN_STATUS_ORDER, TASK_STATUS_LABELS } from '@/lib/task-utils';
+import { TASK_KANBAN_STATUS_ORDER } from '@/lib/task-utils';
 
 export function TaskBoardSkeleton() {
   return (

@@ -5,7 +5,7 @@ import { formatDate } from '@/lib/project-utils';
 import { STATUS_LABELS } from '@/lib/project-utils';
 import type { Project } from '@prisma/client';
 import { cn } from '@/lib/utils';
-import { Clock, Tag, ExternalLink } from 'lucide-react';
+import { Clock, ExternalLink } from 'lucide-react';
 
 type Props = {
   projects: Project[];

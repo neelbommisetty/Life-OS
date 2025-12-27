@@ -1,6 +1,6 @@
 'use client';
 
-import { Dialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
+import { Transition } from '@headlessui/react';
 import { useCallback, useMemo, useState, Fragment } from 'react';
 import {
   DndContext,
@@ -14,27 +14,19 @@ import {
   type DragStartEvent,
   type CollisionDetection,
 } from '@dnd-kit/core';
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 import type { Priority, Task, TaskStatus } from '@prisma/client';
-import { Calendar, Filter, MessageSquareIcon, Plus, Search, Trash2, X } from 'lucide-react';
+import { Filter, Plus, Search, X } from 'lucide-react';
 import { api } from '@/trpc/client';
 import {
   TASK_KANBAN_STATUS_ORDER,
   TASK_STATUS_LABELS,
   TASK_STATUS_ORDER,
-  TASK_STATUS_TONES,
 } from '@/lib/task-utils';
-import { PRIORITY_LABELS, formatDate } from '@/lib/project-utils';
+import { PRIORITY_LABELS } from '@/lib/project-utils';
 import { priorityEnum } from '@/lib/validations/project';
 import { taskStatusEnum } from '@/lib/validations/task';
 import { cn } from '@/lib/utils';
 import { getProjectTheme } from '@/lib/project-theme';
-import { useDroppable } from '@dnd-kit/core';
 import { resolveTasksViewParam } from '@/lib/project-deeplinks';
 import { pushUrl } from '@/lib/url-state';
 import { usePathname, useSearchParams } from 'next/navigation';

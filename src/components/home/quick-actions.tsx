@@ -2,8 +2,7 @@
 
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { Plus, ListTodo, MessageSquarePlus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { ListTodo, MessageSquarePlus } from 'lucide-react';
 import { CreateProjectDialog } from '@/components/projects/create-project-dialog';
 
 export function QuickActions() {
