@@ -49,6 +49,11 @@ const PROVIDER_META: Record<
     icon: Gem,
     iconClassName: "text-blue-500",
   },
+  xai: {
+    label: "xAI",
+    icon: Bot,
+    iconClassName: "text-slate-500",
+  },
 };
 
 const COST_TIER_META: Record<string, { label: string; className: string }> = {
