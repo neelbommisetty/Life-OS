@@ -1,4 +1,4 @@
-import type { Priority, Task, TaskStatus } from '@prisma/client';
+import type { Priority, TaskStatus } from '@prisma/client';
 
 export type TaskDraft = {
   id?: string;

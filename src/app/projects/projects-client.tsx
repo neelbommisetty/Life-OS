@@ -18,8 +18,8 @@ export function ProjectsClient() {
   const router = useRouter();
   const [search, setSearch] = useQueryState<string>('q', '');
   const [status, setStatus] = useQueryState<ProjectStatus>('status');
-  const [sortBy, setSortBy] = useQueryState<SortBy>('sort', 'updatedAt');
-  const [sortOrder, setSortOrder] = useQueryState<SortOrder>('order', 'desc');
+  const [sortBy] = useQueryState<SortBy>('sort', 'updatedAt');
+  const [sortOrder] = useQueryState<SortOrder>('order', 'desc');
   const [viewMode, setViewMode] = useQueryState<'grid' | 'list'>('view', 'grid');
 
   const {
@@ -32,8 +32,8 @@ export function ProjectsClient() {
     {
       status: status || undefined,
       search: search || undefined,
-      sortBy: sortBy as any,
-      sortOrder: sortOrder as any,
+      sortBy: sortBy || undefined,
+      sortOrder: sortOrder || undefined,
       limit: 12
     },
     {

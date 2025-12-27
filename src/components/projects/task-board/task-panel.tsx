@@ -1,7 +1,7 @@
 import { Dialog, DialogPanel, DialogTitle, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import { X, Trash2 } from 'lucide-react';
-import type { TaskStatus } from '@prisma/client';
+import type { TaskStatus, Priority } from '@prisma/client';
 import type { TaskDraft } from './types';
 import { TASK_STATUS_LABELS } from '@/lib/task-utils';
 
@@ -122,7 +122,7 @@ export function TaskPanel({
                     <label className="text-sm font-medium text-foreground">Priority</label>
                     <select
                       value={draft.priority}
-                      onChange={(e) => setDraft({ ...draft, priority: e.target.value as any })}
+                      onChange={(e) => setDraft({ ...draft, priority: e.target.value as Priority })}
                       className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
                     >
                       {priorityOptions.map((priority) => (
