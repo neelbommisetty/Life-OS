@@ -41,13 +41,24 @@ export const PRIORITY_COLORS: Record<Priority, string> = {
     "bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-200 dark:border-rose-800",
 };
 
-export const formatDate = (date?: Date | string | null) => {
+export const formatDate = (date?: Date | string | null | number) => {
   if (!date) return "";
-  const value = typeof date === "string" ? new Date(date) : date;
+  const value = typeof date === "string" || typeof date === "number" ? new Date(date) : date;
   return value.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
 };
+
+export function formatDateTime(date: Date | string | number) {
+  const d = new Date(date);
+  return new Intl.DateTimeFormat("en-US", {
+     month: "short",
+     day: "numeric",
+     year: "numeric",
+     hour: "numeric",
+     minute: "numeric"
+  }).format(d);
+}
 

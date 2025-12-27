@@ -10,6 +10,7 @@ import { ProjectStatsCard } from "@/components/projects/project-stats-card";
 import { ProjectChat } from "@/components/projects/project-chat";
 import { formatDate } from "@/lib/project-utils";
 import { serverCaller } from "@/server/trpc/server";
+import { Suspense } from "react";
 
 type Props = {
   id: string;
@@ -45,83 +46,85 @@ export async function ProjectDetail({ id }: Props) {
       />
 
       <section className="space-y-6">
-        <ProjectTabs
-          accentColor={project.color}
-          overview={
-            <div className="space-y-6">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
-                {/* Main Content Column */}
-                <div className="space-y-6">
-                  {/* Stats and Progress */}
-                  <ProjectStatsCard stats={taskStats} accentColor={project.color} />
+        <Suspense fallback={<div className="h-64 w-full animate-pulse bg-muted rounded-xl" />}>
+          <ProjectTabs
+            accentColor={project.color}
+            overview={
+              <div className="space-y-6">
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,0.6fr)]">
+                  {/* Main Content Column */}
+                  <div className="space-y-6">
+                    {/* Stats and Progress */}
+                    <ProjectStatsCard stats={taskStats} accentColor={project.color} />
 
-                  {/* Description Card */}
-                  <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <div className="space-y-2">
-                      <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                        Project brief
-                      </p>
-                      <h2 className="text-lg font-semibold text-foreground">
-                        Description
-                      </h2>
-                      <p className="text-sm text-muted-foreground line-clamp-6">
-                        {project.description || "No description yet."}
-                      </p>
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <span className="uppercase tracking-wide">Created</span>
-                        <span className="text-foreground">
-                          {formatDate(project.createdAt)}
-                        </span>
+                    {/* Description Card */}
+                    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                      <div className="space-y-2">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Project brief
+                        </p>
+                        <h2 className="text-lg font-semibold text-foreground">
+                          Description
+                        </h2>
+                        <p className="text-sm text-muted-foreground line-clamp-6">
+                          {project.description || "No description yet."}
+                        </p>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="uppercase tracking-wide">Updated</span>
-                        <span className="text-foreground">
-                          {formatDate(project.updatedAt)}
-                        </span>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="uppercase tracking-wide">Created</span>
+                          <span className="text-foreground">
+                            {formatDate(project.createdAt)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="uppercase tracking-wide">Updated</span>
+                          <span className="text-foreground">
+                            {formatDate(project.updatedAt)}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* Sidebar Column */}
-                <div className="space-y-6">
-                  <ProjectSystemContextCard projectId={project.id} />
+                  {/* Sidebar Column */}
+                  <div className="space-y-6">
+                    <ProjectSystemContextCard projectId={project.id} />
 
-                  <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
-                    <p className="text-xs uppercase tracking-wide text-muted-foreground mb-4">
-                      Status history
-                    </p>
-                    <StatusTimeline
-                      history={project.statusHistory}
-                      accentColor={project.color}
-                    />
+                    <div className="rounded-xl border border-border bg-card p-5 shadow-sm">
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground mb-4">
+                        Status history
+                      </p>
+                      <StatusTimeline
+                        history={project.statusHistory}
+                        accentColor={project.color}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          }
-          tasks={
-            <ProjectTasksBoard
-              projectId={project.id}
-              accentColor={project.color}
-            />
-          }
-          chat={
-            <ProjectChat
-              projectId={project.id}
-              accentColor={project.color}
-            />
-          }
-          artifacts={
-            <ProjectArtifacts
-              projectId={project.id}
-              accentColor={project.color}
-            />
-          }
-        />
+            }
+            tasks={
+              <ProjectTasksBoard
+                projectId={project.id}
+                accentColor={project.color}
+              />
+            }
+            chat={
+              <ProjectChat
+                projectId={project.id}
+                accentColor={project.color}
+              />
+            }
+            artifacts={
+              <ProjectArtifacts
+                projectId={project.id}
+                accentColor={project.color}
+              />
+            }
+          />
+        </Suspense>
       </section>
     </main>
   );

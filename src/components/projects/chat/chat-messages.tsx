@@ -9,6 +9,7 @@ import type { CSSProperties, RefObject } from "react";
 import type { ChatMessage } from "@prisma/client";
 import type { ModelOption } from "../model-selector";
 import type { ProposedTask } from "@/lib/chat-utils";
+import { formatDateTime } from "@/lib/project-utils";
 
 type Props = {
   messages: any[]; // Using any[] to match the complex infinite query return type for now
@@ -71,10 +72,7 @@ export function ChatMessages({
   onSelectPrompt,
   artifactStatusByMessageId,
 }: Props) {
-  const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+
 
   const isEmpty = messages.length === 0;
 
@@ -122,8 +120,8 @@ export function ChatMessages({
           data-message-id={message.id}
           role="listitem"
           tabIndex={message.id === lastMessageId ? 0 : -1}
-          aria-label={`${message.role.toLowerCase()} message at ${messageTimestampFormatter.format(
-            new Date(message.createdAt)
+          aria-label={`${message.role.toLowerCase()} message at ${formatDateTime(
+            message.createdAt
           )}`}
           className="focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg"
         >

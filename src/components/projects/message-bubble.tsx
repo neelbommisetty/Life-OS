@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 import type { ChatMessage } from "@prisma/client";
 import type { ProposedTask } from "@/lib/chat-utils";
 import { extractTasksFromMessage } from "@/lib/chat-utils";
+import { formatDateTime } from "@/lib/project-utils";
 import {
   CheckCircle2Icon,
   CalendarIcon,
@@ -89,14 +90,7 @@ export function MessageBubble({
   }, [message.content, isAssistant]);
 
   const timestampLabel = useMemo(() => {
-    const date =
-      message.createdAt instanceof Date
-        ? message.createdAt
-        : new Date(message.createdAt);
-    return new Intl.DateTimeFormat(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    }).format(date);
+    return formatDateTime(message.createdAt);
   }, [message.createdAt]);
 
   const effectiveModelLabel = message.modelLabel ?? modelLabel ?? null;

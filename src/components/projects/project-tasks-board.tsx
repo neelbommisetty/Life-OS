@@ -26,10 +26,12 @@ import { PRIORITY_LABELS } from "@/lib/project-utils";
 import { priorityEnum } from "@/lib/validations/project";
 import { taskStatusEnum } from "@/lib/validations/task";
 import { cn } from "@/lib/utils";
-import { getProjectTheme } from "@/lib/project-theme";
+import { useProjectTheme } from "@/lib/hooks/use-project-theme";
+import { useManagedMutation } from "@/lib/hooks/use-managed-mutation";
 import { resolveTasksViewParam } from "@/lib/project-deeplinks";
 import { pushUrl } from "@/lib/url-state";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParamState } from "@/lib/hooks/use-search-param-state";
 import {
   ArchivedList,
   BacklogList,
@@ -53,7 +55,7 @@ const priorityOptions = priorityEnum.options as Priority[];
 const statusOptions = taskStatusEnum.options as TaskStatus[];
 
 export function ProjectTasksBoard({ projectId, accentColor }: Props) {
-  const themeStyle = getProjectTheme(accentColor);
+  const { style: themeStyle } = useProjectTheme(accentColor);
   const utils = api.useUtils();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -64,10 +66,14 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const [priorityFilter, setPriorityFilter] = useState<Priority | "ALL">("ALL");
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(() => createEmptyDraft());
+  const [tasksViewParam, setTasksViewParam] = useSearchParamState<string | null>("tasksView", null);
+  const [threadIdParam, setThreadIdParam] = useSearchParamState<string | null>("threadId", null);
+  const [chatDraftParam, setChatDraftParam] = useSearchParamState<string | null>("chatDraft", null);
+
   const activeView = useMemo(() => {
-    const viewParam = resolveTasksViewParam(searchParams.get("tasksView"));
+    const viewParam = resolveTasksViewParam(tasksViewParam);
     return viewParam.toUpperCase() as TaskView;
-  }, [searchParams]);
+  }, [tasksViewParam]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(
@@ -83,56 +89,55 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     [projectId, utils.task.list]
   );
 
-  const createTask = api.task.create.useMutation({
-    onSuccess: (created) => {
+  const createTask = useManagedMutation(api.task.create.useMutation as any, {
+    onSuccess: (created: Task) => {
       const next = [...tasks, created];
       syncTasks(next);
       setPanelOpen(false);
     },
+    successMessage: "Task created",
   });
 
-  const updateTask = api.task.update.useMutation({
-    onSuccess: (updated) => {
+  const updateTask = useManagedMutation(api.task.update.useMutation as any, {
+    onSuccess: (updated: Task) => {
       const next = tasks.map((task) =>
         task.id === updated.id ? updated : task
       );
       syncTasks(next);
       setPanelOpen(false);
     },
+    successMessage: "Task updated",
   });
 
-  const deleteTask = api.task.delete.useMutation({
-    onSuccess: (_, variables) => {
+  const deleteTask = useManagedMutation(api.task.delete.useMutation as any, {
+    onSuccess: (_, variables: any) => {
       const next = tasks.filter((task) => task.id !== variables.id);
       syncTasks(next);
       setPanelOpen(false);
     },
+    successMessage: "Task deleted",
   });
 
-  const moveTask = api.task.move.useMutation({
-    onSuccess: (next) => {
+  const moveTask = useManagedMutation(api.task.move.useMutation as any, {
+    onSuccess: (next: Task[]) => {
       syncTasks(next);
     },
   });
 
-  const createThread = api.chat.createThread.useMutation({
-    onSuccess: () => {
-      utils.chat.listThreads.invalidate({ projectId });
-    },
+  const createThread = useManagedMutation(api.chat.createThread.useMutation as any, {
+    invalidate: (utils) => utils.chat.listThreads.invalidate({ projectId }),
   });
 
   const setThreadIdInUrl = useCallback(
     (threadId: string, draftMessage?: string) => {
-      const nextParams = new URLSearchParams(searchParams.toString());
-      nextParams.set("threadId", threadId);
+      setThreadIdParam(threadId);
       if (draftMessage) {
-        nextParams.set("chatDraft", draftMessage);
+        setChatDraftParam(draftMessage);
+      } else {
+        setChatDraftParam(null);
       }
-      const query = nextParams.toString();
-      const basePath = pathname || `/projects/${projectId}/tasks`;
-      pushUrl(query ? `${basePath}?${query}` : basePath);
     },
-    [projectId, searchParams, pathname]
+    [setThreadIdParam, setChatDraftParam]
   );
 
   const handleCreateTaskThread = useCallback(
@@ -155,7 +160,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
           name: buildTaskThreadName(task),
         },
         {
-          onSuccess: (thread) => {
+          onSuccess: (thread: any) => {
             setThreadIdInUrl(thread.id, buildTaskMessageTemplate(task));
           },
           onSettled: () => {
@@ -221,17 +226,13 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
 
   const updateTasksView = useCallback(
     (nextView: TaskView) => {
-      const nextParams = new URLSearchParams(searchParams.toString());
       if (nextView === "KANBAN") {
-        nextParams.delete("tasksView");
+        setTasksViewParam(null);
       } else {
-        nextParams.set("tasksView", nextView.toLowerCase());
+        setTasksViewParam(nextView.toLowerCase());
       }
-      const query = nextParams.toString();
-      const basePath = `/projects/${projectId}/tasks`;
-      pushUrl(query ? `${basePath}?${query}` : basePath);
     },
-    [projectId, searchParams]
+    [setTasksViewParam]
   );
 
   const handleDragEnd = (event: DragEndEvent) => {

@@ -9,12 +9,13 @@ import {
 } from "react";
 import { api } from "@/trpc/client";
 import { cn } from "@/lib/utils";
-import { getProjectTheme } from "@/lib/project-theme";
+import { useProjectTheme } from "@/lib/hooks/use-project-theme";
 import { useChatStreaming } from "./hooks/use-chat-streaming";
 import { useChatTasks } from "./hooks/use-chat-tasks";
 import { useChatScroll } from "./hooks/use-chat-scroll";
 import { pushUrl, replaceUrl } from "@/lib/url-state";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useSearchParamState } from "@/lib/hooks/use-search-param-state";
 import { ThreadSelector } from "./thread-selector";
 import { type ModelOption } from "./model-selector";
 import { ChatHeader } from "./chat/chat-header";
@@ -34,11 +35,12 @@ export function ProjectChat({
   layout = "default",
   className,
 }: Props) {
-  const themeStyle = getProjectTheme(accentColor);
-  const hasAccentColor = !!accentColor && Object.keys(themeStyle).length > 0;
+  const { style: themeStyle, hasColor: hasAccentColor } = useProjectTheme(accentColor);
   const isDrawer = layout === "drawer";
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [threadIdParam, setThreadIdParam] = useSearchParamState<string | null>("threadId", null);
+  const [chatDraftParam, setChatDraftParam] = useSearchParamState<string | null>("chatDraft", null);
   const [input, setInput] = useState("");
   const pageSize = 30;
 
@@ -57,7 +59,7 @@ export function ProjectChat({
 
   const utils = api.useUtils();
   const threads = useMemo(() => threadsQuery.data ?? [], [threadsQuery.data]);
-  const threadIdParam = searchParams.get("threadId");
+
   const effectiveThreadId = useMemo(() => {
     if (!threads.length) return null;
     const paramIsValid =
@@ -102,22 +104,9 @@ export function ProjectChat({
 
   const setThreadIdInUrl = useCallback(
     (threadId: string | null, replace = false) => {
-      const nextParams = new URLSearchParams(searchParams.toString());
-      if (threadId) {
-        nextParams.set("threadId", threadId);
-      } else {
-        nextParams.delete("threadId");
-      }
-      const query = nextParams.toString();
-      const basePath = pathname || `/projects/${projectId}`;
-      const nextUrl = query ? `${basePath}?${query}` : basePath;
-      if (replace) {
-        replaceUrl(nextUrl);
-        return;
-      }
-      pushUrl(nextUrl);
+      setThreadIdParam(threadId, replace);
     },
-    [projectId, searchParams, pathname]
+    [setThreadIdParam]
   );
 
   const setThreadModelMutation = api.chat.setThreadModel.useMutation({
@@ -321,21 +310,16 @@ export function ProjectChat({
   ]);
 
   useEffect(() => {
-    const draftParam = searchParams.get("chatDraft");
-    if (!draftParam) {
+    if (!chatDraftParam) {
       return;
     }
     if (!input.trim()) {
       startTransition(() => {
-        setInput(draftParam);
+        setInput(chatDraftParam);
       });
     }
-    const nextParams = new URLSearchParams(searchParams.toString());
-    nextParams.delete("chatDraft");
-    const query = nextParams.toString();
-    const basePath = pathname || `/projects/${projectId}`;
-    replaceUrl(query ? `${basePath}?${query}` : basePath);
-  }, [input, projectId, searchParams, pathname]);
+    setChatDraftParam(null, true);
+  }, [chatDraftParam, input, setChatDraftParam]);
 
   const stripJsonBlock = useCallback((content: string) => {
     return content.replace(/```json[\s\S]*?```/g, "").trim();
