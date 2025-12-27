@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, startTransition } from "react";
 import { api } from "@/trpc/client";
 import {
   SendIcon,
@@ -166,7 +166,7 @@ export function ProjectChat({
     if (!activeThread?.modelKey) return undefined;
     const key = activeThread.modelKey as ModelOption["key"];
     return modelLookup.get(key);
-  }, [activeThread?.modelKey, modelLookup]);
+  }, [activeThread, modelLookup]);
 
   // Custom hooks
   const {
@@ -326,7 +326,9 @@ export function ProjectChat({
       return;
     }
     if (!input.trim()) {
-      setInput(draftParam);
+      startTransition(() => {
+        setInput(draftParam);
+      });
     }
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.delete("chatDraft");

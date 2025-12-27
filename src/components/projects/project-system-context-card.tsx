@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, startTransition } from "react";
 import { LockIcon, PencilIcon, SaveIcon, XIcon } from "lucide-react";
 import { api } from "@/trpc/client";
 import {
@@ -26,7 +26,9 @@ export function ProjectSystemContextCard({ projectId }: Props) {
 
   useEffect(() => {
     if (!isEditing) {
-      setDraft(systemContextArtifact?.content ?? "");
+      startTransition(() => {
+        setDraft(systemContextArtifact?.content ?? "");
+      });
     }
   }, [isEditing, systemContextArtifact?.content]);
 

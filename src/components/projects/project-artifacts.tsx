@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, startTransition } from "react";
 import { Dialog, DialogPanel, DialogTitle, Transition } from "@headlessui/react";
 import type { Artifact, ArtifactType } from "@prisma/client";
 import {
@@ -133,10 +133,12 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
     const hasArtifacts =
       visibleArtifacts.length > 0 || !!systemContextArtifact;
     if (!hasArtifacts) {
-      setSelectedId(null);
-      if (draft.mode === "edit") {
-        setDraft(createEmptyDraft());
-      }
+      startTransition(() => {
+        setSelectedId(null);
+        if (draft.mode === "edit") {
+          setDraft(createEmptyDraft());
+        }
+      });
       return;
     }
     if (
@@ -144,34 +146,40 @@ export function ProjectArtifacts({ projectId, accentColor }: Props) {
       !visibleArtifacts.some((item) => item.id === selectedId) &&
       selectedId !== systemContextArtifact?.id
     ) {
-      setSelectedId(null);
+      startTransition(() => {
+        setSelectedId(null);
+      });
     }
-  }, [draft.mode, selectedId, systemContextArtifact?.id, visibleArtifacts]);
+  }, [draft.mode, selectedId, systemContextArtifact, visibleArtifacts]);
 
   useEffect(() => {
-    if (draft.mode === "edit") {
-      setTextMode("preview");
-      return;
-    }
-    setTextMode("write");
+    startTransition(() => {
+      if (draft.mode === "edit") {
+        setTextMode("preview");
+      } else {
+        setTextMode("write");
+      }
+    });
   }, [draft.id, draft.mode, draft.type]);
 
   useEffect(() => {
     if (!selectedId) return;
     const artifact = artifacts.find((item) => item.id === selectedId);
     if (!artifact) return;
-    setDraft({
-      id: artifact.id,
-      mode: "edit",
-      type: artifact.type,
-      title: artifact.title,
-      content: artifact.content ?? "",
-      url: artifact.url ?? "",
-      fileKey: artifact.fileKey ?? "",
-      fileName: artifact.fileName ?? "",
-      fileSize: artifact.fileSize ?? null,
-      fileType: artifact.fileType ?? "",
-      fileUrl: artifact.fileUrl ?? "",
+    startTransition(() => {
+      setDraft({
+        id: artifact.id,
+        mode: "edit",
+        type: artifact.type,
+        title: artifact.title,
+        content: artifact.content ?? "",
+        url: artifact.url ?? "",
+        fileKey: artifact.fileKey ?? "",
+        fileName: artifact.fileName ?? "",
+        fileSize: artifact.fileSize ?? null,
+        fileType: artifact.fileType ?? "",
+        fileUrl: artifact.fileUrl ?? "",
+      });
     });
   }, [artifacts, selectedId]);
 
