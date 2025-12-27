@@ -5,6 +5,8 @@ import { TASK_STATUS_LABELS, TASK_STATUS_TONES } from '@/lib/task-utils';
 import { PRIORITY_LABELS, formatDate } from '@/lib/project-utils';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { TaskContextMenu } from './task-context-menu';
+import type { TaskStatus } from '@prisma/client';
 
 export type TaskCardContentProps = {
   task: Task;
@@ -46,7 +48,7 @@ export function TaskCardContent({
               {formatDate(task.dueDate)}
             </span>
           )}
-          {onBrainstorm && (
+          {onBrainstorm && task.status !== 'DONE' && task.status !== 'ARCHIVED' && (
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
@@ -75,6 +77,10 @@ export type SortableTaskCardProps = {
   onSelect: () => void;
   onBrainstorm: () => void;
   isBrainstorming: boolean;
+  isSelected?: boolean;
+  onStatusChange: (status: TaskStatus) => void;
+  onDelete: () => void;
+  onToggle: () => void;
 };
 
 export function SortableTaskCard({
@@ -82,6 +88,10 @@ export function SortableTaskCard({
   onSelect,
   onBrainstorm,
   isBrainstorming,
+  isSelected,
+  onStatusChange,
+  onDelete,
+  onToggle,
 }: SortableTaskCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -94,38 +104,56 @@ export function SortableTaskCard({
   };
 
   return (
-    <article
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={onSelect}
-      className={cn(
-        "group cursor-grab rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-colors hover:border-primary/40",
-        isDragging && "opacity-0"
-      )}
+    <TaskContextMenu
+      task={task}
+      onStatusChange={onStatusChange}
+      onEdit={onSelect}
+      onDelete={onDelete}
     >
-      <TaskCardContent
-        task={task}
-        onBrainstorm={onBrainstorm}
-        isBrainstorming={isBrainstorming}
-      />
-    </article>
+      <article
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey) {
+            e.stopPropagation();
+            onToggle();
+          } else {
+            onSelect();
+          }
+        }}
+        className={cn(
+          "group cursor-grab rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-all hover:border-primary/40",
+          isSelected && "border-primary/60 ring-1 ring-primary/20 bg-primary/[0.02]",
+          isDragging && "opacity-0"
+        )}
+      >
+        <TaskCardContent
+          task={task}
+          onBrainstorm={onBrainstorm}
+          isBrainstorming={isBrainstorming}
+        />
+      </article>
+    </TaskContextMenu>
   );
 }
 
 export type TaskCardProps = {
   task: Task;
   isOverlay?: boolean;
+  isSelected?: boolean;
 };
 
-export function TaskCard({ task, isOverlay }: TaskCardProps) {
+export function TaskCard({ task, isOverlay, isSelected }: TaskCardProps) {
   return (
     <article
       className={cn(
-        "group rounded-lg border border-border bg-background p-3 text-left shadow-sm",
-        isOverlay ? "cursor-grabbing opacity-90 shadow-lg" : "cursor-grab"
+        "group rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-all",
+        isSelected && "border-primary/60 ring-1 ring-primary/20 bg-primary/[0.02]",
+        isOverlay ? "cursor-grabbing opacity-90 shadow-2xl scale-105 rotate-2 ring-1 ring-primary/30" : "cursor-grab"
       )}
+      style={isOverlay ? { transform: 'scale(1.05) rotate(2deg)' } : undefined}
     >
       <TaskCardContent task={task} />
     </article>

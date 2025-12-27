@@ -17,7 +17,8 @@ import { ThreadSelector } from "./thread-selector";
 import { useChatStreaming } from "./hooks/use-chat-streaming";
 import { useChatTasks } from "./hooks/use-chat-tasks";
 import { useChatScroll } from "./hooks/use-chat-scroll";
-import { useUrlState, pushUrl, replaceUrl } from "@/lib/url-state";
+import { pushUrl, replaceUrl } from "@/lib/url-state";
+import { usePathname, useSearchParams } from "next/navigation";
 
 type Props = {
   projectId: string;
@@ -35,8 +36,8 @@ export function ProjectChat({
   const themeStyle = getProjectTheme(accentColor);
   const hasAccentColor = !!accentColor && Object.keys(themeStyle).length > 0;
   const isDrawer = layout === "drawer";
-  const urlState = useUrlState();
-  const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const pageSize = 30;
@@ -99,7 +100,7 @@ export function ProjectChat({
         nextParams.delete("threadId");
       }
       const query = nextParams.toString();
-      const basePath = urlState.pathname || `/projects/${projectId}`;
+      const basePath = pathname || `/projects/${projectId}`;
       const nextUrl = query ? `${basePath}?${query}` : basePath;
       if (replace) {
         replaceUrl(nextUrl);
@@ -107,7 +108,7 @@ export function ProjectChat({
       }
       pushUrl(nextUrl);
     },
-    [projectId, searchParams, urlState.pathname]
+    [projectId, searchParams, pathname]
   );
 
   const setThreadModelMutation = api.chat.setThreadModel.useMutation({
@@ -330,9 +331,9 @@ export function ProjectChat({
     const nextParams = new URLSearchParams(searchParams.toString());
     nextParams.delete("chatDraft");
     const query = nextParams.toString();
-    const basePath = urlState.pathname || `/projects/${projectId}`;
+    const basePath = pathname || `/projects/${projectId}`;
     replaceUrl(query ? `${basePath}?${query}` : basePath);
-  }, [input, projectId, searchParams, urlState.pathname]);
+  }, [input, projectId, searchParams, pathname]);
 
   const stripJsonBlock = useCallback((content: string) => {
     return content.replace(/```json[\s\S]*?```/g, "").trim();

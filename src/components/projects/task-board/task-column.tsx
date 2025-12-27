@@ -16,6 +16,11 @@ export type TaskColumnProps = {
   onSelect: (task: Task) => void;
   onBrainstorm: (task: Task) => void;
   creatingThreadId: string | null;
+  selectedTaskId: string | null;
+  selectedTaskIds: Set<string>;
+  onStatusChange: (task: Task, status: TaskStatus) => void;
+  onDelete: (task: Task) => void;
+  onToggleSelection: (taskId: string) => void;
 };
 
 export function TaskColumn({
@@ -25,6 +30,11 @@ export function TaskColumn({
   onSelect,
   onBrainstorm,
   creatingThreadId,
+  selectedTaskId,
+  selectedTaskIds,
+  onStatusChange,
+  onDelete,
+  onToggleSelection,
 }: TaskColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id: `column-${status}`,
@@ -68,12 +78,16 @@ export function TaskColumn({
             </p>
           ) : (
             tasks.map((task) => (
-              <SortableTaskCard
+               <SortableTaskCard
                 key={task.id}
                 task={task}
                 onSelect={() => onSelect(task)}
                 onBrainstorm={() => onBrainstorm(task)}
                 isBrainstorming={creatingThreadId === task.id}
+                isSelected={selectedTaskId === task.id || selectedTaskIds.has(task.id)}
+                onStatusChange={(status) => onStatusChange(task, status)}
+                onDelete={() => onDelete(task)}
+                onToggle={() => onToggleSelection(task.id)}
               />
             ))
           )}

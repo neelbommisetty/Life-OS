@@ -8,14 +8,32 @@ import type { TaskListAction } from './types';
 export type TaskListItemProps = {
   task: Task;
   onSelect: () => void;
+  onToggle?: () => void;
+  isSelected?: boolean;
   actions: TaskListAction[];
 };
 
-export function TaskListItem({ task, onSelect, actions }: TaskListItemProps) {
+export function TaskListItem({
+  task,
+  onSelect,
+  onToggle,
+  isSelected,
+  actions
+}: TaskListItemProps) {
   return (
     <article
-      onClick={onSelect}
-      className="group rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-colors hover:border-primary/40"
+      onClick={(e) => {
+        if (onToggle && (e.metaKey || e.ctrlKey)) {
+          e.stopPropagation();
+          onToggle();
+        } else {
+          onSelect();
+        }
+      }}
+      className={cn(
+        "group rounded-lg border border-border bg-background p-3 text-left shadow-sm transition-all hover:border-primary/40",
+        isSelected && "border-primary/60 ring-1 ring-primary/20 bg-primary/[0.02]"
+      )}
     >
       <div className="flex items-start justify-between gap-3">
         <h4 className="text-sm font-semibold text-foreground">{task.title}</h4>
@@ -74,6 +92,9 @@ export type BacklogListProps = {
   onMove: (task: Task, status: TaskStatus) => void;
   onBrainstorm: (task: Task) => void;
   creatingThreadId: string | null;
+  selectedTaskId: string | null;
+  selectedTaskIds: Set<string>;
+  onToggleSelection: (taskId: string) => void;
 };
 
 export function BacklogList({
@@ -83,6 +104,9 @@ export function BacklogList({
   onMove,
   onBrainstorm,
   creatingThreadId,
+  selectedTaskId,
+  selectedTaskIds,
+  onToggleSelection,
 }: BacklogListProps) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm">
@@ -115,6 +139,8 @@ export function BacklogList({
               key={task.id}
               task={task}
               onSelect={() => onSelect(task)}
+              onToggle={() => onToggleSelection(task.id)}
+              isSelected={selectedTaskId === task.id || selectedTaskIds.has(task.id)}
               actions={[
                 {
                   label: "Brainstorm",
@@ -144,6 +170,9 @@ export type ArchivedListProps = {
   onMove: (task: Task, status: TaskStatus) => void;
   onBrainstorm: (task: Task) => void;
   creatingThreadId: string | null;
+  selectedTaskId: string | null;
+  selectedTaskIds: Set<string>;
+  onToggleSelection: (taskId: string) => void;
 };
 
 export function ArchivedList({
@@ -152,6 +181,9 @@ export function ArchivedList({
   onMove,
   onBrainstorm,
   creatingThreadId,
+  selectedTaskId,
+  selectedTaskIds,
+  onToggleSelection,
 }: ArchivedListProps) {
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border/80 bg-card p-4 shadow-sm">
@@ -177,6 +209,8 @@ export function ArchivedList({
               key={task.id}
               task={task}
               onSelect={() => onSelect(task)}
+              onToggle={() => onToggleSelection(task.id)}
+              isSelected={selectedTaskId === task.id || selectedTaskIds.has(task.id)}
               actions={[
                 {
                   label: "Brainstorm",

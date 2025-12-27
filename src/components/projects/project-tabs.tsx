@@ -4,7 +4,7 @@ import { Tab, TabGroup, TabList, TabPanel, TabPanels } from '@headlessui/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { Fragment, useEffect, useMemo, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, usePathname, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { getProjectTheme } from '@/lib/project-theme';
 import {
@@ -17,7 +17,7 @@ import {
   type ProjectTabKey,
 } from '@/lib/project-tabs';
 import { trackEvent } from '@/lib/analytics';
-import { pushUrl, replaceUrl, useUrlState } from '@/lib/url-state';
+import { pushUrl, replaceUrl } from '@/lib/url-state';
 
 type Props = {
   overview: ReactNode;
@@ -38,9 +38,9 @@ export function ProjectTabs({
   const hasColor = !!accentColor;
   const params = useParams();
   const projectId = typeof params.id === 'string' ? params.id : params.id?.[0] ?? '';
-  const urlState = useUrlState();
-  const tabParam = getProjectTabKeyFromPathname(urlState.pathname);
-  const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const tabParam = getProjectTabKeyFromPathname(pathname);
 
   const tabIndexByKey = useMemo(() => {
     return projectTabs.reduce<Record<ProjectTabKey, number>>((acc, tab, index) => {

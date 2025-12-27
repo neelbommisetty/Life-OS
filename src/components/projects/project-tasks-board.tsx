@@ -36,13 +36,15 @@ import { cn } from '@/lib/utils';
 import { getProjectTheme } from '@/lib/project-theme';
 import { useDroppable } from '@dnd-kit/core';
 import { resolveTasksViewParam } from '@/lib/project-deeplinks';
-import { pushUrl, useUrlState } from '@/lib/url-state';
+import { pushUrl } from '@/lib/url-state';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   ArchivedList,
   BacklogList,
   TaskCard,
   TaskColumn,
   TaskPanel,
+  TaskBoardSkeleton,
   type TaskDraft,
   type TaskView,
 } from './task-board';
@@ -54,8 +56,8 @@ const statusOptions = taskStatusEnum.options as TaskStatus[];
 export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const themeStyle = getProjectTheme(accentColor);
   const utils = api.useUtils();
-  const urlState = useUrlState();
-  const searchParams = useMemo(() => new URLSearchParams(urlState.search), [urlState.search]);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data, isLoading } = api.task.list.useQuery({ projectId });
   const threadsQuery = api.chat.listThreads.useQuery({ projectId });
   const tasks = useMemo(() => data ?? [], [data]);
@@ -68,6 +70,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     return viewParam.toUpperCase() as TaskView;
   }, [searchParams]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [isBulkMode, setIsBulkMode] = useState(false);
   const [creatingThreadId, setCreatingThreadId] = useState<string | null>(null);
 
   const syncTasks = useCallback(
@@ -121,10 +126,10 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
         nextParams.set('chatDraft', draftMessage);
       }
       const query = nextParams.toString();
-      const basePath = urlState.pathname || `/projects/${projectId}/tasks`;
+      const basePath = pathname || `/projects/${projectId}/tasks`;
       pushUrl(query ? `${basePath}?${query}` : basePath);
     },
-    [projectId, searchParams, urlState.pathname]
+    [projectId, searchParams, pathname]
   );
 
   const handleCreateTaskThread = useCallback(
@@ -334,6 +339,35 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     });
   };
 
+  const handleEscape = useCallback(() => {
+    setSelectedTaskId(null);
+    setSelectedTaskIds(new Set());
+    setIsBulkMode(false);
+  }, []);
+
+  const toggleTaskSelection = useCallback((taskId: string) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+    setIsBulkMode(true);
+  }, []);
+
+  const handleBulkStatusChange = useCallback((status: TaskStatus) => {
+    const ids = Array.from(selectedTaskIds);
+    ids.forEach((id) => {
+      updateTask.mutate({ id, status });
+    });
+    setSelectedTaskIds(new Set());
+    setIsBulkMode(false);
+  }, [selectedTaskIds, updateTask]);
+
+
   return (
     <section className="space-y-4" style={themeStyle}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -409,7 +443,9 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
         </div>
       </div>
 
-      {activeView === 'KANBAN' ? (
+      {isLoading ? (
+        <TaskBoardSkeleton />
+      ) : activeView === 'KANBAN' ? (
         <DndContext
           sensors={sensors}
           collisionDetection={collisionDetection}
@@ -424,9 +460,21 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
                 status={status}
                 tasks={tasksByStatus[status] ?? []}
                 onAdd={() => openCreatePanel(status)}
-                onSelect={openEditPanel}
+                onSelect={(task) => {
+                  setSelectedTaskId(task.id);
+                  openEditPanel(task);
+                }}
                 onBrainstorm={handleCreateTaskThread}
                 creatingThreadId={creatingThreadId}
+                selectedTaskId={selectedTaskId}
+                selectedTaskIds={selectedTaskIds}
+                onStatusChange={handleQuickStatusChange}
+                onDelete={(task) => {
+                  if (confirm(`Are you sure you want to delete "${task.title}"?`)) {
+                    deleteTask.mutate({ id: task.id });
+                  }
+                }}
+                onToggleSelection={toggleTaskSelection}
               />
             ))}
           </div>
@@ -438,18 +486,30 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
         <BacklogList
           tasks={backlogTasks}
           onAdd={() => openCreatePanel('BACKLOG')}
-          onSelect={openEditPanel}
+          onSelect={(task) => {
+            setSelectedTaskId(task.id);
+            openEditPanel(task);
+          }}
           onMove={(task, status) => handleQuickStatusChange(task, status)}
           onBrainstorm={handleCreateTaskThread}
           creatingThreadId={creatingThreadId}
+          selectedTaskId={selectedTaskId}
+          selectedTaskIds={selectedTaskIds}
+          onToggleSelection={toggleTaskSelection}
         />
       ) : (
         <ArchivedList
           tasks={archivedTasks}
-          onSelect={openEditPanel}
+          onSelect={(task) => {
+            setSelectedTaskId(task.id);
+            openEditPanel(task);
+          }}
           onMove={(task, status) => handleQuickStatusChange(task, status)}
           onBrainstorm={handleCreateTaskThread}
           creatingThreadId={creatingThreadId}
+          selectedTaskId={selectedTaskId}
+          selectedTaskIds={selectedTaskIds}
+          onToggleSelection={toggleTaskSelection}
         />
       )}
 
@@ -467,8 +527,51 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
         priorityLabels={PRIORITY_LABELS}
       />
 
-      {isLoading && (
-        <p className="text-sm text-muted-foreground">Loading tasks...</p>
+      {isBulkMode && selectedTaskIds.size > 0 && (
+        <Transition
+          show={true}
+          as={Fragment}
+          enter="transition ease-out duration-200"
+          enterFrom="translate-y-full opacity-0"
+          enterTo="translate-y-0 opacity-100"
+          leave="transition ease-in duration-150"
+          leaveFrom="translate-y-0 opacity-100"
+          leaveTo="translate-y-full opacity-0"
+        >
+          <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
+            <div className="flex items-center gap-6 rounded-2xl border border-border bg-card/80 p-4 shadow-2xl backdrop-blur-md">
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-foreground">
+                  {selectedTaskIds.size} task{selectedTaskIds.size !== 1 ? 's' : ''} selected
+                </span>
+                <button
+                  onClick={() => { setSelectedTaskIds(new Set()); setIsBulkMode(false); }}
+                  className="text-left text-[10px] font-semibold text-muted-foreground uppercase hover:text-foreground"
+                >
+                  Clear Selection
+                </button>
+              </div>
+              <div className="h-8 w-px bg-border" />
+              <div className="flex items-center gap-2">
+                {[ 'TODO', 'IN_PROGRESS', 'DONE', 'ARCHIVED' ].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => handleBulkStatusChange(status as TaskStatus)}
+                    className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-primary-foreground"
+                  >
+                    Move to {TASK_STATUS_LABELS[status as TaskStatus]}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => handleEscape()}
+                className="rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </Transition>
       )}
     </section>
   );
