@@ -3,7 +3,6 @@
 import { ProjectCard } from '@/components/projects/project-card';
 import { CreateProjectDialog } from '@/components/projects/create-project-dialog';
 import type { Project } from '@prisma/client';
-import { motion } from 'framer-motion';
 import { FolderPlus } from 'lucide-react';
 import Link from 'next/link';
 
@@ -14,10 +13,8 @@ type Props = {
 export function RecentProjects({ projects }: Props) {
   if (projects.length === 0) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-muted/20 p-16 text-center"
+      <div
+        className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border bg-muted/20 p-16 text-center animate-scale-in"
       >
         <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-muted/50 mb-6 group-hover:scale-110 transition-transform">
           <FolderPlus className="h-10 w-10 text-muted-foreground/50" />
@@ -37,7 +34,7 @@ export function RecentProjects({ projects }: Props) {
             Learn how it works
           </Link>
         </div>
-      </motion.div>
+      </div>
     );
   }
 

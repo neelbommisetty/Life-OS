@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ExternalLink, MessageSquare, Clock } from 'lucide-react';
@@ -31,10 +30,8 @@ export function ContinueCard({ project }: Props) {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mb-10"
+    <div
+      className="mb-10 animate-slide-up"
     >
       <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Continue where you left off
@@ -114,6 +111,6 @@ export function ContinueCard({ project }: Props) {
           />
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }

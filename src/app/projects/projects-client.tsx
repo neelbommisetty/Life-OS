@@ -10,7 +10,6 @@ import { ProjectToolbar } from "@/components/projects/project-toolbar";
 import { ProjectListView } from "@/components/projects/project-list-view";
 import type { ProjectStatus } from "@prisma/client";
 import type { SortBy, SortOrder } from "@/components/projects/sort-menu";
-import { motion, AnimatePresence } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
@@ -102,30 +101,23 @@ export function ProjectsClient() {
             ))}
           </div>
         ) : projects.length > 0 ? (
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={viewMode}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              {viewMode === 'list' ? (
-                <ProjectListView projects={projects} />
-              ) : (
-                <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                  {projects.map((project) => (
-                    <ProjectCard key={project.id} project={project} />
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
+          <div
+            key={viewMode}
+            className="animate-slide-up"
+          >
+            {viewMode === 'list' ? (
+              <ProjectListView projects={projects} />
+            ) : (
+              <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {projects.map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+              </div>
+            )}
+          </div>
         ) : (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-border bg-muted/10 p-20 text-center"
+          <div
+            className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-border bg-muted/10 p-20 text-center animate-fade-in"
           >
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 text-3xl">
               {search ? '🔍' : '📂'}
@@ -138,7 +130,7 @@ export function ProjectsClient() {
                 ? "Try adjusting your search or filters to find what you're looking for."
                 : "Get started by creating your first project using the button above."}
             </p>
-          </motion.div>
+          </div>
         )}
 
         {/* Loading More & Sentinel */}

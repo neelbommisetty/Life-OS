@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { useMemo } from 'react';
 
 type Props = {
@@ -30,21 +29,17 @@ export function WelcomeHeader({ upcomingTaskCount, lastEditedProject }: Props) {
 
   return (
     <div className="mb-8">
-      <motion.h1
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-3xl font-bold tracking-tight text-foreground"
+      <h1
+        className="text-3xl font-bold tracking-tight text-foreground opacity-0 animate-slide-up"
       >
         {greeting}, maker
-      </motion.h1>
-      <motion.p
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="mt-2 text-muted-foreground"
+      </h1>
+      <p
+        className="mt-2 text-muted-foreground opacity-0 animate-slide-up"
+        style={{ animationDelay: '100ms' }}
       >
         {nudge}
-      </motion.p>
+      </p>
     </div>
   );
 }

@@ -1,42 +1,23 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { ListTodo, MessageSquarePlus } from 'lucide-react';
 import { CreateProjectDialog } from '@/components/projects/create-project-dialog';
 
 export function QuickActions() {
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.05
-      }
-    }
-  };
-
-  const item = {
-    hidden: { opacity: 0, scale: 0.95 },
-    show: { opacity: 1, scale: 1 }
-  };
-
   return (
     <div className="mb-10">
       <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         Quick Actions
       </h2>
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
+      <div
         className="grid grid-cols-1 gap-4 sm:grid-cols-3"
       >
-        <motion.div variants={item}>
+        <div className="opacity-0 animate-fade-in" style={{ animationDelay: '0ms' }}>
           <CreateProjectDialog />
-        </motion.div>
+        </div>
 
-        <motion.div variants={item}>
+        <div className="opacity-0 animate-fade-in" style={{ animationDelay: '50ms' }}>
           <Link
             href="/projects"
             className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/20 hover:shadow-sm group"
@@ -46,9 +27,9 @@ export function QuickActions() {
             </div>
             <span className="text-sm font-semibold text-foreground">View All Tasks</span>
           </Link>
-        </motion.div>
+        </div>
 
-        <motion.div variants={item}>
+        <div className="opacity-0 animate-fade-in" style={{ animationDelay: '100ms' }}>
           <Link
             href="/projects"
             className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 transition-all hover:border-primary/20 hover:shadow-sm group"
@@ -58,8 +39,8 @@ export function QuickActions() {
             </div>
             <span className="text-sm font-semibold text-foreground">Quick Brainstorm</span>
           </Link>
-        </motion.div>
-      </motion.div>
+        </div>
+      </div>
     </div>
   );
 }

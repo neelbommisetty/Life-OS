@@ -10,7 +10,6 @@ import { api } from '@/trpc/client';
 import { PriorityBadge } from './priority-badge';
 import { ExternalLink, Calendar, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { motion } from 'framer-motion';
 import { getProjectTheme } from '@/lib/project-theme';
 
 const STATUS_TONES: Record<ProjectStatus, string> = {
@@ -49,13 +48,10 @@ export function ProjectCard({ project }: Props) {
   const hasMeta = !!(project.dueDate || project.priority || tags.length > 0);
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ y: -4, transition: { duration: 0.2 } }}
+    <div
       style={themeStyle}
       className={cn(
-        "group relative flex h-full flex-col rounded-xl border p-4 shadow-sm transition-all hover:shadow-md",
+        "group relative flex h-full flex-col rounded-xl border p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-md opacity-0 animate-slide-up",
         hasColor
           ? "border-[rgb(var(--project-accent)/0.25)] bg-[rgb(var(--project-accent)/0.04)] hover:border-[rgb(var(--project-accent)/0.5)]"
           : "border-border bg-card hover:border-primary/20"
@@ -161,6 +157,6 @@ export function ProjectCard({ project }: Props) {
           <ExternalLink className="h-3.5 w-3.5" />
         </Link>
       </div>
-    </motion.div>
+    </div>
   );
 }

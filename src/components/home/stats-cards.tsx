@@ -1,8 +1,8 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { Layers, Play, Lightbulb, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEffect, useState } from 'react';
 
 type Props = {
   stats: {
@@ -15,25 +15,21 @@ type Props = {
   };
 };
 
-const container = {
-  hidden: { opacity: 0 },
-  show: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
-
-const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0 }
-};
-
 export function StatsCards({ stats }: Props) {
   const completionRate = stats.total > 0
     ? Math.round((stats.byStatus.COMPLETE / stats.total) * 100)
     : 0;
+
+  const [dashOffset, setDashOffset] = useState(113);
+
+  useEffect(() => {
+    // Animate progress circle after mount
+    const target = 113 - (113 * completionRate) / 100;
+    const timer = setTimeout(() => {
+      setDashOffset(target);
+    }, 500); // 0.5s delay
+    return () => clearTimeout(timer);
+  }, [completionRate]);
 
   const items = [
     {
@@ -68,20 +64,17 @@ export function StatsCards({ stats }: Props) {
 
   return (
     <div className="space-y-6">
-      <motion.div
-        variants={container}
-        initial="hidden"
-        animate="show"
+      <div
         className="grid grid-cols-2 gap-4 sm:grid-cols-4"
       >
-        {items.map((stat) => (
-          <motion.div
+        {items.map((stat, i) => (
+          <div
             key={stat.label}
-            variants={item}
             className={cn(
-              "flex flex-col rounded-xl border border-border p-4 transition-colors",
+              "flex flex-col rounded-xl border border-border p-4 transition-colors opacity-0 animate-slide-up",
               stat.bg
             )}
+            style={{ animationDelay: `${i * 100}ms` }}
           >
             <div className="flex items-center gap-2">
               <stat.icon className={cn("h-4 w-4", stat.color)} />
@@ -92,16 +85,14 @@ export function StatsCards({ stats }: Props) {
             <p className={cn("mt-2 text-2xl font-bold", stat.color)}>
               {stat.value}
             </p>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       {stats.total > 0 && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.5 }}
-          className="flex items-center justify-between rounded-xl border border-border bg-card p-4 shadow-sm"
+        <div
+          className="flex items-center justify-between rounded-xl border border-border bg-card p-4 shadow-sm opacity-0 animate-scale-in"
+          style={{ animationDelay: '500ms' }}
         >
           <div className="flex items-center gap-4">
             <div className="relative h-12 w-12 flex-shrink-0">
@@ -114,13 +105,11 @@ export function StatsCards({ stats }: Props) {
                   cx="24"
                   cy="24"
                 />
-                <motion.circle
-                  className="text-emerald-500 stroke-current"
+                <circle
+                  className="text-emerald-500 stroke-current transition-all duration-1000 ease-out"
                   strokeWidth="4"
                   strokeDasharray={113}
-                  initial={{ strokeDashoffset: 113 }}
-                  animate={{ strokeDashoffset: 113 - (113 * completionRate) / 100 }}
-                  transition={{ duration: 1, delay: 0.8, ease: "easeOut" }}
+                  strokeDashoffset={dashOffset}
                   strokeLinecap="round"
                   fill="transparent"
                   r="18"
@@ -143,7 +132,7 @@ export function StatsCards({ stats }: Props) {
               {completionRate === 100 ? 'All finished!' : completionRate > 50 ? 'Getting there!' : 'Early stages'}
             </p>
           </div>
-        </motion.div>
+        </div>
       )}
     </div>
   );
