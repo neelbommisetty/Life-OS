@@ -1,23 +1,8 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
-import rehypeRaw from "rehype-raw";
-import rehypeHighlight from "rehype-highlight";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import type { Schema } from "hast-util-sanitize";
 import { cn } from "@/lib/utils";
-
-const sanitizeSchema: Schema = {
-  ...defaultSchema,
-  attributes: {
-    ...defaultSchema.attributes,
-    code: [...(defaultSchema.attributes?.code ?? []), "className"],
-    span: [...(defaultSchema.attributes?.span ?? []), "className"],
-    pre: [...(defaultSchema.attributes?.pre ?? []), "className"],
-  },
-};
 
 type Props = {
   content: string;
@@ -26,6 +11,62 @@ type Props = {
 };
 
 export function ChatMarkdown({ content, className, tone = "default" }: Props) {
+  const [plugins, setPlugins] = useState<{
+    remarkPlugins: any[];
+    rehypePlugins: any[];
+  } | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadPlugins() {
+      try {
+        const [
+          { default: remarkGfm },
+          { default: remarkBreaks },
+          { default: rehypeRaw },
+          { default: rehypeHighlight },
+          { default: rehypeSanitize, defaultSchema },
+        ] = await Promise.all([
+          import("remark-gfm"),
+          import("remark-breaks"),
+          import("rehype-raw"),
+          import("rehype-highlight"),
+          import("rehype-sanitize"),
+        ]);
+
+        if (!mounted) return;
+
+        const sanitizeSchema = {
+          ...defaultSchema,
+          attributes: {
+            ...defaultSchema.attributes,
+            code: [...(defaultSchema.attributes?.code ?? []), "className"],
+            span: [...(defaultSchema.attributes?.span ?? []), "className"],
+            pre: [...(defaultSchema.attributes?.pre ?? []), "className"],
+          },
+        };
+
+        setPlugins({
+          remarkPlugins: [remarkGfm, remarkBreaks],
+          rehypePlugins: [
+            rehypeRaw,
+            [rehypeHighlight, { detect: true, ignoreMissing: true }],
+            [rehypeSanitize, sanitizeSchema],
+          ],
+        });
+      } catch (err) {
+        console.error("Failed to load markdown plugins", err);
+      }
+    }
+
+    loadPlugins();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <div
       className={cn(
@@ -35,12 +76,8 @@ export function ChatMarkdown({ content, className, tone = "default" }: Props) {
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkBreaks]}
-        rehypePlugins={[
-          rehypeRaw,
-          [rehypeHighlight, { detect: true, ignoreMissing: true }],
-          [rehypeSanitize, sanitizeSchema],
-        ]}
+        remarkPlugins={plugins?.remarkPlugins ?? []}
+        rehypePlugins={plugins?.rehypePlugins ?? []}
       >
         {content}
       </ReactMarkdown>

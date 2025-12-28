@@ -1,7 +1,7 @@
 "use client";
 
 import { Transition } from "@headlessui/react";
-import { useCallback, useMemo, useState, Fragment } from "react";
+import { useCallback, useMemo, useState, Fragment, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -81,6 +81,13 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   );
   const [isBulkMode, setIsBulkMode] = useState(false);
   const [creatingThreadId, setCreatingThreadId] = useState<string | null>(null);
+  const [isTouch, setIsTouch] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsTouch(window.matchMedia("(pointer: coarse)").matches);
+    }
+  }, []);
 
   const syncTasks = useCallback(
     (next: Task[]) => {
@@ -174,7 +181,7 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 4 },
+      activationConstraint: { distance: isTouch ? 8 : 4 },
     })
   );
 
