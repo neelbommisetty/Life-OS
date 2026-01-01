@@ -17,6 +17,7 @@ import {
   buildSystemPrompt,
   formatMessagesForAI,
   calculateHistoryTokens,
+  estimateTokens,
   buildSummarizationPrompt,
   extractTasksFromMessage,
   isApproval,
@@ -26,6 +27,7 @@ import { modelRegistry } from "@/lib/ai";
 import { getModelFor } from "@/lib/ai/providers/router";
 import { initializeChatServices } from "@/lib/ai/chat-services";
 import type { ModelKey } from "@/lib/ai";
+import { getTelemetryFromError, recordAiCall } from "@/server/ai/telemetry";
 import {
   getUniqueThreadName,
   isPlaceholderThreadName,
@@ -38,8 +40,28 @@ const logger = createLogger("trpc:chat");
 // Initialize chat AI services
 initializeChatServices();
 
-// Token cap before triggering summarization (~6k tokens)
-const HISTORY_TOKEN_CAP = 6000;
+const resolveAiStatus = (error: unknown): "ERROR" | "ABORTED" => {
+  if (!error || typeof error !== "object") {
+    return "ERROR";
+  }
+
+  const typed = error as { name?: string; code?: string };
+  if (typed.name === "AbortError" || typed.code === "STREAM_ABORTED") {
+    return "ABORTED";
+  }
+
+  return "ERROR";
+};
+
+const resolveTokenCount = (text: string, usageTokens?: number | null) => {
+  if (typeof usageTokens === "number") {
+    return { tokenCount: usageTokens, tokenCountSource: "usage" };
+  }
+  return { tokenCount: estimateTokens(text), tokenCountSource: "estimate" };
+};
+
+// Token cap before triggering summarization (~30k tokens)
+const HISTORY_TOKEN_CAP = 30000;
 const DEFAULT_THREAD_NAME = "New thread";
 const THREAD_ORDER: Prisma.ChatThreadOrderByWithRelationInput[] = [
   { lastChattedAt: "desc" },
@@ -218,6 +240,7 @@ export const chatRouter = router({
             threadId: thread.id,
             role,
             content: seedMessage,
+            ...resolveTokenCount(seedMessage),
           },
         });
 
@@ -555,6 +578,7 @@ export const chatRouter = router({
             threadId: thread.id,
             role: "USER",
             content: input.content,
+            ...resolveTokenCount(input.content),
           },
         });
 
@@ -660,11 +684,15 @@ export const chatRouter = router({
                 });
 
                 // Add System Message to confirm creation
+                const systemContent = `Tasks created successfully: ${createdTasks
+                  .map((t) => t.title)
+                  .join(", ")}`;
                 const systemMsg = await ctx.prisma.chatMessage.create({
                   data: {
                     threadId: thread.id,
                     role: "SYSTEM", // Using SYSTEM role to denote system action
-                    content: `Tasks created successfully: ${createdTasks.map((t) => t.title).join(", ")}`,
+                    content: systemContent,
+                    ...resolveTokenCount(systemContent),
                   },
                 });
 
@@ -748,17 +776,62 @@ export const chatRouter = router({
             oldMessageCount: oldMessages.length,
           });
 
-          const summaryResult = await summaryModel.call({
-            prompt: summaryPrompt,
-            mode: "text",
-          });
+          const summaryStartAt = new Date();
+          let summaryResult: Awaited<ReturnType<typeof summaryModel.call>> | undefined;
+
+          try {
+            summaryResult = await summaryModel.call({
+              prompt: summaryPrompt,
+              mode: "text",
+            });
+            const summaryEndAt = new Date();
+            await recordAiCall({
+              prisma: ctx.prisma,
+              context: {
+                projectId: project.id,
+                threadId: thread.id,
+                source: "summarization",
+                actionType: "thread.summarize",
+              },
+              prompt: summaryPrompt,
+              outputText: summaryResult.text,
+              usage: summaryResult.usage,
+              telemetry: summaryResult.telemetry,
+              timing: {
+                requestStartAt: summaryStartAt,
+                responseEndAt: summaryEndAt,
+              },
+              status: "SUCCESS",
+            });
+          } catch (error) {
+            const summaryEndAt = new Date();
+            await recordAiCall({
+              prisma: ctx.prisma,
+              context: {
+                projectId: project.id,
+                threadId: thread.id,
+                source: "summarization",
+                actionType: "thread.summarize",
+              },
+              prompt: summaryPrompt,
+              outputText: null,
+              usage: undefined,
+              telemetry: getTelemetryFromError(error),
+              timing: {
+                requestStartAt: summaryStartAt,
+                responseEndAt: summaryEndAt,
+              },
+              status: resolveAiStatus(error),
+            });
+            throw error;
+          }
 
           // Update thread with summary
           const oldestSummarizedDate = oldMessages[oldMessages.length - 1]?.createdAt;
           thread = await ctx.prisma.chatThread.update({
             where: { id: thread.id },
             data: {
-              summary: summaryResult.text,
+              summary: summaryResult?.text ?? "",
               summaryUpTo: oldestSummarizedDate,
             },
             include: {
@@ -769,7 +842,7 @@ export const chatRouter = router({
           });
 
           logger.info("Conversation summarized", {
-            summaryLength: summaryResult.text.length,
+            summaryLength: summaryResult?.text.length ?? 0,
             summarizedCount: oldMessages.length,
           });
         }
@@ -838,10 +911,54 @@ export const chatRouter = router({
 
         // Call AI model
         const chatModel = getModelFor("project_chat", overrideKey);
-        const aiResult = await chatModel.call({
-          prompt: fullPrompt,
-          mode: "text",
-        });
+        const callStartAt = new Date();
+        let aiResult!: Awaited<ReturnType<typeof chatModel.call>>;
+        try {
+          aiResult = await chatModel.call({
+            prompt: fullPrompt,
+            mode: "text",
+          });
+          const callEndAt = new Date();
+          await recordAiCall({
+            prisma: ctx.prisma,
+            context: {
+              projectId: project.id,
+              threadId: thread.id,
+              source: "chat",
+              actionType: "chat.reply",
+            },
+            prompt: fullPrompt,
+            outputText: aiResult.text,
+            usage: aiResult.usage,
+            telemetry: aiResult.telemetry,
+            timing: {
+              requestStartAt: callStartAt,
+              responseEndAt: callEndAt,
+            },
+            status: "SUCCESS",
+          });
+        } catch (error) {
+          const callEndAt = new Date();
+          await recordAiCall({
+            prisma: ctx.prisma,
+            context: {
+              projectId: project.id,
+              threadId: thread.id,
+              source: "chat",
+              actionType: "chat.reply",
+            },
+            prompt: fullPrompt,
+            outputText: null,
+            usage: undefined,
+            telemetry: getTelemetryFromError(error),
+            timing: {
+              requestStartAt: callStartAt,
+              responseEndAt: callEndAt,
+            },
+            status: resolveAiStatus(error),
+          });
+          throw error;
+        }
 
         // Save assistant message
         const assistantMessage = await ctx.prisma.chatMessage.create({
@@ -849,6 +966,7 @@ export const chatRouter = router({
             threadId: thread.id,
             role: "ASSISTANT",
             content: aiResult.text,
+            ...resolveTokenCount(aiResult.text, aiResult.usage?.outputTokens),
             ...assistantModelData,
           },
         });
