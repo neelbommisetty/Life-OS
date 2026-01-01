@@ -199,7 +199,7 @@ export const recordAiCall = async (params: {
         status,
         artifactRef: context.artifactRef ?? null,
         metadataTags: context.metadataTags ?? [],
-        attempts: resolved.attempts ?? undefined,
+        attempts: resolved.attempts ? (resolved.attempts as any) : undefined,
       },
     });
   } catch (error) {
