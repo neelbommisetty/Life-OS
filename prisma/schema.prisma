@@ -100,6 +100,7 @@ model ChatThread {
   modelKey    String?
   summary     String?
   summaryUpTo DateTime?
+  reasoningEnabled Boolean @default(false)
   lastChattedAt DateTime    @default(now())
   archivedAt  DateTime?
   createdAt   DateTime      @default(now())
@@ -127,6 +128,17 @@ model ChatMessage {
   createdAt      DateTime   @default(now())
 
   @@index([threadId, createdAt])
+}
+
+model ChatMessageReasoning {
+  id               String     @id @default(cuid())
+  messageId        String     @unique
+  message          ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  content          String
+  tokenCount       Int?
+  tokenCountSource String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 }
 
 model Artifact {
