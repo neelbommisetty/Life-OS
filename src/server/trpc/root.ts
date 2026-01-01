@@ -4,6 +4,7 @@ import { taskRouter } from "./routers/task";
 import { chatRouter } from "./routers/chat";
 import { artifactRouter } from "./routers/artifact";
 import { dashboardRouter } from "./routers/dashboard";
+import { aiUsageRouter } from "./routers/ai-usage";
 
 export const appRouter = router({
   project: projectRouter,
@@ -11,6 +12,7 @@ export const appRouter = router({
   chat: chatRouter,
   artifact: artifactRouter,
   dashboard: dashboardRouter,
+  aiUsage: aiUsageRouter,
 });
 
 export type AppRouter = typeof appRouter;
