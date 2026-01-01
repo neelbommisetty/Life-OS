@@ -162,6 +162,8 @@ export function ChatMessages({
                 modelKey: null,
                 modelLabel: null,
                 modelProvider: null,
+                tokenCount: null,
+                tokenCountSource: null,
               }}
               themeStyle={themeStyle}
               hasAccentColor={hasAccentColor}
