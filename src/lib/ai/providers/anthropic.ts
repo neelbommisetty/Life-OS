@@ -8,7 +8,14 @@ import type {
   ContentBlockDeltaEvent,
   TextDelta,
 } from '@anthropic-ai/sdk/resources/messages/messages';
-import type { BaseModel, ModelCallInput, ModelCallMode, ModelStreamChunk, ModelStreamResult } from '@/lib/ai/core';
+import type {
+  BaseModel,
+  ModelCallInput,
+  ModelCallMode,
+  ModelStreamChunk,
+  ModelStreamResult,
+  ModelUsage,
+} from '@/lib/ai/core';
 
 import {
   CostTier,
@@ -16,6 +23,7 @@ import {
   type ModelDefinition,
   type ModelFactory,
   type ModelFactoryOptions,
+  type ModelPricing,
   ProviderId,
 } from './types';
 import { modelRegistry, type ModelRegistry } from './registry';
@@ -49,9 +57,92 @@ export interface AnthropicModelDefinitionConfig extends AnthropicModelOverrides 
   readonly label: string;
   readonly description?: string;
   readonly releaseStage?: 'experimental' | 'beta' | 'ga';
+  readonly pricing?: ModelPricing;
 }
 
 type AnthropicMessageRequest = MessageCreateParamsNonStreaming;
+
+const readMessageUsage = (message: Message): ModelUsage | undefined => {
+  const usage = message.usage;
+  if (!usage) {
+    return undefined;
+  }
+
+  const inputTokens =
+    typeof usage.input_tokens === 'number' ? usage.input_tokens : undefined;
+  const outputTokens =
+    typeof usage.output_tokens === 'number' ? usage.output_tokens : undefined;
+  const cacheCreationInputTokens =
+    typeof usage.cache_creation_input_tokens === 'number'
+      ? usage.cache_creation_input_tokens
+      : undefined;
+  const cacheReadInputTokens =
+    typeof usage.cache_read_input_tokens === 'number'
+      ? usage.cache_read_input_tokens
+      : undefined;
+  const totalTokens =
+    inputTokens !== undefined && outputTokens !== undefined
+      ? inputTokens + outputTokens
+      : undefined;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheCreationInputTokens,
+    cacheReadInputTokens,
+  };
+};
+
+const readUsageFromStreamEvent = (event: unknown): ModelUsage | undefined => {
+  if (!event || typeof event !== 'object') {
+    return undefined;
+  }
+
+  const typed = event as {
+    type?: string;
+    message?: Message;
+    usage?: {
+      input_tokens?: number | null;
+      output_tokens?: number | null;
+      cache_creation_input_tokens?: number | null;
+      cache_read_input_tokens?: number | null;
+    };
+  };
+
+  if (typed.message) {
+    return readMessageUsage(typed.message);
+  }
+
+  if (typed.type === 'message_delta' && typed.usage) {
+    const inputTokens =
+      typeof typed.usage.input_tokens === 'number' ? typed.usage.input_tokens : undefined;
+    const outputTokens =
+      typeof typed.usage.output_tokens === 'number' ? typed.usage.output_tokens : undefined;
+    const cacheCreationInputTokens =
+      typeof typed.usage.cache_creation_input_tokens === 'number'
+        ? typed.usage.cache_creation_input_tokens
+        : undefined;
+    const cacheReadInputTokens =
+      typeof typed.usage.cache_read_input_tokens === 'number'
+        ? typed.usage.cache_read_input_tokens
+        : undefined;
+    const totalTokens =
+      inputTokens !== undefined && outputTokens !== undefined
+        ? inputTokens + outputTokens
+        : undefined;
+
+    return {
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      cacheCreationInputTokens,
+      cacheReadInputTokens,
+    };
+  }
+
+  return undefined;
+};
 
 const ensureAnthropicClient = (
   options?: AnthropicModelFactoryOptions,
@@ -261,8 +352,9 @@ export const createAnthropicModel = (
       );
 
       const text = extractResponseText(response);
+      const usage = readMessageUsage(response);
 
-      return { text };
+      return { text, usage };
     },
 
     ...(supportsStreaming
@@ -301,8 +393,14 @@ export const createAnthropicModel = (
             );
 
             let accumulatedText = '';
+            let usage: ModelUsage | undefined;
 
             for await (const event of stream) {
+              const eventUsage = readUsageFromStreamEvent(event);
+              if (eventUsage) {
+                usage = eventUsage;
+              }
+
               if (event.type === 'content_block_delta') {
                 const deltaEvent = event as ContentBlockDeltaEvent;
                 if (deltaEvent.delta.type === 'text_delta') {
@@ -319,7 +417,7 @@ export const createAnthropicModel = (
               }
             }
 
-            return { text: accumulatedText };
+            return { text: accumulatedText, usage };
           },
         }
       : {}),
@@ -343,6 +441,7 @@ const createAnthropicModelDefinition = (
       description: config.description,
       modelId: config.modelId,
       releaseStage: config.releaseStage,
+      pricing: config.pricing,
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
@@ -377,9 +476,15 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     description:
       'Latest cost-efficient Claude Haiku 4.5 model delivering near-frontier performance at one-third the cost and more than twice the speed of Sonnet 4.',
     releaseStage: 'ga',
-    maxOutputTokens: 65536,
+    maxOutputTokens: 64000,
     contextWindow: 200000,
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 1,
+      outputUsdPer1m: 5,
+      cacheCreationInputUsdPer1m: 1.25,
+      cacheReadInputUsdPer1m: 0.1,
+    },
     tags: ['claude', 'haiku', '4.5', 'responses', 'economy'],
   },
   {
@@ -389,9 +494,15 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     description:
       'Latest Claude Sonnet 4.5 release balancing quality reasoning, coding assistance, and long-context orchestration. Supports 1M token context window when using the context-1m-2025-08-07 beta header.',
     releaseStage: 'ga',
-    maxOutputTokens: 65536,
+    maxOutputTokens: 64000,
     contextWindow: 200000,
     costTier: CostTier.Standard,
+    pricing: {
+      inputUsdPer1m: 3,
+      outputUsdPer1m: 15,
+      cacheCreationInputUsdPer1m: 3.75,
+      cacheReadInputUsdPer1m: 0.3,
+    },
     tags: ['claude', 'sonnet', '4.5', 'responses', 'standard'],
   },
   {
@@ -401,9 +512,15 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     description:
       'Flagship Claude Opus 4.5 tier delivering premium reasoning depth, reliability, and tool-use orchestration. Excels in complex reasoning, programming, and agentic tasks.',
     releaseStage: 'ga',
-    maxOutputTokens: 65536,
+    maxOutputTokens: 64000,
     contextWindow: 200000,
     costTier: CostTier.Premium,
+    pricing: {
+      inputUsdPer1m: 5,
+      outputUsdPer1m: 25,
+      cacheCreationInputUsdPer1m: 6.25,
+      cacheReadInputUsdPer1m: 0.5,
+    },
     tags: ['claude', 'opus', '4.5', 'responses', 'premium'],
   },
 ];

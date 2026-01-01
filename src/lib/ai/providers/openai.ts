@@ -4,7 +4,14 @@ import type {
   ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
 } from 'openai/resources/responses/responses';
-import type { BaseModel, ModelCallInput, ModelCallMode, ModelStreamChunk, ModelStreamResult } from '@/lib/ai/core';
+import type {
+  BaseModel,
+  ModelCallInput,
+  ModelCallMode,
+  ModelStreamChunk,
+  ModelStreamResult,
+  ModelUsage,
+} from '@/lib/ai/core';
 
 import {
   CostTier,
@@ -12,6 +19,7 @@ import {
   type ModelDefinition,
   type ModelFactory,
   type ModelFactoryOptions,
+  type ModelPricing,
   ProviderId,
 } from './types';
 import { modelRegistry, type ModelRegistry } from './registry';
@@ -43,6 +51,7 @@ export interface OpenAIModelDefinitionConfig extends OpenAIModelOverrides {
   readonly label: string;
   readonly description?: string;
   readonly releaseStage?: 'experimental' | 'beta' | 'ga';
+  readonly pricing?: ModelPricing;
 }
 
 const ensureOpenAIClient = (
@@ -131,6 +140,45 @@ const extractResponseText = (response: Response): string => {
   return textChunks.join('');
 };
 
+const readResponseUsage = (response: Response): ModelUsage | undefined => {
+  const usage = response.usage;
+  if (!usage) {
+    return undefined;
+  }
+
+  const inputTokens = typeof usage.input_tokens === 'number' ? usage.input_tokens : undefined;
+  const outputTokens = typeof usage.output_tokens === 'number' ? usage.output_tokens : undefined;
+  const cachedTokens =
+    typeof usage.input_tokens_details?.cached_tokens === 'number'
+      ? usage.input_tokens_details.cached_tokens
+      : undefined;
+  const totalTokens = typeof usage.total_tokens === 'number'
+    ? usage.total_tokens
+    : inputTokens !== undefined && outputTokens !== undefined
+      ? inputTokens + outputTokens
+      : undefined;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheReadInputTokens: cachedTokens,
+  };
+};
+
+const readUsageFromStreamEvent = (event: unknown): ModelUsage | undefined => {
+  if (!isObject(event)) {
+    return undefined;
+  }
+
+  const response = event.response;
+  if (!response || !isObject(response)) {
+    return undefined;
+  }
+
+  return readResponseUsage(response as Response);
+};
+
 export const createOpenAIModel = (
   model: string,
   overrides: OpenAIModelOverrides = {},
@@ -193,8 +241,9 @@ export const createOpenAIModel = (
       );
 
       const text = extractResponseText(response);
+      const usage = readResponseUsage(response);
 
-      return { text };
+      return { text, usage };
     },
 
     ...(supportsStreaming
@@ -231,6 +280,7 @@ export const createOpenAIModel = (
             );
 
             let accumulatedText = '';
+            let usage: ModelUsage | undefined;
 
             for await (const event of stream) {
               // Handle different event types from OpenAI streaming
@@ -241,12 +291,13 @@ export const createOpenAIModel = (
                   yield { text: delta, done: false };
                 }
               } else if (event.type === 'response.completed') {
+                usage = readUsageFromStreamEvent(event);
                 // Stream completed
                 yield { text: '', done: true };
               }
             }
 
-            return { text: accumulatedText };
+            return { text: accumulatedText, usage };
           },
         }
       : {}),
@@ -269,6 +320,7 @@ const createOpenAIModelDefinition = (
       description: config.description,
       modelId: config.modelId,
       releaseStage: config.releaseStage,
+      pricing: config.pricing,
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
@@ -303,6 +355,10 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Enhanced GPT-5.2 Pro variant producing smarter and more precise responses.',
     releaseStage: 'ga',
     costTier: CostTier.Enterprise,
+    pricing: {
+      inputUsdPer1m: 21,
+      outputUsdPer1m: 168,
+    },
     tags: ['gpt-5.2', 'pro', 'responses'],
   },
   {
@@ -312,6 +368,11 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Latest flagship GPT-5.2 model offering instant and thinking modes for coding and agentic tasks.',
     releaseStage: 'ga',
     costTier: CostTier.Premium,
+    pricing: {
+      inputUsdPer1m: 1.75,
+      outputUsdPer1m: 14,
+      cacheReadInputUsdPer1m: 0.175,
+    },
     tags: ['gpt-5.2', 'flagship', 'responses'],
   },
   {
@@ -321,6 +382,11 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Intelligent reasoning model for coding and agentic tasks with configurable reasoning effort.',
     releaseStage: 'ga',
     costTier: CostTier.Standard,
+    pricing: {
+      inputUsdPer1m: 1.25,
+      outputUsdPer1m: 10,
+      cacheReadInputUsdPer1m: 0.125,
+    },
     tags: ['gpt-5', 'responses'],
   },
   {
@@ -330,6 +396,11 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'A faster, cost-efficient version of GPT-5 for well-defined tasks.',
     releaseStage: 'ga',
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.25,
+      outputUsdPer1m: 2,
+      cacheReadInputUsdPer1m: 0.025,
+    },
     tags: ['gpt-5', 'mini', 'responses'],
   },
   {
@@ -339,6 +410,11 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Fastest, most cost-efficient version of GPT-5.',
     releaseStage: 'ga',
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.05,
+      outputUsdPer1m: 0.4,
+      cacheReadInputUsdPer1m: 0.005,
+    },
     tags: ['gpt-5', 'nano', 'responses'],
   },
 ];
@@ -357,4 +433,3 @@ export const registerDefaultOpenAIModels = (
     registry.register(definition);
   }
 };
-

@@ -1,6 +1,13 @@
 import { GoogleGenerativeAI, type GenerateContentRequest, type GenerationConfig, type ResponseSchema, SchemaType } from '@google/generative-ai';
 import type { JsonSchema7Type } from 'zod-to-json-schema';
-import type { BaseModel, ModelCallInput, ModelCallMode, ModelStreamChunk, ModelStreamResult } from '@/lib/ai/core';
+import type {
+  BaseModel,
+  ModelCallInput,
+  ModelCallMode,
+  ModelStreamChunk,
+  ModelStreamResult,
+  ModelUsage,
+} from '@/lib/ai/core';
 
 import {
   CostTier,
@@ -8,6 +15,7 @@ import {
   type ModelDefinition,
   type ModelFactory,
   type ModelFactoryOptions,
+  type ModelPricing,
   ProviderId,
 } from './types';
 import { modelRegistry, type ModelRegistry } from './registry';
@@ -38,6 +46,7 @@ export interface GeminiModelDefinitionConfig extends GeminiModelOverrides {
   readonly label: string;
   readonly description?: string;
   readonly releaseStage?: 'experimental' | 'beta' | 'ga';
+  readonly pricing?: ModelPricing;
 }
 
 type GeminiSchemaInput = JsonSchema7Type | ResponseSchema | undefined;
@@ -66,6 +75,39 @@ const ensureGeminiClient = (options?: GeminiModelFactoryOptions): GoogleGenerati
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const readUsageFromResponse = (value: unknown): ModelUsage | undefined => {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const usage = value.usageMetadata;
+  if (!usage || !isRecord(usage)) {
+    return undefined;
+  }
+
+  const inputTokens =
+    typeof usage.promptTokenCount === 'number' ? usage.promptTokenCount : undefined;
+  const outputTokens =
+    typeof usage.candidatesTokenCount === 'number' ? usage.candidatesTokenCount : undefined;
+  const cacheReadInputTokens =
+    typeof usage.cachedContentTokenCount === 'number'
+      ? usage.cachedContentTokenCount
+      : undefined;
+  const totalTokens =
+    typeof usage.totalTokenCount === 'number'
+      ? usage.totalTokenCount
+      : inputTokens !== undefined && outputTokens !== undefined
+        ? inputTokens + outputTokens
+        : undefined;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheReadInputTokens,
+  };
+};
 
 const toSchemaType = (value: unknown): SchemaType | undefined => {
   if (typeof value !== 'string') {
@@ -256,12 +298,13 @@ export const createGeminiModel = (
       );
 
       const text = result.response.text();
+      const usage = readUsageFromResponse(result.response);
 
       if (typeof text !== 'string' || text.length === 0) {
         throw new Error('Google Gemini response did not include text content.');
       }
 
-      return { text };
+      return { text, usage };
     },
 
     ...(supportsStreaming
@@ -290,6 +333,7 @@ export const createGeminiModel = (
             );
 
             let accumulatedText = '';
+            let usage: ModelUsage | undefined;
 
             for await (const chunk of result.stream) {
               const chunkText = chunk.text();
@@ -297,12 +341,17 @@ export const createGeminiModel = (
                 accumulatedText += chunkText;
                 yield { text: chunkText, done: false };
               }
+
+              const chunkUsage = readUsageFromResponse(chunk);
+              if (chunkUsage) {
+                usage = chunkUsage;
+              }
             }
 
             // Signal completion
             yield { text: '', done: true };
 
-            return { text: accumulatedText };
+            return { text: accumulatedText, usage };
           },
         }
       : {}),
@@ -325,6 +374,7 @@ const createGeminiModelDefinition = (
       description: config.description,
       modelId: config.modelId,
       releaseStage: config.releaseStage,
+      pricing: config.pricing,
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
@@ -361,6 +411,12 @@ const DEFAULT_GEMINI_MODEL_CONFIGS: readonly GeminiModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 1048576,
     costTier: CostTier.Premium,
+    pricing: {
+      inputUsdPer1m: 2,
+      outputUsdPer1m: 12,
+      cacheCreationInputUsdPer1m: 4.5,
+      cacheReadInputUsdPer1m: 0.2,
+    },
     tags: ['gemini-3', 'pro', 'preview'],
   },
   {
@@ -372,6 +428,12 @@ const DEFAULT_GEMINI_MODEL_CONFIGS: readonly GeminiModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 1048576,
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.5,
+      outputUsdPer1m: 3,
+      cacheCreationInputUsdPer1m: 1,
+      cacheReadInputUsdPer1m: 0.05,
+    },
     tags: ['gemini-3', 'flash', 'preview'],
   },
   {
@@ -383,6 +445,12 @@ const DEFAULT_GEMINI_MODEL_CONFIGS: readonly GeminiModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 1048576,
     costTier: CostTier.Standard,
+    pricing: {
+      inputUsdPer1m: 1.25,
+      outputUsdPer1m: 10,
+      cacheCreationInputUsdPer1m: 4.5,
+      cacheReadInputUsdPer1m: 0.125,
+    },
     tags: ['gemini-2.5', 'pro'],
   },
   {
@@ -394,6 +462,12 @@ const DEFAULT_GEMINI_MODEL_CONFIGS: readonly GeminiModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 1048576,
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.3,
+      outputUsdPer1m: 2.5,
+      cacheCreationInputUsdPer1m: 1,
+      cacheReadInputUsdPer1m: 0.03,
+    },
     tags: ['gemini-2.5', 'flash'],
   },
 ];
@@ -412,4 +486,3 @@ export const registerDefaultGeminiModels = (
     registry.register(definition);
   }
 };
-

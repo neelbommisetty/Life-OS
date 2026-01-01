@@ -4,7 +4,14 @@ import type {
   ResponseCreateParamsNonStreaming,
   ResponseCreateParamsStreaming,
 } from 'openai/resources/responses/responses';
-import type { BaseModel, ModelCallInput, ModelCallMode, ModelStreamChunk, ModelStreamResult } from '@/lib/ai/core';
+import type {
+  BaseModel,
+  ModelCallInput,
+  ModelCallMode,
+  ModelStreamChunk,
+  ModelStreamResult,
+  ModelUsage,
+} from '@/lib/ai/core';
 
 import {
   CostTier,
@@ -12,6 +19,7 @@ import {
   type ModelDefinition,
   type ModelFactory,
   type ModelFactoryOptions,
+  type ModelPricing,
   ProviderId,
 } from './types';
 import { modelRegistry, type ModelRegistry } from './registry';
@@ -44,6 +52,7 @@ export interface XAIModelDefinitionConfig extends XAIModelOverrides {
   readonly label: string;
   readonly description?: string;
   readonly releaseStage?: 'experimental' | 'beta' | 'ga';
+  readonly pricing?: ModelPricing;
 }
 
 const ensureXAIClient = (
@@ -133,6 +142,45 @@ const extractResponseText = (response: Response): string => {
   return textChunks.join('');
 };
 
+const readResponseUsage = (response: Response): ModelUsage | undefined => {
+  const usage = response.usage;
+  if (!usage) {
+    return undefined;
+  }
+
+  const inputTokens = typeof usage.input_tokens === 'number' ? usage.input_tokens : undefined;
+  const outputTokens = typeof usage.output_tokens === 'number' ? usage.output_tokens : undefined;
+  const cachedTokens =
+    typeof usage.input_tokens_details?.cached_tokens === 'number'
+      ? usage.input_tokens_details.cached_tokens
+      : undefined;
+  const totalTokens = typeof usage.total_tokens === 'number'
+    ? usage.total_tokens
+    : inputTokens !== undefined && outputTokens !== undefined
+      ? inputTokens + outputTokens
+      : undefined;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheReadInputTokens: cachedTokens,
+  };
+};
+
+const readUsageFromStreamEvent = (event: unknown): ModelUsage | undefined => {
+  if (!isObject(event)) {
+    return undefined;
+  }
+
+  const response = event.response;
+  if (!response || !isObject(response)) {
+    return undefined;
+  }
+
+  return readResponseUsage(response as Response);
+};
+
 export const createXAIModel = (
   model: string,
   overrides: XAIModelOverrides = {},
@@ -195,8 +243,9 @@ export const createXAIModel = (
       );
 
       const text = extractResponseText(response);
+      const usage = readResponseUsage(response);
 
-      return { text };
+      return { text, usage };
     },
 
     ...(supportsStreaming
@@ -232,6 +281,7 @@ export const createXAIModel = (
             );
 
             let accumulatedText = '';
+            let usage: ModelUsage | undefined;
 
             for await (const event of stream) {
               if (event.type === 'response.output_text.delta') {
@@ -241,11 +291,12 @@ export const createXAIModel = (
                   yield { text: delta, done: false };
                 }
               } else if (event.type === 'response.completed') {
+                usage = readUsageFromStreamEvent(event);
                 yield { text: '', done: true };
               }
             }
 
-            return { text: accumulatedText };
+            return { text: accumulatedText, usage };
           },
         }
       : {}),
@@ -268,6 +319,7 @@ const createXAIModelDefinition = (
       description: config.description,
       modelId: config.modelId,
       releaseStage: config.releaseStage,
+      pricing: config.pricing,
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
@@ -304,6 +356,11 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 2000000,
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.2,
+      outputUsdPer1m: 0.5,
+      cacheReadInputUsdPer1m: 0.05,
+    },
     tags: ['grok', 'grok-4.1', 'fast'],
   },
   {
@@ -315,6 +372,11 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 2000000,
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.2,
+      outputUsdPer1m: 0.5,
+      cacheReadInputUsdPer1m: 0.05,
+    },
     tags: ['grok', 'grok-4.1', 'fast', 'non-reasoning'],
   },
   {
@@ -326,6 +388,11 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 256000,
     costTier: CostTier.Premium,
+    pricing: {
+      inputUsdPer1m: 3,
+      outputUsdPer1m: 15,
+      cacheReadInputUsdPer1m: 0.75,
+    },
     tags: ['grok', 'grok-4', 'frontier', 'flagship'],
   },
   {
@@ -337,6 +404,11 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 2000000,
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.2,
+      outputUsdPer1m: 0.5,
+      cacheReadInputUsdPer1m: 0.05,
+    },
     tags: ['grok', 'grok-4', 'fast', 'reasoning'],
   },
   {
@@ -348,6 +420,11 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 2000000,
     costTier: CostTier.Economy,
+    pricing: {
+      inputUsdPer1m: 0.2,
+      outputUsdPer1m: 0.5,
+      cacheReadInputUsdPer1m: 0.05,
+    },
     tags: ['grok', 'grok-4', 'fast', 'non-reasoning'],
   },
 ];

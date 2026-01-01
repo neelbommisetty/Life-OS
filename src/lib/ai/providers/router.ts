@@ -6,8 +6,10 @@ import type {
   ModelCallMode,
   ModelStreamChunk,
   ModelStreamResult,
+  ModelCallAttempt,
+  ModelCallTelemetry,
 } from '@/lib/ai/core';
-import { applyMiddleware, withLogging, withRetry, type RetryOptions } from '@/lib/ai/core';
+import { applyMiddleware, withLogging, type RetryOptions } from '@/lib/ai/core';
 import { createLogger, setLogLevel, type LogLevel } from '@/lib/logger';
 
 import { modelRegistry, type ModelRegistry } from './registry';
@@ -15,6 +17,94 @@ import { CostTier, type ModelKey, type ModelMetadata } from './types';
 
 const sharedServiceRoutes = new Map<string, NormalizedServiceRouteConfig>();
 const logger = createLogger('ai-providers:router');
+
+const sleep = async (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const toErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const attachTelemetryToError = (error: unknown, telemetry: ModelCallTelemetry): void => {
+  if (!error || typeof error !== 'object') {
+    return;
+  }
+
+  (error as { aiTelemetry?: ModelCallTelemetry }).aiTelemetry = telemetry;
+};
+
+const callWithRetry = async <T>(
+  fn: () => Promise<T>,
+  options?: RetryOptions,
+): Promise<{ result: T; retriesUsed: number }> => {
+  const {
+    retries = 0,
+    delayMs = 0,
+    shouldRetry = () => true,
+  } = options ?? {};
+
+  let attempt = 0;
+  let retriesUsed = 0;
+
+  while (true) {
+    try {
+      const result = await fn();
+      return { result, retriesUsed };
+    } catch (error) {
+      if (attempt >= retries || !shouldRetry(error, attempt + 1)) {
+        if (error && typeof error === 'object') {
+          (error as { retriesUsed?: number }).retriesUsed = retriesUsed;
+        }
+        throw error;
+      }
+
+      const delay =
+        typeof delayMs === 'function' ? delayMs(attempt + 1, error) : delayMs;
+
+      if (delay > 0) {
+        await sleep(delay);
+      }
+
+      attempt += 1;
+      retriesUsed += 1;
+    }
+  }
+};
+
+const buildAttempt = (
+  metadata: ModelMetadata | undefined,
+  status: ModelCallAttempt['status'],
+  startedAt: number | undefined,
+  endedAt: number | undefined,
+  error?: string,
+  retryCount?: number,
+): ModelCallAttempt => ({
+  modelKey: metadata?.key,
+  modelName: metadata?.label,
+  providerId: metadata?.providerId,
+  modelId: metadata?.modelId,
+  status,
+  error,
+  startedAt,
+  endedAt,
+  durationMs:
+    startedAt !== undefined && endedAt !== undefined ? endedAt - startedAt : undefined,
+  retryCount,
+});
+
+const buildTelemetry = (params: {
+  serviceName: string;
+  routeStrategy: string;
+  modelMetadata?: ModelMetadata;
+  attempts?: ModelCallAttempt[];
+}): ModelCallTelemetry => ({
+  serviceName: params.serviceName,
+  routeStrategy: params.routeStrategy,
+  modelKey: params.modelMetadata?.key,
+  modelName: params.modelMetadata?.label,
+  providerId: params.modelMetadata?.providerId,
+  modelId: params.modelMetadata?.modelId,
+  attempts: params.attempts && params.attempts.length > 0 ? params.attempts : undefined,
+});
 
 export enum ServiceRouteStrategy {
   Static = 'static',
@@ -302,7 +392,7 @@ export class ModelRouter {
         serviceName,
         overrideKey,
       });
-      return this.instantiateModel(serviceName, overrideKey, route);
+      return this.createSingleModelRoute(serviceName, overrideKey, route, 'override');
     }
 
     switch (route.strategy) {
@@ -311,7 +401,12 @@ export class ModelRouter {
           serviceName,
           model: route.model,
         });
-        return this.instantiateModel(serviceName, route.model, route);
+        return this.createSingleModelRoute(
+          serviceName,
+          route.model,
+          route,
+          ServiceRouteStrategy.Static,
+        );
       case ServiceRouteStrategy.Failover:
         return this.createFailoverModel(serviceName, route);
       case ServiceRouteStrategy.RoundRobin:
@@ -372,7 +467,6 @@ export class ModelRouter {
     };
 
     middlewares.push(withLogging({ ...loggingOptions, logger: contextualLogger }));
-    middlewares.push(withRetry(retryOptions));
 
     logger.debug('Applied middleware to model', {
       serviceName,
@@ -385,11 +479,124 @@ export class ModelRouter {
     return applyMiddleware(model, ...middlewares);
   }
 
+  private createSingleModelRoute(
+    serviceName: string,
+    modelKey: ModelKey,
+    route: NormalizedRouteOptions,
+    routeStrategy: string,
+  ): BaseModel {
+    const model = this.instantiateModel(serviceName, modelKey, route);
+    const metadata = this.getMetadataOrThrow(modelKey);
+
+    return {
+      name: model.name,
+      caps: model.caps,
+      call: async (input: ModelCallInput) => {
+        const startedAt = Date.now();
+        try {
+          const { result, retriesUsed } = await callWithRetry(
+            () => model.call(input),
+            route.retry,
+          );
+          const endedAt = Date.now();
+          const attempts = [
+            buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+          ];
+          const telemetry = buildTelemetry({
+            serviceName,
+            routeStrategy,
+            modelMetadata: metadata,
+            attempts,
+          });
+          return { ...result, telemetry };
+        } catch (error) {
+          const endedAt = Date.now();
+          const retriesUsed =
+            error && typeof error === 'object'
+              ? (error as { retriesUsed?: number }).retriesUsed
+              : undefined;
+          const attempts = [
+            buildAttempt(
+              metadata,
+              'error',
+              startedAt,
+              endedAt,
+              toErrorMessage(error),
+              retriesUsed,
+            ),
+          ];
+          const telemetry = buildTelemetry({
+            serviceName,
+            routeStrategy,
+            modelMetadata: metadata,
+            attempts,
+          });
+          attachTelemetryToError(error, telemetry);
+          throw error;
+        }
+      },
+      ...(model.streamCall
+        ? {
+            async *streamCall(
+              input: ModelCallInput,
+            ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
+              const startedAt = Date.now();
+              let accumulatedText = '';
+              let usage: ModelStreamResult['usage'];
+
+              try {
+                const generator = model.streamCall!(input);
+
+                while (true) {
+                  const { value, done } = await generator.next();
+                  if (done) {
+                    const finalText = value?.text?.length ? value.text : accumulatedText;
+                    usage = value?.usage ?? usage;
+                    const endedAt = Date.now();
+                    const attempts = [
+                      buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                    ];
+                    const telemetry = buildTelemetry({
+                      serviceName,
+                      routeStrategy,
+                      modelMetadata: metadata,
+                      attempts,
+                    });
+                    return { text: finalText, usage, telemetry };
+                  }
+
+                  if (value?.text) {
+                    accumulatedText += value.text;
+                  }
+
+                  yield value;
+                }
+              } catch (error) {
+                const endedAt = Date.now();
+                const attempts = [
+                  buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                ];
+                const telemetry = buildTelemetry({
+                  serviceName,
+                  routeStrategy,
+                  modelMetadata: metadata,
+                  attempts,
+                });
+                attachTelemetryToError(error, telemetry);
+                throw error;
+              }
+            },
+          }
+        : {}),
+    };
+  }
+
   private createFailoverModel(
     serviceName: string,
     route: NormalizedFailoverRouteConfig,
   ): BaseModel {
-    const metadatas = route.models.map((key) => this.getMetadataOrThrow(key));
+    const resolveMetadata = (key: ModelKey) => this.getMetadataOrThrow(key);
+    const metadatas = route.models.map(resolveMetadata);
     const caps = deriveSharedCapabilities(metadatas);
     const instantiateModel = this.instantiateModel.bind(this);
 
@@ -398,26 +605,66 @@ export class ModelRouter {
       caps,
       call: async (input: ModelCallInput) => {
         let lastError: unknown;
+        const attempts: ModelCallAttempt[] = [];
         for (const key of route.models) {
+          const metadata = resolveMetadata(key);
+          const startedAt = Date.now();
           try {
             logger.debug('Attempting failover candidate', {
               serviceName,
               modelKey: key,
             });
             const model = instantiateModel(serviceName, key, route);
-            return await model.call(input);
+            const { result, retriesUsed } = await callWithRetry(
+              () => model.call(input),
+              route.retry,
+            );
+            const endedAt = Date.now();
+            attempts.push(
+              buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+            );
+            const telemetry = buildTelemetry({
+              serviceName,
+              routeStrategy: ServiceRouteStrategy.Failover,
+              modelMetadata: metadata,
+              attempts,
+            });
+            return { ...result, telemetry };
           } catch (error) {
             logger.warn('Failover candidate failed', {
               serviceName,
               modelKey: key,
               error: error instanceof Error ? error.message : String(error),
             });
+            const endedAt = Date.now();
+            const retriesUsed =
+              error && typeof error === 'object'
+                ? (error as { retriesUsed?: number }).retriesUsed
+                : undefined;
+            attempts.push(
+              buildAttempt(
+                metadata,
+                'error',
+                startedAt,
+                endedAt,
+                toErrorMessage(error),
+                retriesUsed,
+              ),
+            );
             lastError = error;
             continue;
           }
         }
 
-        throw lastError ?? new Error(`All models failed for service "${serviceName}".`);
+        const telemetry = buildTelemetry({
+          serviceName,
+          routeStrategy: ServiceRouteStrategy.Failover,
+          attempts,
+        });
+        const finalError =
+          lastError ?? new Error(`All models failed for service "${serviceName}".`);
+        attachTelemetryToError(finalError, telemetry);
+        throw finalError;
       },
       ...(caps.supportsStreaming
         ? {
@@ -425,38 +672,88 @@ export class ModelRouter {
               input: ModelCallInput,
             ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
               let lastError: unknown;
+              const attempts: ModelCallAttempt[] = [];
 
               for (const key of route.models) {
                 const candidate = instantiateModel(serviceName, key, route);
+                const metadata = resolveMetadata(key);
 
                 if (!candidate.streamCall) {
+                  const skippedAt = Date.now();
+                  attempts.push(
+                    buildAttempt(
+                      metadata,
+                      'error',
+                      skippedAt,
+                      skippedAt,
+                      'streaming_not_supported',
+                    ),
+                  );
                   continue;
                 }
 
                 let yieldedAny = false;
                 let accumulatedText = '';
+                let usage: ModelStreamResult['usage'];
+                const startedAt = Date.now();
 
                 try {
                   const generator = candidate.streamCall(input);
-                  for await (const chunk of generator) {
-                    if (chunk.text) {
-                      yieldedAny = true;
-                      accumulatedText += chunk.text;
+                  while (true) {
+                    const { value, done } = await generator.next();
+                    if (done) {
+                      const finalText = value?.text?.length ? value.text : accumulatedText;
+                      usage = value?.usage ?? usage;
+                      const endedAt = Date.now();
+                      attempts.push(
+                        buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                      );
+                      const telemetry = buildTelemetry({
+                        serviceName,
+                        routeStrategy: ServiceRouteStrategy.Failover,
+                        modelMetadata: metadata,
+                        attempts,
+                      });
+                      return { text: finalText, usage, telemetry };
                     }
-                    yield chunk;
+
+                    if (value?.text) {
+                      yieldedAny = true;
+                      accumulatedText += value.text;
+                    }
+
+                    yield value;
                   }
-                  return { text: accumulatedText };
                 } catch (error) {
+                  const endedAt = Date.now();
+                  attempts.push(
+                    buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                  );
                   // If we haven't yielded anything yet, we can try the next candidate.
                   if (!yieldedAny) {
                     lastError = error;
                     continue;
                   }
+                  const telemetry = buildTelemetry({
+                    serviceName,
+                    routeStrategy: ServiceRouteStrategy.Failover,
+                    modelMetadata: metadata,
+                    attempts,
+                  });
+                  attachTelemetryToError(error, telemetry);
                   throw error;
                 }
               }
 
-              throw lastError ?? new Error(`No streaming-capable models available for "${serviceName}".`);
+              const telemetry = buildTelemetry({
+                serviceName,
+                routeStrategy: ServiceRouteStrategy.Failover,
+                attempts,
+              });
+              const finalError =
+                lastError ?? new Error(`No streaming-capable models available for "${serviceName}".`);
+              attachTelemetryToError(finalError, telemetry);
+              throw finalError;
             },
           }
         : {}),
@@ -468,7 +765,8 @@ export class ModelRouter {
     serviceName: string,
     route: NormalizedRotatingFailoverRouteConfig,
   ): BaseModel {
-    const metadatas = route.models.map((key) => this.getMetadataOrThrow(key));
+    const resolveMetadata = (key: ModelKey) => this.getMetadataOrThrow(key);
+    const metadatas = route.models.map(resolveMetadata);
     const caps = deriveSharedCapabilities(metadatas);
     const instantiateModel = this.instantiateModel.bind(this);
     const rotationState = this.rotationState;
@@ -482,10 +780,13 @@ export class ModelRouter {
         rotationState.set(serviceName, nextIndex);
 
         let lastError: unknown;
+        const attempts: ModelCallAttempt[] = [];
 
         for (let offset = 0; offset < route.models.length; offset += 1) {
           const candidateIndex = (startingIndex + offset) % route.models.length;
           const key = route.models[candidateIndex];
+          const metadata = resolveMetadata(key);
+          const startedAt = Date.now();
 
           try {
             logger.debug('Attempting rotating failover candidate', {
@@ -495,19 +796,56 @@ export class ModelRouter {
               candidateIndex,
             });
             const model = instantiateModel(serviceName, key, route);
-            return await model.call(input);
+            const { result, retriesUsed } = await callWithRetry(
+              () => model.call(input),
+              route.retry,
+            );
+            const endedAt = Date.now();
+            attempts.push(
+              buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+            );
+            const telemetry = buildTelemetry({
+              serviceName,
+              routeStrategy: ServiceRouteStrategy.RotatingFailover,
+              modelMetadata: metadata,
+              attempts,
+            });
+            return { ...result, telemetry };
           } catch (error) {
             logger.warn('Rotating failover candidate failed', {
               serviceName,
               modelKey: key,
               error: error instanceof Error ? error.message : String(error),
             });
+            const endedAt = Date.now();
+            const retriesUsed =
+              error && typeof error === 'object'
+                ? (error as { retriesUsed?: number }).retriesUsed
+                : undefined;
+            attempts.push(
+              buildAttempt(
+                metadata,
+                'error',
+                startedAt,
+                endedAt,
+                toErrorMessage(error),
+                retriesUsed,
+              ),
+            );
             lastError = error;
             continue;
           }
         }
 
-        throw lastError ?? new Error(`All models failed for service "${serviceName}".`);
+        const telemetry = buildTelemetry({
+          serviceName,
+          routeStrategy: ServiceRouteStrategy.RotatingFailover,
+          attempts,
+        });
+        const finalError =
+          lastError ?? new Error(`All models failed for service "${serviceName}".`);
+        attachTelemetryToError(finalError, telemetry);
+        throw finalError;
       },
       ...(caps.supportsStreaming
         ? {
@@ -517,27 +855,62 @@ export class ModelRouter {
               const startingIndex = rotationState.get(serviceName) ?? 0;
               const nextIndex = (startingIndex + 1) % route.models.length;
               rotationState.set(serviceName, nextIndex);
+              const attempts: ModelCallAttempt[] = [];
 
               for (let offset = 0; offset < route.models.length; offset += 1) {
                 const candidateIndex = (startingIndex + offset) % route.models.length;
                 const key = route.models[candidateIndex];
                 const candidate = instantiateModel(serviceName, key, route);
+                const metadata = resolveMetadata(key);
 
                 if (!candidate.streamCall) {
+                  const skippedAt = Date.now();
+                  attempts.push(
+                    buildAttempt(
+                      metadata,
+                      'error',
+                      skippedAt,
+                      skippedAt,
+                      'streaming_not_supported',
+                    ),
+                  );
                   continue;
                 }
 
                 let accumulatedText = '';
+                let usage: ModelStreamResult['usage'];
+                const startedAt = Date.now();
                 try {
                   const generator = candidate.streamCall(input);
-                  for await (const chunk of generator) {
-                    if (chunk.text) {
-                      accumulatedText += chunk.text;
+                  while (true) {
+                    const { value, done } = await generator.next();
+                    if (done) {
+                      const finalText = value?.text?.length ? value.text : accumulatedText;
+                      usage = value?.usage ?? usage;
+                      const endedAt = Date.now();
+                      attempts.push(
+                        buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                      );
+                      const telemetry = buildTelemetry({
+                        serviceName,
+                        routeStrategy: ServiceRouteStrategy.RotatingFailover,
+                        modelMetadata: metadata,
+                        attempts,
+                      });
+                      return { text: finalText, usage, telemetry };
                     }
-                    yield chunk;
+
+                    if (value?.text) {
+                      accumulatedText += value.text;
+                    }
+
+                    yield value;
                   }
-                  return { text: accumulatedText };
-                } catch {
+                } catch (error) {
+                  const endedAt = Date.now();
+                  attempts.push(
+                    buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                  );
                   continue;
                 }
               }
@@ -545,9 +918,57 @@ export class ModelRouter {
               // Fallback: do a blocking call on the first model if streaming not available.
               const key = route.models[startingIndex];
               const model = instantiateModel(serviceName, key, route);
-              const result = await model.call(input);
-              yield { text: result.text, done: true };
-              return { text: result.text };
+              const metadata = resolveMetadata(key);
+              const startedAt = Date.now();
+              try {
+                const { result, retriesUsed } = await callWithRetry(
+                  () => model.call(input),
+                  route.retry,
+                );
+                const endedAt = Date.now();
+                attempts.push(
+                  buildAttempt(
+                    metadata,
+                    'success',
+                    startedAt,
+                    endedAt,
+                    undefined,
+                    retriesUsed,
+                  ),
+                );
+                const telemetry = buildTelemetry({
+                  serviceName,
+                  routeStrategy: ServiceRouteStrategy.RotatingFailover,
+                  modelMetadata: metadata,
+                  attempts,
+                });
+                yield { text: result.text, done: true };
+                return { text: result.text, usage: result.usage, telemetry };
+              } catch (error) {
+                const endedAt = Date.now();
+                const retriesUsed =
+                  error && typeof error === 'object'
+                    ? (error as { retriesUsed?: number }).retriesUsed
+                    : undefined;
+                attempts.push(
+                  buildAttempt(
+                    metadata,
+                    'error',
+                    startedAt,
+                    endedAt,
+                    toErrorMessage(error),
+                    retriesUsed,
+                  ),
+                );
+                const telemetry = buildTelemetry({
+                  serviceName,
+                  routeStrategy: ServiceRouteStrategy.RotatingFailover,
+                  modelMetadata: metadata,
+                  attempts,
+                });
+                attachTelemetryToError(error, telemetry);
+                throw error;
+              }
             },
           }
         : {}),
@@ -560,7 +981,8 @@ export class ModelRouter {
     serviceName: string,
     route: NormalizedRoundRobinRouteConfig,
   ): BaseModel {
-    const metadatas = route.models.map((key) => this.getMetadataOrThrow(key));
+    const resolveMetadata = (key: ModelKey) => this.getMetadataOrThrow(key);
+    const metadatas = route.models.map(resolveMetadata);
     const caps = deriveSharedCapabilities(metadatas);
     const instantiateModel = this.instantiateModel.bind(this);
     const rotationState = this.rotationState;
@@ -579,7 +1001,49 @@ export class ModelRouter {
           nextIndex,
         });
         const model = instantiateModel(serviceName, key, route);
-        return model.call(input);
+        const metadata = resolveMetadata(key);
+        const startedAt = Date.now();
+        try {
+          const { result, retriesUsed } = await callWithRetry(
+            () => model.call(input),
+            route.retry,
+          );
+          const endedAt = Date.now();
+          const attempts = [
+            buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+          ];
+          const telemetry = buildTelemetry({
+            serviceName,
+            routeStrategy: ServiceRouteStrategy.RoundRobin,
+            modelMetadata: metadata,
+            attempts,
+          });
+          return { ...result, telemetry };
+        } catch (error) {
+          const endedAt = Date.now();
+          const retriesUsed =
+            error && typeof error === 'object'
+              ? (error as { retriesUsed?: number }).retriesUsed
+              : undefined;
+          const attempts = [
+            buildAttempt(
+              metadata,
+              'error',
+              startedAt,
+              endedAt,
+              toErrorMessage(error),
+              retriesUsed,
+            ),
+          ];
+          const telemetry = buildTelemetry({
+            serviceName,
+            routeStrategy: ServiceRouteStrategy.RoundRobin,
+            modelMetadata: metadata,
+            attempts,
+          });
+          attachTelemetryToError(error, telemetry);
+          throw error;
+        }
       },
       ...(caps.supportsStreaming
         ? {
@@ -592,21 +1056,104 @@ export class ModelRouter {
               const key = route.models[currentIndex];
 
               const model = instantiateModel(serviceName, key, route);
+              const metadata = resolveMetadata(key);
+              const startedAt = Date.now();
               if (model.streamCall) {
                 let accumulatedText = '';
-                for await (const chunk of model.streamCall(input)) {
-                  if (chunk.text) {
-                    accumulatedText += chunk.text;
+                let usage: ModelStreamResult['usage'];
+                try {
+                  const generator = model.streamCall(input);
+                  while (true) {
+                    const { value, done } = await generator.next();
+                    if (done) {
+                      const finalText = value?.text?.length ? value.text : accumulatedText;
+                      usage = value?.usage ?? usage;
+                      const endedAt = Date.now();
+                      const attempts = [
+                        buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                      ];
+                      const telemetry = buildTelemetry({
+                        serviceName,
+                        routeStrategy: ServiceRouteStrategy.RoundRobin,
+                        modelMetadata: metadata,
+                        attempts,
+                      });
+                      return { text: finalText, usage, telemetry };
+                    }
+
+                    if (value?.text) {
+                      accumulatedText += value.text;
+                    }
+
+                    yield value;
                   }
-                  yield chunk;
+                } catch (error) {
+                  const endedAt = Date.now();
+                  const attempts = [
+                    buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                  ];
+                  const telemetry = buildTelemetry({
+                    serviceName,
+                    routeStrategy: ServiceRouteStrategy.RoundRobin,
+                    modelMetadata: metadata,
+                    attempts,
+                  });
+                  attachTelemetryToError(error, telemetry);
+                  throw error;
                 }
-                return { text: accumulatedText };
               }
 
               // Fallback to blocking call if selected model isn't streaming-capable.
-              const result = await model.call(input);
-              yield { text: result.text, done: true };
-              return { text: result.text };
+              const startedFallbackAt = Date.now();
+              try {
+                const { result, retriesUsed } = await callWithRetry(
+                  () => model.call(input),
+                  route.retry,
+                );
+                const endedAt = Date.now();
+                const attempts = [
+                  buildAttempt(
+                    metadata,
+                    'success',
+                    startedFallbackAt,
+                    endedAt,
+                    undefined,
+                    retriesUsed,
+                  ),
+                ];
+                const telemetry = buildTelemetry({
+                  serviceName,
+                  routeStrategy: ServiceRouteStrategy.RoundRobin,
+                  modelMetadata: metadata,
+                  attempts,
+                });
+                yield { text: result.text, done: true };
+                return { text: result.text, usage: result.usage, telemetry };
+              } catch (error) {
+                const endedAt = Date.now();
+                const retriesUsed =
+                  error && typeof error === 'object'
+                    ? (error as { retriesUsed?: number }).retriesUsed
+                    : undefined;
+                const attempts = [
+                  buildAttempt(
+                    metadata,
+                    'error',
+                    startedFallbackAt,
+                    endedAt,
+                    toErrorMessage(error),
+                    retriesUsed,
+                  ),
+                ];
+                const telemetry = buildTelemetry({
+                  serviceName,
+                  routeStrategy: ServiceRouteStrategy.RoundRobin,
+                  modelMetadata: metadata,
+                  attempts,
+                });
+                attachTelemetryToError(error, telemetry);
+                throw error;
+              }
             },
           }
         : {}),
@@ -632,13 +1179,17 @@ export class ModelRouter {
 
     const sorter = route.sort ?? defaultCapabilitySort;
     const [winner] = [...matches].sort(sorter);
-    const base = this.registry.create(winner.key);
     logger.info('Selected capability route winner', {
       serviceName,
       modelKey: winner.key,
       label: winner.label,
     });
-    return this.applyRouteMiddleware(serviceName, base, route, winner.key);
+    return this.createSingleModelRoute(
+      serviceName,
+      winner.key,
+      route,
+      ServiceRouteStrategy.Capability,
+    );
   }
 
   private getMetadataOrThrow(key: ModelKey): ModelMetadata {

@@ -2,6 +2,37 @@ import type { JsonSchema7Type } from 'zod-to-json-schema';
 
 export type ModelCallMode = 'text' | 'json';
 
+export interface ModelUsage {
+  readonly inputTokens?: number;
+  readonly outputTokens?: number;
+  readonly totalTokens?: number;
+  readonly cacheCreationInputTokens?: number;
+  readonly cacheReadInputTokens?: number;
+}
+
+export interface ModelCallAttempt {
+  readonly modelKey?: string;
+  readonly modelName?: string;
+  readonly providerId?: string;
+  readonly modelId?: string;
+  readonly status: 'success' | 'error';
+  readonly error?: string;
+  readonly startedAt?: number;
+  readonly endedAt?: number;
+  readonly durationMs?: number;
+  readonly retryCount?: number;
+}
+
+export interface ModelCallTelemetry {
+  readonly serviceName?: string;
+  readonly routeStrategy?: string;
+  readonly modelKey?: string;
+  readonly modelName?: string;
+  readonly providerId?: string;
+  readonly modelId?: string;
+  readonly attempts?: readonly ModelCallAttempt[];
+}
+
 export interface ModelCapabilities {
   readonly modes: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
@@ -21,6 +52,8 @@ export interface ModelCallInput {
 
 export interface ModelCallOutput {
   readonly text: string;
+  readonly usage?: ModelUsage;
+  readonly telemetry?: ModelCallTelemetry;
 }
 
 /**
@@ -39,6 +72,8 @@ export interface ModelStreamChunk {
 export interface ModelStreamResult {
   /** The complete accumulated text */
   readonly text: string;
+  readonly usage?: ModelUsage;
+  readonly telemetry?: ModelCallTelemetry;
 }
 
 export interface BaseModel {
@@ -49,4 +84,3 @@ export interface BaseModel {
   /** Streaming call that yields chunks as they arrive */
   streamCall?(input: ModelCallInput): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined>;
 }
-

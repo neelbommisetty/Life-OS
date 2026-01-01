@@ -59,6 +59,14 @@ export type ModelCapabilityMetadata = Omit<ModelCapabilities, 'costTier'> & {
   readonly costTier?: CostTier;
 };
 
+export type ModelPricing = Readonly<{
+  readonly inputUsdPer1m: number;
+  readonly outputUsdPer1m: number;
+  readonly cacheCreationInputUsdPer1m?: number;
+  readonly cacheReadInputUsdPer1m?: number;
+  readonly effectiveAt?: string;
+}>;
+
 /**
  * Metadata describing an individual model entry.
  */
@@ -69,6 +77,7 @@ export interface ModelMetadata extends ModelCapabilityMetadata {
   readonly description?: string;
   readonly modelId?: string;
   readonly releaseStage?: 'experimental' | 'beta' | 'ga';
+  readonly pricing?: ModelPricing;
 }
 
 export interface ModelFactoryOptions {
@@ -84,4 +93,3 @@ export interface ModelDefinition {
   readonly create: ModelFactory;
   readonly metadata: ModelMetadata;
 }
-
