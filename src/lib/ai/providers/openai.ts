@@ -36,6 +36,7 @@ export interface OpenAIModelOverrides {
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
   readonly supportsStreaming?: boolean;
+  readonly supportsReasoning?: boolean;
   readonly name?: string;
 }
 
@@ -188,6 +189,7 @@ export const createOpenAIModel = (
   const resolvedModes = (overrides.modes ?? DEFAULT_OPENAI_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
   const supportsStreaming = overrides.supportsStreaming ?? true; // OpenAI supports streaming by default
+  const supportsReasoning = overrides.supportsReasoning ?? false;
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens;
 
@@ -197,6 +199,7 @@ export const createOpenAIModel = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -324,6 +327,7 @@ const createOpenAIModelDefinition = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning: config.supportsReasoning,
       maxOutputTokens: config.maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -340,6 +344,7 @@ const createOpenAIModelDefinition = (
           modes: resolvedModes,
           supportsJson,
           supportsStreaming,
+          supportsReasoning: config.supportsReasoning,
           name: config.label,
         },
         options,
@@ -355,6 +360,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Enhanced GPT-5.2 Pro variant producing smarter and more precise responses.',
     releaseStage: 'ga',
     costTier: CostTier.Enterprise,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 21,
       outputUsdPer1m: 168,
@@ -368,6 +374,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Latest flagship GPT-5.2 model offering instant and thinking modes for coding and agentic tasks.',
     releaseStage: 'ga',
     costTier: CostTier.Premium,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 1.75,
       outputUsdPer1m: 14,
@@ -382,6 +389,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Intelligent reasoning model for coding and agentic tasks with configurable reasoning effort.',
     releaseStage: 'ga',
     costTier: CostTier.Standard,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 1.25,
       outputUsdPer1m: 10,
@@ -396,6 +404,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'A faster, cost-efficient version of GPT-5 for well-defined tasks.',
     releaseStage: 'ga',
     costTier: CostTier.Economy,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 0.25,
       outputUsdPer1m: 2,
@@ -410,6 +419,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Fastest, most cost-efficient version of GPT-5.',
     releaseStage: 'ga',
     costTier: CostTier.Economy,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 0.05,
       outputUsdPer1m: 0.4,

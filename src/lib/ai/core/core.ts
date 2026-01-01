@@ -37,6 +37,7 @@ export interface ModelCapabilities {
   readonly modes: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
   readonly supportsStreaming?: boolean;
+  readonly supportsReasoning?: boolean;
   readonly maxOutputTokens?: number;
   readonly contextWindow?: number;
   readonly costTier?: string;

@@ -37,6 +37,7 @@ export interface XAIModelOverrides {
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
   readonly supportsStreaming?: boolean;
+  readonly supportsReasoning?: boolean;
   readonly name?: string;
 }
 
@@ -190,6 +191,7 @@ export const createXAIModel = (
   const resolvedModes = (overrides.modes ?? DEFAULT_XAI_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
   const supportsStreaming = overrides.supportsStreaming ?? true;
+  const supportsReasoning = overrides.supportsReasoning ?? false;
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens;
 
@@ -199,6 +201,7 @@ export const createXAIModel = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -323,6 +326,7 @@ const createXAIModelDefinition = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning: config.supportsReasoning,
       maxOutputTokens: config.maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -339,6 +343,7 @@ const createXAIModelDefinition = (
           modes: resolvedModes,
           supportsJson,
           supportsStreaming,
+          supportsReasoning: config.supportsReasoning,
           name: config.label,
         },
         options,
@@ -356,6 +361,7 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 2000000,
     costTier: CostTier.Economy,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 0.2,
       outputUsdPer1m: 0.5,
@@ -388,6 +394,7 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 256000,
     costTier: CostTier.Premium,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 3,
       outputUsdPer1m: 15,
@@ -404,6 +411,7 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     maxOutputTokens: 65536,
     contextWindow: 2000000,
     costTier: CostTier.Economy,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 0.2,
       outputUsdPer1m: 0.5,
