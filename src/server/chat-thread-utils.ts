@@ -5,11 +5,25 @@ import { createLogger } from "@/lib/logger";
 import { getModelFor } from "@/lib/ai/providers/router";
 import { initializeChatServices } from "@/lib/ai/chat-services";
 import { prisma } from "@/server/db";
+import { getTelemetryFromError, recordAiCall } from "@/server/ai/telemetry";
 
 const logger = createLogger("chat:threads");
 
 const PLACEHOLDER_THREAD_NAMES = ["New thread", "Default"];
 const PLACEHOLDER_NAME_PATTERN = /^New thread( \(\d+\))?$/;
+
+const resolveAiStatus = (error: unknown): "ERROR" | "ABORTED" => {
+  if (!error || typeof error !== "object") {
+    return "ERROR";
+  }
+
+  const typed = error as { name?: string; code?: string };
+  if (typed.name === "AbortError" || typed.code === "STREAM_ABORTED") {
+    return "ABORTED";
+  }
+
+  return "ERROR";
+};
 
 type PrismaClientLike = Pick<
   PrismaClient,
@@ -84,10 +98,55 @@ export function queueThreadTitleGeneration(params: {
       initializeChatServices();
       const model = getModelFor("project_chat_summary");
       const prompt = buildThreadTitlePrompt(firstMessage);
-      const result = await model.call({
-        prompt,
-        mode: "text",
-      });
+      const callStartAt = new Date();
+      let result!: Awaited<ReturnType<typeof model.call>>;
+
+      try {
+        result = await model.call({
+          prompt,
+          mode: "text",
+        });
+        const callEndAt = new Date();
+        await recordAiCall({
+          prisma,
+          context: {
+            projectId,
+            threadId,
+            source: "background_job",
+            actionType: "thread.title_generate",
+          },
+          prompt,
+          outputText: result.text,
+          usage: result.usage,
+          telemetry: result.telemetry,
+          timing: {
+            requestStartAt: callStartAt,
+            responseEndAt: callEndAt,
+          },
+          status: "SUCCESS",
+        });
+      } catch (error) {
+        const callEndAt = new Date();
+        await recordAiCall({
+          prisma,
+          context: {
+            projectId,
+            threadId,
+            source: "background_job",
+            actionType: "thread.title_generate",
+          },
+          prompt,
+          outputText: null,
+          usage: undefined,
+          telemetry: getTelemetryFromError(error),
+          timing: {
+            requestStartAt: callStartAt,
+            responseEndAt: callEndAt,
+          },
+          status: resolveAiStatus(error),
+        });
+        throw error;
+      }
 
       const normalized = normalizeThreadTitle(result.text);
       if (!normalized) {

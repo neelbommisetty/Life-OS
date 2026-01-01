@@ -104,7 +104,11 @@ export function formatMessagesForAI(
  * Calculate total tokens in message history
  */
 export function calculateHistoryTokens(messages: ChatMessage[]): number {
-  return messages.reduce((total, msg) => total + estimateTokens(msg.content), 0);
+  return messages.reduce(
+    (total, msg) =>
+      total + (typeof msg.tokenCount === "number" ? msg.tokenCount : estimateTokens(msg.content)),
+    0
+  );
 }
 
 /**

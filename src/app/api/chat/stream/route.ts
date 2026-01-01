@@ -7,6 +7,7 @@ import {
   buildSystemPrompt,
   formatMessagesForAI,
   calculateHistoryTokens,
+  estimateTokens,
   buildSummarizationPrompt,
   encodeSSE,
   type StreamEvent,
@@ -16,7 +17,8 @@ import "@/lib/ai/init";
 import { modelRegistry } from "@/lib/ai";
 import { getModelFor } from "@/lib/ai/providers/router";
 import { initializeChatServices } from "@/lib/ai/chat-services";
-import type { ModelKey } from "@/lib/ai";
+import type { ModelKey, ModelStreamResult } from "@/lib/ai";
+import { getTelemetryFromError, recordAiCall } from "@/server/ai/telemetry";
 import {
   getUniqueThreadName,
   isPlaceholderThreadName,
@@ -29,13 +31,33 @@ const logger = createLogger("api:chat:stream");
 // Initialize chat AI services
 initializeChatServices();
 
-// Token cap before triggering summarization (~6k tokens)
-const HISTORY_TOKEN_CAP = 6000;
+// Token cap before triggering summarization (~30k tokens)
+const HISTORY_TOKEN_CAP = 30000;
 const DEFAULT_THREAD_NAME = "New thread";
 const THREAD_ORDER: Prisma.ChatThreadOrderByWithRelationInput[] = [
   { lastChattedAt: "desc" },
   { createdAt: "desc" },
 ];
+
+const resolveAiStatus = (error: unknown): "ERROR" | "ABORTED" => {
+  if (!error || typeof error !== "object") {
+    return "ERROR";
+  }
+
+  const typed = error as { name?: string; code?: string };
+  if (typed.name === "AbortError" || typed.code === "STREAM_ABORTED") {
+    return "ABORTED";
+  }
+
+  return "ERROR";
+};
+
+const resolveTokenCount = (text: string, usageTokens?: number | null) => {
+  if (typeof usageTokens === "number") {
+    return { tokenCount: usageTokens, tokenCountSource: "usage" };
+  }
+  return { tokenCount: estimateTokens(text), tokenCountSource: "estimate" };
+};
 
 export async function POST(request: Request) {
   const start = Date.now();
@@ -191,6 +213,7 @@ export async function POST(request: Request) {
           threadId: thread.id,
           role: "USER",
           content,
+          ...resolveTokenCount(content),
         },
       });
 
@@ -242,17 +265,63 @@ export async function POST(request: Request) {
         oldMessageCount: oldMessages.length,
       });
 
-      const summaryResult = await summaryModel.call({
-        prompt: summaryPrompt,
-        mode: "text",
-      });
+      const summaryStartAt = new Date();
+      let summaryResult: Awaited<ReturnType<typeof summaryModel.call>> | undefined;
+
+      try {
+        summaryResult = await summaryModel.call({
+          prompt: summaryPrompt,
+          mode: "text",
+        });
+        const summaryEndAt = new Date();
+
+        await recordAiCall({
+          prisma,
+          context: {
+            projectId: project.id,
+            threadId: thread.id,
+            source: "summarization",
+            actionType: "thread.summarize",
+          },
+          prompt: summaryPrompt,
+          outputText: summaryResult.text,
+          usage: summaryResult.usage,
+          telemetry: summaryResult.telemetry,
+          timing: {
+            requestStartAt: summaryStartAt,
+            responseEndAt: summaryEndAt,
+          },
+          status: "SUCCESS",
+        });
+      } catch (error) {
+        const summaryEndAt = new Date();
+        await recordAiCall({
+          prisma,
+          context: {
+            projectId: project.id,
+            threadId: thread.id,
+            source: "summarization",
+            actionType: "thread.summarize",
+          },
+          prompt: summaryPrompt,
+          outputText: null,
+          usage: undefined,
+          telemetry: getTelemetryFromError(error),
+          timing: {
+            requestStartAt: summaryStartAt,
+            responseEndAt: summaryEndAt,
+          },
+          status: resolveAiStatus(error),
+        });
+        throw error;
+      }
 
       // Update thread with summary
       const oldestSummarizedDate = oldMessages[oldMessages.length - 1]?.createdAt;
       thread = await prisma.chatThread.update({
         where: { id: thread.id },
         data: {
-          summary: summaryResult.text,
+          summary: summaryResult?.text ?? "",
           summaryUpTo: oldestSummarizedDate,
         },
         include: {
@@ -263,7 +332,7 @@ export async function POST(request: Request) {
       });
 
       logger.info("Conversation summarized", {
-        summaryLength: summaryResult.text.length,
+        summaryLength: summaryResult?.text.length ?? 0,
         summarizedCount: oldMessages.length,
       });
     }
@@ -341,10 +410,54 @@ export async function POST(request: Request) {
       });
 
       // Fallback to blocking call
-      const result = await chatModel.call({
-        prompt: fullPrompt,
-        mode: "text",
-      });
+      const callStartAt = new Date();
+      let result!: Awaited<ReturnType<typeof chatModel.call>>;
+      try {
+        result = await chatModel.call({
+          prompt: fullPrompt,
+          mode: "text",
+        });
+        const callEndAt = new Date();
+        await recordAiCall({
+          prisma,
+          context: {
+            projectId: project.id,
+            threadId: thread.id,
+            source: "chat",
+            actionType: "chat.reply",
+          },
+          prompt: fullPrompt,
+          outputText: result.text,
+          usage: result.usage,
+          telemetry: result.telemetry,
+          timing: {
+            requestStartAt: callStartAt,
+            responseEndAt: callEndAt,
+          },
+          status: "SUCCESS",
+        });
+      } catch (error) {
+        const callEndAt = new Date();
+        await recordAiCall({
+          prisma,
+          context: {
+            projectId: project.id,
+            threadId: thread.id,
+            source: "chat",
+            actionType: "chat.reply",
+          },
+          prompt: fullPrompt,
+          outputText: null,
+          usage: undefined,
+          telemetry: getTelemetryFromError(error),
+          timing: {
+            requestStartAt: callStartAt,
+            responseEndAt: callEndAt,
+          },
+          status: resolveAiStatus(error),
+        });
+        throw error;
+      }
 
       // Save assistant message
       const assistantMessage = await prisma.chatMessage.create({
@@ -352,6 +465,7 @@ export async function POST(request: Request) {
           threadId: thread.id,
           role: "ASSISTANT",
           content: result.text,
+          ...resolveTokenCount(result.text, result.usage?.outputTokens),
           ...assistantModelData,
         },
       });
@@ -387,6 +501,11 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         let accumulatedText = "";
+        let streamResult: ModelStreamResult | undefined;
+        let firstTokenAt: Date | null = null;
+        let streamingStartAt: Date | null = null;
+        let streamingEndAt: Date | null = null;
+        const callStartAt = new Date();
 
         try {
           // Stream from AI model
@@ -395,24 +514,35 @@ export async function POST(request: Request) {
             mode: "text",
           });
 
-          for await (const chunk of streamGenerator) {
-            if (chunk.text) {
-              accumulatedText += chunk.text;
-              const event: StreamEvent = { type: "chunk", text: chunk.text };
-              controller.enqueue(encoder.encode(encodeSSE(event)));
-            }
-
-            if (chunk.done) {
+          while (true) {
+            const { value, done } = await streamGenerator.next();
+            if (done) {
+              streamResult = value;
               break;
             }
+
+            if (value.text) {
+              accumulatedText += value.text;
+              if (!firstTokenAt) {
+                firstTokenAt = new Date();
+                streamingStartAt = firstTokenAt;
+              }
+              const event: StreamEvent = { type: "chunk", text: value.text };
+              controller.enqueue(encoder.encode(encodeSSE(event)));
+            }
           }
+
+          streamingEndAt = new Date();
+          const finalText =
+            streamResult?.text?.length ? streamResult.text : accumulatedText;
 
           // Save complete assistant message to database
           const assistantMessage = await prisma.chatMessage.create({
             data: {
               threadId: activeThreadId,
               role: "ASSISTANT",
-              content: accumulatedText,
+              content: finalText,
+              ...resolveTokenCount(finalText, streamResult?.usage?.outputTokens),
               ...assistantModelData,
             },
           });
@@ -427,8 +557,30 @@ export async function POST(request: Request) {
           logger.info("Chat stream completed", {
             userMessageId: userMessage?.id,
             assistantMessageId: assistantMessage.id,
-            responseLength: accumulatedText.length,
+            responseLength: finalText.length,
             durationMs: Date.now() - start,
+          });
+
+          await recordAiCall({
+            prisma,
+            context: {
+              projectId: project.id,
+              threadId: activeThreadId,
+              source: "chat",
+              actionType: "chat.reply",
+            },
+            prompt: fullPrompt,
+            outputText: finalText,
+            usage: streamResult?.usage,
+            telemetry: streamResult?.telemetry,
+            timing: {
+              requestStartAt: callStartAt,
+              firstTokenAt,
+              streamingStartAt,
+              streamingEndAt,
+              responseEndAt: streamingEndAt ?? new Date(),
+            },
+            status: "SUCCESS",
           });
 
           // Send message saved event
@@ -448,15 +600,18 @@ export async function POST(request: Request) {
             error: error instanceof Error ? error.message : String(error),
             durationMs: Date.now() - start,
           });
+          const errorEndAt = new Date();
 
           // If we have accumulated text, try to save it
           if (accumulatedText.length > 0) {
             try {
+              const partialContent = `${accumulatedText}\n\n[Response interrupted]`;
               const partialMessage = await prisma.chatMessage.create({
                 data: {
                   threadId: activeThreadId,
                   role: "ASSISTANT",
-                  content: accumulatedText + "\n\n[Response interrupted]",
+                  content: partialContent,
+                  ...resolveTokenCount(partialContent),
                   ...assistantModelData,
                 },
               });
@@ -477,6 +632,28 @@ export async function POST(request: Request) {
               // Ignore save errors in error path
             }
           }
+
+          await recordAiCall({
+            prisma,
+            context: {
+              projectId: project.id,
+              threadId: activeThreadId,
+              source: "chat",
+              actionType: "chat.reply",
+            },
+            prompt: fullPrompt,
+            outputText: accumulatedText.length > 0 ? accumulatedText : null,
+            usage: streamResult?.usage,
+            telemetry: getTelemetryFromError(error) ?? streamResult?.telemetry,
+            timing: {
+              requestStartAt: callStartAt,
+              firstTokenAt,
+              streamingStartAt,
+              streamingEndAt: streamingEndAt ?? errorEndAt,
+              responseEndAt: errorEndAt,
+            },
+            status: resolveAiStatus(error),
+          });
 
           // Send error event
           const errorEvent: StreamEvent = {
