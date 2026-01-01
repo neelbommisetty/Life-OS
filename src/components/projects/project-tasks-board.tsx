@@ -66,9 +66,16 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
   const [priorityFilter, setPriorityFilter] = useState<Priority | "ALL">("ALL");
   const [panelOpen, setPanelOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(() => createEmptyDraft());
-  const [tasksViewParam, setTasksViewParam] = useSearchParamState<string | null>("tasksView", null);
-  const [threadIdParam, setThreadIdParam] = useSearchParamState<string | null>("threadId", null);
-  const [chatDraftParam, setChatDraftParam] = useSearchParamState<string | null>("chatDraft", null);
+  const [tasksViewParam, setTasksViewParam] = useSearchParamState<
+    string | null
+  >("tasksView", null);
+  const [threadIdParam, setThreadIdParam] = useSearchParamState<string | null>(
+    "threadId",
+    null
+  );
+  const [chatDraftParam, setChatDraftParam] = useSearchParamState<
+    string | null
+  >("chatDraft", null);
 
   const activeView = useMemo(() => {
     const viewParam = resolveTasksViewParam(tasksViewParam);
@@ -131,9 +138,12 @@ export function ProjectTasksBoard({ projectId, accentColor }: Props) {
     },
   });
 
-  const createThread = useManagedMutation(api.chat.createThread.useMutation as any, {
-    invalidate: (utils) => utils.chat.listThreads.invalidate({ projectId }),
-  });
+  const createThread = useManagedMutation(
+    api.chat.createThread.useMutation as any,
+    {
+      invalidate: (utils) => utils.chat.listThreads.invalidate({ projectId }),
+    }
+  );
 
   const setThreadIdInUrl = useCallback(
     (threadId: string, draftMessage?: string) => {
