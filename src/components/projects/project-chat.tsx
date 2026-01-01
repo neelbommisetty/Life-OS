@@ -174,6 +174,7 @@ export function ProjectChat({
     isStreaming,
     streamingThreadId,
     streamingContent,
+    streamingReasoning,
     optimisticUserMessage,
     optimisticStatus,
     pendingAssistantId,
@@ -459,6 +460,7 @@ export function ProjectChat({
           isActiveThreadStreaming={isActiveThreadStreaming}
           isStreaming={isStreaming}
           streamingContent={streamingContent}
+          streamingReasoning={streamingReasoning}
           pendingAssistantId={pendingAssistantId}
           streamError={streamError}
           tasksPending={tasksPending}

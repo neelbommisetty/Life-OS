@@ -59,6 +59,16 @@ const resolveTokenCount = (text: string, usageTokens?: number | null) => {
   return { tokenCount: estimateTokens(text), tokenCountSource: "estimate" };
 };
 
+const resolveReasoningTokenCount = (
+  text: string,
+  usageTokens?: number | null
+) => {
+  if (typeof usageTokens === "number") {
+    return { tokenCount: usageTokens, tokenCountSource: "usage" };
+  }
+  return { tokenCount: estimateTokens(text), tokenCountSource: "estimate" };
+};
+
 export async function POST(request: Request) {
   const start = Date.now();
 
@@ -399,6 +409,9 @@ export async function POST(request: Request) {
           modelLabel: "Auto routing",
           modelProvider: null,
         };
+    const reasoningEnabled = Boolean(
+      thread.reasoningEnabled && modelMetadata?.supportsReasoning
+    );
 
     // Get the chat model
     const chatModel = getModelFor("project_chat", overrideKey);
@@ -416,6 +429,7 @@ export async function POST(request: Request) {
         result = await chatModel.call({
           prompt: fullPrompt,
           mode: "text",
+          ...(reasoningEnabled ? { reasoning: { effort: "medium" } } : {}),
         });
         const callEndAt = new Date();
         await recordAiCall({
@@ -470,6 +484,19 @@ export async function POST(request: Request) {
         },
       });
 
+      if (result.reasoningText?.trim()) {
+        await prisma.chatMessageReasoning.create({
+          data: {
+            messageId: assistantMessage.id,
+            content: result.reasoningText.trim(),
+            ...resolveReasoningTokenCount(
+              result.reasoningText,
+              result.usage?.reasoningTokens
+            ),
+          },
+        });
+      }
+
       await prisma.chatThread.update({
         where: { id: thread.id },
         data: {
@@ -481,6 +508,9 @@ export async function POST(request: Request) {
       const encoder = new TextEncoder();
       const events = [
         encodeSSE({ type: "chunk", text: result.text }),
+        ...(result.reasoningText
+          ? [encodeSSE({ type: "reasoning_chunk", text: result.reasoningText })]
+          : []),
         encodeSSE({ type: "message_saved", messageId: assistantMessage.id }),
         encodeSSE({ type: "done" }),
       ];
@@ -501,6 +531,7 @@ export async function POST(request: Request) {
     const stream = new ReadableStream({
       async start(controller) {
         let accumulatedText = "";
+        let accumulatedReasoning = "";
         let streamResult: ModelStreamResult | undefined;
         let firstTokenAt: Date | null = null;
         let streamingStartAt: Date | null = null;
@@ -512,6 +543,7 @@ export async function POST(request: Request) {
           const streamGenerator = chatModel.streamCall!({
             prompt: fullPrompt,
             mode: "text",
+            ...(reasoningEnabled ? { reasoning: { effort: "medium" } } : {}),
           });
 
           while (true) {
@@ -530,11 +562,24 @@ export async function POST(request: Request) {
               const event: StreamEvent = { type: "chunk", text: value.text };
               controller.enqueue(encoder.encode(encodeSSE(event)));
             }
+
+            if (value.reasoningText) {
+              accumulatedReasoning += value.reasoningText;
+              const event: StreamEvent = {
+                type: "reasoning_chunk",
+                text: value.reasoningText,
+              };
+              controller.enqueue(encoder.encode(encodeSSE(event)));
+            }
           }
 
           streamingEndAt = new Date();
           const finalText =
             streamResult?.text?.length ? streamResult.text : accumulatedText;
+          const finalReasoning =
+            streamResult?.reasoningText?.length
+              ? streamResult.reasoningText
+              : accumulatedReasoning;
 
           // Save complete assistant message to database
           const assistantMessage = await prisma.chatMessage.create({
@@ -546,6 +591,19 @@ export async function POST(request: Request) {
               ...assistantModelData,
             },
           });
+
+          if (finalReasoning.trim()) {
+            await prisma.chatMessageReasoning.create({
+              data: {
+                messageId: assistantMessage.id,
+                content: finalReasoning.trim(),
+                ...resolveReasoningTokenCount(
+                  finalReasoning,
+                  streamResult?.usage?.reasoningTokens
+                ),
+              },
+            });
+          }
 
           await prisma.chatThread.update({
             where: { id: activeThreadId },

@@ -93,6 +93,7 @@ export const recordAiCall = async (params: {
       usage?.outputTokens ?? estimateTokens(outputText);
     const cacheCreationInputTokens = usage?.cacheCreationInputTokens ?? null;
     const cacheReadInputTokens = usage?.cacheReadInputTokens ?? null;
+    const reasoningTokens = usage?.reasoningTokens ?? null;
     const totalTokens =
       usage?.totalTokens ??
       (inputTokens !== undefined && outputTokens !== undefined
@@ -173,6 +174,7 @@ export const recordAiCall = async (params: {
         modelId: resolved.modelId ?? null,
         inputTokens,
         outputTokens,
+        reasoningTokens,
         totalTokens,
         cacheCreationInputTokens,
         cacheReadInputTokens,

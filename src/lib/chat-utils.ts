@@ -168,7 +168,12 @@ export function isApproval(content: string): boolean {
 /**
  * Stream event types for Server-Sent Events
  */
-export type StreamEventType = 'chunk' | 'done' | 'error' | 'message_saved';
+export type StreamEventType =
+  | 'chunk'
+  | 'reasoning_chunk'
+  | 'done'
+  | 'error'
+  | 'message_saved';
 
 /**
  * Structure of a streaming event
@@ -204,7 +209,10 @@ export function parseSSELine(line: string): StreamEvent | null {
     const event = JSON.parse(jsonStr) as StreamEvent;
 
     // Validate event structure
-    if (!event.type || !['chunk', 'done', 'error', 'message_saved'].includes(event.type)) {
+    if (
+      !event.type ||
+      !['chunk', 'reasoning_chunk', 'done', 'error', 'message_saved'].includes(event.type)
+    ) {
       return null;
     }
 

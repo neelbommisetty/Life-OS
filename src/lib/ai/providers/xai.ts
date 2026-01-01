@@ -106,6 +106,20 @@ const readOutputText = (value: unknown): string | undefined => {
   return typeof textValue === 'string' ? textValue : undefined;
 };
 
+const readReasoningText = (value: unknown): string | undefined => {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const type = typeof value.type === 'string' ? value.type : undefined;
+  if (type !== 'reasoning_text') {
+    return undefined;
+  }
+
+  const textValue = value.text;
+  return typeof textValue === 'string' ? textValue : undefined;
+};
+
 const extractResponseText = (response: Response): string => {
   const directText = response.output_text;
 
@@ -143,6 +157,37 @@ const extractResponseText = (response: Response): string => {
   return textChunks.join('');
 };
 
+const extractReasoningText = (response: Response): string | undefined => {
+  const reasoningChunks: string[] = [];
+
+  for (const item of response.output ?? []) {
+    if (!isObject(item)) {
+      continue;
+    }
+
+    if (item.type === 'message') {
+      const contentEntries = Array.isArray(item.content) ? item.content : [];
+      for (const content of contentEntries) {
+        const text = readReasoningText(content);
+        if (typeof text === 'string') {
+          reasoningChunks.push(text);
+        }
+      }
+    } else {
+      const text = readReasoningText(item);
+      if (typeof text === 'string') {
+        reasoningChunks.push(text);
+      }
+    }
+  }
+
+  if (reasoningChunks.length === 0) {
+    return undefined;
+  }
+
+  return reasoningChunks.join('');
+};
+
 const readResponseUsage = (response: Response): ModelUsage | undefined => {
   const usage = response.usage;
   if (!usage) {
@@ -155,6 +200,10 @@ const readResponseUsage = (response: Response): ModelUsage | undefined => {
     typeof usage.input_tokens_details?.cached_tokens === 'number'
       ? usage.input_tokens_details.cached_tokens
       : undefined;
+  const reasoningTokens =
+    typeof usage.output_tokens_details?.reasoning_tokens === 'number'
+      ? usage.output_tokens_details.reasoning_tokens
+      : undefined;
   const totalTokens = typeof usage.total_tokens === 'number'
     ? usage.total_tokens
     : inputTokens !== undefined && outputTokens !== undefined
@@ -166,6 +215,7 @@ const readResponseUsage = (response: Response): ModelUsage | undefined => {
     outputTokens,
     totalTokens,
     cacheReadInputTokens: cachedTokens,
+    reasoningTokens,
   };
 };
 
@@ -229,6 +279,12 @@ export const createXAIModel = (
         request.max_output_tokens = maxOutputTokens;
       }
 
+      if (input.reasoning) {
+        request.reasoning = {
+          effort: input.reasoning.effort ?? 'medium',
+        };
+      }
+
       if (mode === 'json') {
         const schema = (input.jsonSchema ?? { type: 'object' }) as Record<string, unknown>;
         request.text = {
@@ -246,9 +302,10 @@ export const createXAIModel = (
       );
 
       const text = extractResponseText(response);
+      const reasoningText = extractReasoningText(response);
       const usage = readResponseUsage(response);
 
-      return { text, usage };
+      return { text, usage, reasoningText };
     },
 
     ...(supportsStreaming
@@ -278,12 +335,19 @@ export const createXAIModel = (
               request.max_output_tokens = maxOutputTokens;
             }
 
+            if (input.reasoning) {
+              request.reasoning = {
+                effort: input.reasoning.effort ?? 'medium',
+              };
+            }
+
             const stream = await client.responses.create(
               request,
               input.signal ? { signal: input.signal } : undefined,
             );
 
             let accumulatedText = '';
+            let accumulatedReasoning = '';
             let usage: ModelUsage | undefined;
 
             for await (const event of stream) {
@@ -293,13 +357,29 @@ export const createXAIModel = (
                   accumulatedText += delta;
                   yield { text: delta, done: false };
                 }
+              } else if (event.type === 'response.reasoning_text.delta') {
+                const delta = (event as { delta?: string }).delta ?? '';
+                if (delta) {
+                  accumulatedReasoning += delta;
+                  yield { text: '', reasoningText: delta, done: false };
+                }
+              } else if (event.type === 'response.reasoning_text.done') {
+                const doneText = (event as { text?: string }).text ?? '';
+                if (doneText && !accumulatedReasoning) {
+                  accumulatedReasoning = doneText;
+                  yield { text: '', reasoningText: doneText, done: false };
+                }
               } else if (event.type === 'response.completed') {
                 usage = readUsageFromStreamEvent(event);
                 yield { text: '', done: true };
               }
             }
 
-            return { text: accumulatedText, usage };
+            return {
+              text: accumulatedText,
+              usage,
+              reasoningText: accumulatedReasoning || undefined,
+            };
           },
         }
       : {}),

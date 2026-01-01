@@ -86,6 +86,10 @@ export const streamEventSchema = z.discriminatedUnion("type", [
     text: z.string(),
   }),
   z.object({
+    type: z.literal("reasoning_chunk"),
+    text: z.string(),
+  }),
+  z.object({
     type: z.literal("done"),
   }),
   z.object({

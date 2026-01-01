@@ -8,6 +8,7 @@ export interface ModelUsage {
   readonly totalTokens?: number;
   readonly cacheCreationInputTokens?: number;
   readonly cacheReadInputTokens?: number;
+  readonly reasoningTokens?: number;
 }
 
 export interface ModelCallAttempt {
@@ -48,6 +49,9 @@ export interface ModelCallInput {
   readonly prompt: string;
   readonly mode?: ModelCallMode;
   readonly jsonSchema?: JsonSchema7Type;
+  readonly reasoning?: {
+    readonly effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  };
   readonly signal?: AbortSignal;
 }
 
@@ -55,6 +59,7 @@ export interface ModelCallOutput {
   readonly text: string;
   readonly usage?: ModelUsage;
   readonly telemetry?: ModelCallTelemetry;
+  readonly reasoningText?: string;
 }
 
 /**
@@ -63,6 +68,8 @@ export interface ModelCallOutput {
 export interface ModelStreamChunk {
   /** The incremental text content of this chunk */
   readonly text: string;
+  /** The incremental reasoning content of this chunk */
+  readonly reasoningText?: string;
   /** Whether this is the final chunk in the stream */
   readonly done: boolean;
 }
@@ -75,6 +82,7 @@ export interface ModelStreamResult {
   readonly text: string;
   readonly usage?: ModelUsage;
   readonly telemetry?: ModelCallTelemetry;
+  readonly reasoningText?: string;
 }
 
 export interface BaseModel {

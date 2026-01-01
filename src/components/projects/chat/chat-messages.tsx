@@ -26,6 +26,7 @@ type Props = {
   isActiveThreadStreaming: boolean;
   isStreaming: boolean;
   streamingContent: string;
+  streamingReasoning: string;
   pendingAssistantId: string | null;
   streamError: string | null;
   tasksPending: boolean;
@@ -57,6 +58,7 @@ export function ChatMessages({
   isActiveThreadStreaming,
   isStreaming,
   streamingContent,
+  streamingReasoning,
   pendingAssistantId,
   streamError,
   tasksPending,
@@ -180,6 +182,7 @@ export function ChatMessages({
         <StreamingMessage
           isStreaming={isStreaming}
           streamingContent={streamingContent}
+          streamingReasoning={streamingReasoning}
           pendingAssistantId={pendingAssistantId}
           onStopStreaming={onStopStreaming}
         />

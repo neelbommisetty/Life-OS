@@ -61,6 +61,16 @@ const resolveTokenCount = (text: string, usageTokens?: number | null) => {
   return { tokenCount: estimateTokens(text), tokenCountSource: "estimate" };
 };
 
+const resolveReasoningTokenCount = (
+  text: string,
+  usageTokens?: number | null
+) => {
+  if (typeof usageTokens === "number") {
+    return { tokenCount: usageTokens, tokenCountSource: "usage" };
+  }
+  return { tokenCount: estimateTokens(text), tokenCountSource: "estimate" };
+};
+
 // Token cap before triggering summarization (~30k tokens)
 const HISTORY_TOKEN_CAP = 30000;
 const DEFAULT_THREAD_NAME = "New thread";
@@ -952,6 +962,9 @@ export const chatRouter = router({
               modelLabel: "Auto routing",
               modelProvider: null,
             };
+        const reasoningEnabled = Boolean(
+          thread.reasoningEnabled && modelMetadata?.supportsReasoning
+        );
 
         // Call AI model
         const chatModel = getModelFor("project_chat", overrideKey);
@@ -961,6 +974,7 @@ export const chatRouter = router({
           aiResult = await chatModel.call({
             prompt: fullPrompt,
             mode: "text",
+            ...(reasoningEnabled ? { reasoning: { effort: "medium" } } : {}),
           });
           const callEndAt = new Date();
           await recordAiCall({
@@ -1014,6 +1028,19 @@ export const chatRouter = router({
             ...assistantModelData,
           },
         });
+
+        if (aiResult.reasoningText?.trim()) {
+          await ctx.prisma.chatMessageReasoning.create({
+            data: {
+              messageId: assistantMessage.id,
+              content: aiResult.reasoningText.trim(),
+              ...resolveReasoningTokenCount(
+                aiResult.reasoningText,
+                aiResult.usage?.reasoningTokens
+              ),
+            },
+          });
+        }
 
         await ctx.prisma.chatThread.update({
           where: { id: thread.id },
