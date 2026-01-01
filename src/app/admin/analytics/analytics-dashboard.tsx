@@ -194,7 +194,7 @@ export function AnalyticsDashboard({ projects, models }: AnalyticsDashboardProps
     return { from, to };
   }, [timeRange]);
 
-  const scope =
+  const scope: "project" | "user" | "thread" | "global" =
     threadId.trim().length > 0
       ? "thread"
       : userId.trim().length > 0
@@ -239,16 +239,16 @@ export function AnalyticsDashboard({ projects, models }: AnalyticsDashboardProps
   };
 
   const summaryQuery = api.aiUsage.getSummary.useQuery(filterInput, {
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
   const rollupsQuery = api.aiUsage.getProjectRollups.useQuery(
     { ...filterInput, limit: 200 },
-    { keepPreviousData: true }
+    { placeholderData: (prev) => prev }
   );
 
   const callsQuery = api.aiUsage.listCalls.useQuery(listFilters, {
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
 
   const summary = summaryQuery.data;
