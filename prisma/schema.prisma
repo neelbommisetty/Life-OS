@@ -126,6 +126,7 @@ model ChatMessage {
   tokenCountSource String?
   taskResolution Json?
   createdAt      DateTime   @default(now())
+  reasoning      ChatMessageReasoning?
 
   @@index([threadId, createdAt])
 }
