@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   getThreadSchema,
   listMessagesSchema,
+  getMessageReasoningSchema,
   sendMessageSchema,
   setThreadModelSchema,
   setThreadReasoningSchema,
@@ -396,6 +397,31 @@ export const chatRouter = router({
         });
         throw error;
       }
+    }),
+
+  getMessageReasoning: publicProcedure
+    .input(getMessageReasoningSchema)
+    .query(async ({ ctx, input }) => {
+      const message = await ctx.prisma.chatMessage.findFirst({
+        where: {
+          id: input.messageId,
+          thread: {
+            projectId: input.projectId,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (!message) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Message not found",
+        });
+      }
+
+      return ctx.prisma.chatMessageReasoning.findUnique({
+        where: { messageId: input.messageId },
+      });
     }),
 
   listModels: publicProcedure.query(() => {

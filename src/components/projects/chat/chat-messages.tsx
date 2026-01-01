@@ -12,6 +12,7 @@ import type { ProposedTask } from "@/lib/chat-utils";
 import { formatDateTime } from "@/lib/project-utils";
 
 type Props = {
+  projectId: string;
   messages: any[]; // Using any[] to match the complex infinite query return type for now
   isLoading: boolean;
   isFetchingNextPage: boolean;
@@ -44,6 +45,7 @@ type Props = {
 };
 
 export function ChatMessages({
+  projectId,
   messages,
   isLoading,
   isFetchingNextPage,
@@ -128,6 +130,7 @@ export function ChatMessages({
           className="focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg"
         >
           <MessageBubble
+            projectId={projectId}
             message={message}
             themeStyle={themeStyle}
             hasAccentColor={hasAccentColor}
@@ -154,6 +157,7 @@ export function ChatMessages({
         (isActiveThreadStreaming || optimisticStatus === "failed") && (
           <div className="flex flex-col gap-2 items-end">
             <MessageBubble
+              projectId={projectId}
               message={{
                 id: "optimistic-user-message",
                 threadId: effectiveThreadId ?? "",

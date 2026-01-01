@@ -446,6 +446,7 @@ export function ProjectChat({
         />
 
         <ChatMessages
+          projectId={projectId}
           messages={messages}
           isLoading={messagesQuery.isLoading || threadsQuery.isLoading}
           isFetchingNextPage={messagesQuery.isFetchingNextPage}

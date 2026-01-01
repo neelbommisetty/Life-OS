@@ -41,6 +41,11 @@ export const listMessagesSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
 });
 
+export const getMessageReasoningSchema = z.object({
+  projectId: z.string().cuid(),
+  messageId: z.string().cuid(),
+});
+
 // Schema for streaming chat request
 export const streamMessageSchema = z
   .object({
@@ -107,6 +112,7 @@ export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type SetThreadModelInput = z.infer<typeof setThreadModelSchema>;
 export type SetThreadReasoningInput = z.infer<typeof setThreadReasoningSchema>;
 export type ListMessagesInput = z.infer<typeof listMessagesSchema>;
+export type GetMessageReasoningInput = z.infer<typeof getMessageReasoningSchema>;
 export type StreamMessageInput = z.infer<typeof streamMessageSchema>;
 export type ListThreadsInput = z.infer<typeof listThreadsSchema>;
 export type CreateThreadInput = z.infer<typeof createThreadSchema>;

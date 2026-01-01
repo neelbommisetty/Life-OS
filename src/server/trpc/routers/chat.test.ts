@@ -2,6 +2,7 @@ import { describe, test as it, expect } from "bun:test";
 import {
   getThreadSchema,
   listMessagesSchema,
+  getMessageReasoningSchema,
   sendMessageSchema,
   setThreadModelSchema,
   setThreadReasoningSchema,
@@ -173,6 +174,25 @@ describe("Chat Validations", () => {
         limit: 0,
       };
       const result = listMessagesSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("getMessageReasoningSchema", () => {
+    it("validates message reasoning lookup", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        messageId: "clxyz987654321",
+      };
+      const result = getMessageReasoningSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects missing message ID", () => {
+      const input = {
+        projectId: "clxyz123456789",
+      };
+      const result = getMessageReasoningSchema.safeParse(input);
       expect(result.success).toBe(false);
     });
   });
