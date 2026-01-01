@@ -59,7 +59,8 @@ describe("project tabs > buildProjectTabUrl", () => {
     const tabKey = projectTabs[2].key;
     const searchParams = new URLSearchParams("foo=bar");
     const url = buildProjectTabUrl("123", searchParams, tabKey);
-    const parts = url.split("/");
+    const pathname = new URL(url, "http://example.com").pathname;
+    const parts = pathname.split("/");
     const resolved = resolveProjectTabKey(parts[3] ?? "");
     expect(resolved).toBe(tabKey);
   });
