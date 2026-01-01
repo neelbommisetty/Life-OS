@@ -23,6 +23,12 @@ export const setThreadModelSchema = z.object({
   modelKey: z.string().min(1, "Model key is required").nullable(),
 });
 
+export const setThreadReasoningSchema = z.object({
+  projectId: z.string().cuid(),
+  threadId: z.string().cuid(),
+  reasoningEnabled: z.boolean(),
+});
+
 export const listMessagesSchema = z.object({
   projectId: z.string().cuid(),
   threadId: z.string().cuid(),
@@ -95,6 +101,7 @@ export const streamEventSchema = z.discriminatedUnion("type", [
 export type GetThreadInput = z.infer<typeof getThreadSchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type SetThreadModelInput = z.infer<typeof setThreadModelSchema>;
+export type SetThreadReasoningInput = z.infer<typeof setThreadReasoningSchema>;
 export type ListMessagesInput = z.infer<typeof listMessagesSchema>;
 export type StreamMessageInput = z.infer<typeof streamMessageSchema>;
 export type ListThreadsInput = z.infer<typeof listThreadsSchema>;

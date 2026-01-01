@@ -6,6 +6,7 @@ import {
   listMessagesSchema,
   sendMessageSchema,
   setThreadModelSchema,
+  setThreadReasoningSchema,
   listThreadsSchema,
   createThreadSchema,
   archiveThreadSchema,
@@ -492,6 +493,46 @@ export const chatRouter = router({
       });
 
       return thread;
+    }),
+
+  setThreadReasoning: publicProcedure
+    .input(setThreadReasoningSchema)
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Setting chat thread reasoning", {
+        projectId: input.projectId,
+        threadId: input.threadId,
+        reasoningEnabled: input.reasoningEnabled,
+      });
+
+      const thread = await ctx.prisma.chatThread.findFirst({
+        where: {
+          id: input.threadId,
+          projectId: input.projectId,
+        },
+      });
+
+      if (!thread) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Thread not found",
+        });
+      }
+
+      const updatedThread = await ctx.prisma.chatThread.update({
+        where: { id: thread.id },
+        data: {
+          reasoningEnabled: input.reasoningEnabled,
+        },
+      });
+
+      logger.info("Chat thread reasoning updated", {
+        threadId: updatedThread.id,
+        reasoningEnabled: updatedThread.reasoningEnabled,
+        durationMs: Date.now() - start,
+      });
+
+      return updatedThread;
     }),
 
   sendMessage: publicProcedure

@@ -4,6 +4,7 @@ import {
   listMessagesSchema,
   sendMessageSchema,
   setThreadModelSchema,
+  setThreadReasoningSchema,
   listThreadsSchema,
   createThreadSchema,
   archiveThreadSchema,
@@ -119,6 +120,27 @@ describe("Chat Validations", () => {
         modelKey: "openai.gpt-5-mini",
       };
       const result = setThreadModelSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("setThreadReasoningSchema", () => {
+    it("validates reasoning toggle input", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
+        reasoningEnabled: true,
+      };
+      const result = setThreadReasoningSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects missing thread ID", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        reasoningEnabled: false,
+      };
+      const result = setThreadReasoningSchema.safeParse(input);
       expect(result.success).toBe(false);
     });
   });
