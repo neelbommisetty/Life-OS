@@ -176,7 +176,7 @@ const readUsageFromStreamEvent = (event: unknown): ModelUsage | undefined => {
     return undefined;
   }
 
-  return readResponseUsage(response as Response);
+  return readResponseUsage(response as unknown as Response);
 };
 
 export const createOpenAIModel = (
