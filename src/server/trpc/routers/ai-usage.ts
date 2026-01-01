@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, AiCallStatus } from "@prisma/client";
 import { z } from "zod";
 import { createLogger } from "@/lib/logger";
 import { publicProcedure, router } from "../trpc";
@@ -86,7 +86,7 @@ const buildWhereInput = (filters: {
   ...(filters.modelId ? { modelId: filters.modelId } : {}),
   ...(filters.actionType ? { actionType: filters.actionType } : {}),
   ...(filters.source ? { source: filters.source } : {}),
-  ...(filters.status ? { status: filters.status as Prisma.AiCallStatus } : {}),
+  ...(filters.status ? { status: filters.status as AiCallStatus } : {}),
   ...(filters.from || filters.to
     ? {
         requestStartAt: {
@@ -169,7 +169,7 @@ const buildWhereClause = (
     return Prisma.sql``;
   }
 
-  return Prisma.sql`WHERE ${Prisma.join(clauses, Prisma.sql` AND `)}`;
+  return Prisma.sql`WHERE ${Prisma.join(clauses, ' AND ')}`;
 };
 
 export const aiUsageRouter = router({
