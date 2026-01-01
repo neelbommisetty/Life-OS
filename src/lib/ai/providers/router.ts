@@ -8,15 +8,15 @@ import type {
   ModelStreamResult,
   ModelCallAttempt,
   ModelCallTelemetry,
-} from '@/lib/ai/core';
-import { applyMiddleware, withLogging, type RetryOptions } from '@/lib/ai/core';
-import { createLogger, setLogLevel, type LogLevel } from '@/lib/logger';
+} from "@/lib/ai/core";
+import { applyMiddleware, withLogging, type RetryOptions } from "@/lib/ai/core";
+import { createLogger, setLogLevel, type LogLevel } from "@/lib/logger";
 
-import { modelRegistry, type ModelRegistry } from './registry';
-import { CostTier, type ModelKey, type ModelMetadata } from './types';
+import { modelRegistry, type ModelRegistry } from "./registry";
+import { CostTier, type ModelKey, type ModelMetadata } from "./types";
 
 const sharedServiceRoutes = new Map<string, NormalizedServiceRouteConfig>();
-const logger = createLogger('ai-providers:router');
+const logger = createLogger("ai-providers:router");
 
 const sleep = async (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,8 +24,11 @@ const sleep = async (ms: number): Promise<void> =>
 const toErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-const attachTelemetryToError = (error: unknown, telemetry: ModelCallTelemetry): void => {
-  if (!error || typeof error !== 'object') {
+const attachTelemetryToError = (
+  error: unknown,
+  telemetry: ModelCallTelemetry
+): void => {
+  if (!error || typeof error !== "object") {
     return;
   }
 
@@ -34,13 +37,9 @@ const attachTelemetryToError = (error: unknown, telemetry: ModelCallTelemetry): 
 
 const callWithRetry = async <T>(
   fn: () => Promise<T>,
-  options?: RetryOptions,
+  options?: RetryOptions
 ): Promise<{ result: T; retriesUsed: number }> => {
-  const {
-    retries = 0,
-    delayMs = 0,
-    shouldRetry = () => true,
-  } = options ?? {};
+  const { retries = 0, delayMs = 0, shouldRetry = () => true } = options ?? {};
 
   let attempt = 0;
   let retriesUsed = 0;
@@ -51,14 +50,14 @@ const callWithRetry = async <T>(
       return { result, retriesUsed };
     } catch (error) {
       if (attempt >= retries || !shouldRetry(error, attempt + 1)) {
-        if (error && typeof error === 'object') {
+        if (error && typeof error === "object") {
           (error as { retriesUsed?: number }).retriesUsed = retriesUsed;
         }
         throw error;
       }
 
       const delay =
-        typeof delayMs === 'function' ? delayMs(attempt + 1, error) : delayMs;
+        typeof delayMs === "function" ? delayMs(attempt + 1, error) : delayMs;
 
       if (delay > 0) {
         await sleep(delay);
@@ -72,11 +71,11 @@ const callWithRetry = async <T>(
 
 const buildAttempt = (
   metadata: ModelMetadata | undefined,
-  status: ModelCallAttempt['status'],
+  status: ModelCallAttempt["status"],
   startedAt: number | undefined,
   endedAt: number | undefined,
   error?: string,
-  retryCount?: number,
+  retryCount?: number
 ): ModelCallAttempt => ({
   modelKey: metadata?.key,
   modelName: metadata?.label,
@@ -87,7 +86,9 @@ const buildAttempt = (
   startedAt,
   endedAt,
   durationMs:
-    startedAt !== undefined && endedAt !== undefined ? endedAt - startedAt : undefined,
+    startedAt !== undefined && endedAt !== undefined
+      ? endedAt - startedAt
+      : undefined,
   retryCount,
 });
 
@@ -103,15 +104,16 @@ const buildTelemetry = (params: {
   modelName: params.modelMetadata?.label,
   providerId: params.modelMetadata?.providerId,
   modelId: params.modelMetadata?.modelId,
-  attempts: params.attempts && params.attempts.length > 0 ? params.attempts : undefined,
+  attempts:
+    params.attempts && params.attempts.length > 0 ? params.attempts : undefined,
 });
 
 export enum ServiceRouteStrategy {
-  Static = 'static',
-  Failover = 'failover',
-  RoundRobin = 'round_robin',
-  RotatingFailover = 'rotating_failover',
-  Capability = 'capability',
+  Static = "static",
+  Failover = "failover",
+  RoundRobin = "round_robin",
+  RotatingFailover = "rotating_failover",
+  Capability = "capability",
 }
 
 interface RouteOptions {
@@ -211,24 +213,30 @@ const defaultCapabilitySort = (a: ModelMetadata, b: ModelMetadata): number => {
 };
 
 const getCostRank = (tier?: CostTier): number =>
-  tier === undefined ? Number.POSITIVE_INFINITY : (COST_RANK[tier] ?? Number.POSITIVE_INFINITY);
+  tier === undefined
+    ? Number.POSITIVE_INFINITY
+    : COST_RANK[tier] ?? Number.POSITIVE_INFINITY;
 
-const normalizeRetryOptions = (retry?: number | RetryOptions): RetryOptions | undefined => {
-  if (typeof retry === 'number') {
+const normalizeRetryOptions = (
+  retry?: number | RetryOptions
+): RetryOptions | undefined => {
+  if (typeof retry === "number") {
     return { retries: retry };
   }
 
   return retry ? { ...retry } : undefined;
 };
 
-const normalizeRouteConfig = (config: ServiceRouteConfig): NormalizedServiceRouteConfig => {
+const normalizeRouteConfig = (
+  config: ServiceRouteConfig
+): NormalizedServiceRouteConfig => {
   const retry = normalizeRetryOptions(config.retry);
   const logging = config.logging ? { ...config.logging } : undefined;
 
   switch (config.strategy) {
     case ServiceRouteStrategy.Static: {
       if (!config.model) {
-        throw new Error('Static service routes must provide a model key.');
+        throw new Error("Static service routes must provide a model key.");
       }
 
       return {
@@ -240,7 +248,9 @@ const normalizeRouteConfig = (config: ServiceRouteConfig): NormalizedServiceRout
     }
     case ServiceRouteStrategy.Failover: {
       if (!config.models?.length) {
-        throw new Error('Failover service routes must provide at least one model key.');
+        throw new Error(
+          "Failover service routes must provide at least one model key."
+        );
       }
 
       return {
@@ -252,7 +262,9 @@ const normalizeRouteConfig = (config: ServiceRouteConfig): NormalizedServiceRout
     }
     case ServiceRouteStrategy.RoundRobin: {
       if (!config.models?.length) {
-        throw new Error('Round robin service routes must provide at least one model key.');
+        throw new Error(
+          "Round robin service routes must provide at least one model key."
+        );
       }
 
       return {
@@ -264,7 +276,9 @@ const normalizeRouteConfig = (config: ServiceRouteConfig): NormalizedServiceRout
     }
     case ServiceRouteStrategy.RotatingFailover: {
       if (!config.models?.length) {
-        throw new Error('Rotating failover service routes must provide at least one model key.');
+        throw new Error(
+          "Rotating failover service routes must provide at least one model key."
+        );
       }
 
       return {
@@ -278,7 +292,9 @@ const normalizeRouteConfig = (config: ServiceRouteConfig): NormalizedServiceRout
       return {
         strategy: ServiceRouteStrategy.Capability,
         filter: config.filter,
-        candidates: config.candidates ? Array.from(config.candidates) : undefined,
+        candidates: config.candidates
+          ? Array.from(config.candidates)
+          : undefined,
         sort: config.sort,
         retry,
         logging,
@@ -291,7 +307,9 @@ const normalizeRouteConfig = (config: ServiceRouteConfig): NormalizedServiceRout
   }
 };
 
-const deriveSharedCapabilities = (metas: readonly ModelMetadata[]): BaseModel['caps'] => {
+const deriveSharedCapabilities = (
+  metas: readonly ModelMetadata[]
+): BaseModel["caps"] => {
   if (metas.length === 0) {
     return { modes: [] };
   }
@@ -306,7 +324,9 @@ const deriveSharedCapabilities = (metas: readonly ModelMetadata[]): BaseModel['c
     sharedModes.length > 0 ? sharedModes : Array.from(first.modes);
 
   const supportsJson = metas.every((meta) => meta.supportsJson === true);
-  const supportsStreaming = metas.some((meta) => meta.supportsStreaming === true);
+  const supportsStreaming = metas.some(
+    (meta) => meta.supportsStreaming === true
+  );
 
   const maxOutputTokens = metas.reduce<number | undefined>((value, meta) => {
     if (meta.maxOutputTokens === undefined) {
@@ -341,7 +361,9 @@ const deriveSharedCapabilities = (metas: readonly ModelMetadata[]): BaseModel['c
       return meta.costTier;
     }
 
-    return getCostRank(meta.costTier) > getCostRank(value) ? meta.costTier : value;
+    return getCostRank(meta.costTier) > getCostRank(value)
+      ? meta.costTier
+      : value;
   }, undefined);
 
   return {
@@ -359,19 +381,24 @@ export class ModelRouter {
 
   constructor(
     private readonly registry: ModelRegistry = modelRegistry,
-    private readonly routes: Map<string, NormalizedServiceRouteConfig> = sharedServiceRoutes,
+    private readonly routes: Map<
+      string,
+      NormalizedServiceRouteConfig
+    > = sharedServiceRoutes
   ) {}
 
   registerServiceRoute(serviceName: string, config: ServiceRouteConfig): void {
     if (!serviceName) {
-      throw new Error('Service name must be provided when registering a route.');
+      throw new Error(
+        "Service name must be provided when registering a route."
+      );
     }
 
     const normalized = normalizeRouteConfig(config);
     this.routes.set(serviceName, normalized);
     this.rotationState.delete(serviceName);
 
-    logger.info('Registered service route', {
+    logger.info("Registered service route", {
       serviceName,
       strategy: normalized.strategy,
       hasLoggingOverride: normalized.logging !== undefined,
@@ -383,21 +410,28 @@ export class ModelRouter {
     const route = this.routes.get(serviceName);
 
     if (!route) {
-      logger.error('Attempted to resolve model for unregistered service', { serviceName });
+      logger.error("Attempted to resolve model for unregistered service", {
+        serviceName,
+      });
       throw new Error(`No service route registered for "${serviceName}".`);
     }
 
     if (overrideKey) {
-      logger.info('Resolving model override for service', {
+      logger.info("Resolving model override for service", {
         serviceName,
         overrideKey,
       });
-      return this.createSingleModelRoute(serviceName, overrideKey, route, 'override');
+      return this.createSingleModelRoute(
+        serviceName,
+        overrideKey,
+        route,
+        "override"
+      );
     }
 
     switch (route.strategy) {
       case ServiceRouteStrategy.Static:
-        logger.debug('Resolved static service route', {
+        logger.debug("Resolved static service route", {
           serviceName,
           model: route.model,
         });
@@ -405,7 +439,7 @@ export class ModelRouter {
           serviceName,
           route.model,
           route,
-          ServiceRouteStrategy.Static,
+          ServiceRouteStrategy.Static
         );
       case ServiceRouteStrategy.Failover:
         return this.createFailoverModel(serviceName, route);
@@ -425,10 +459,10 @@ export class ModelRouter {
   private instantiateModel(
     serviceName: string,
     key: ModelKey,
-    route: NormalizedServiceRouteConfig,
+    route: NormalizedRouteOptions
   ): BaseModel {
     const base = this.registry.create(key);
-    logger.debug('Instantiated model from registry', {
+    logger.debug("Instantiated model from registry", {
       serviceName,
       modelKey: key,
       modelName: base.name,
@@ -440,12 +474,12 @@ export class ModelRouter {
     serviceName: string,
     model: BaseModel,
     route: NormalizedRouteOptions,
-    modelKey?: ModelKey,
+    modelKey?: ModelKey
   ): BaseModel {
     const loggingOptions = route.logging ?? {};
     const retryOptions = route.retry ?? {};
     const middlewares: Middleware[] = [];
-    const defaultLogger = createLogger('ai-providers:model-call');
+    const defaultLogger = createLogger("ai-providers:model-call");
     const baseLogger = loggingOptions.logger ?? {};
     const context = {
       serviceName,
@@ -466,9 +500,11 @@ export class ModelRouter {
       fatal: withContext(baseLogger.fatal ?? defaultLogger.fatal),
     };
 
-    middlewares.push(withLogging({ ...loggingOptions, logger: contextualLogger }));
+    middlewares.push(
+      withLogging({ ...loggingOptions, logger: contextualLogger })
+    );
 
-    logger.debug('Applied middleware to model', {
+    logger.debug("Applied middleware to model", {
       serviceName,
       modelKey,
       modelName: model.name,
@@ -483,7 +519,7 @@ export class ModelRouter {
     serviceName: string,
     modelKey: ModelKey,
     route: NormalizedRouteOptions,
-    routeStrategy: string,
+    routeStrategy: string
   ): BaseModel {
     const model = this.instantiateModel(serviceName, modelKey, route);
     const metadata = this.getMetadataOrThrow(modelKey);
@@ -496,11 +532,18 @@ export class ModelRouter {
         try {
           const { result, retriesUsed } = await callWithRetry(
             () => model.call(input),
-            route.retry,
+            route.retry
           );
           const endedAt = Date.now();
           const attempts = [
-            buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+            buildAttempt(
+              metadata,
+              "success",
+              startedAt,
+              endedAt,
+              undefined,
+              retriesUsed
+            ),
           ];
           const telemetry = buildTelemetry({
             serviceName,
@@ -512,17 +555,17 @@ export class ModelRouter {
         } catch (error) {
           const endedAt = Date.now();
           const retriesUsed =
-            error && typeof error === 'object'
+            error && typeof error === "object"
               ? (error as { retriesUsed?: number }).retriesUsed
               : undefined;
           const attempts = [
             buildAttempt(
               metadata,
-              'error',
+              "error",
               startedAt,
               endedAt,
               toErrorMessage(error),
-              retriesUsed,
+              retriesUsed
             ),
           ];
           const telemetry = buildTelemetry({
@@ -538,11 +581,11 @@ export class ModelRouter {
       ...(model.streamCall
         ? {
             async *streamCall(
-              input: ModelCallInput,
+              input: ModelCallInput
             ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
               const startedAt = Date.now();
-              let accumulatedText = '';
-              let usage: ModelStreamResult['usage'];
+              let accumulatedText = "";
+              let usage: ModelStreamResult["usage"];
 
               try {
                 const generator = model.streamCall!(input);
@@ -550,11 +593,20 @@ export class ModelRouter {
                 while (true) {
                   const { value, done } = await generator.next();
                   if (done) {
-                    const finalText = value?.text?.length ? value.text : accumulatedText;
+                    const finalText = value?.text?.length
+                      ? value.text
+                      : accumulatedText;
                     usage = value?.usage ?? usage;
                     const endedAt = Date.now();
                     const attempts = [
-                      buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                      buildAttempt(
+                        metadata,
+                        "success",
+                        startedAt,
+                        endedAt,
+                        undefined,
+                        0
+                      ),
                     ];
                     const telemetry = buildTelemetry({
                       serviceName,
@@ -574,7 +626,13 @@ export class ModelRouter {
               } catch (error) {
                 const endedAt = Date.now();
                 const attempts = [
-                  buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                  buildAttempt(
+                    metadata,
+                    "error",
+                    startedAt,
+                    endedAt,
+                    toErrorMessage(error)
+                  ),
                 ];
                 const telemetry = buildTelemetry({
                   serviceName,
@@ -593,7 +651,7 @@ export class ModelRouter {
 
   private createFailoverModel(
     serviceName: string,
-    route: NormalizedFailoverRouteConfig,
+    route: NormalizedFailoverRouteConfig
   ): BaseModel {
     const resolveMetadata = (key: ModelKey) => this.getMetadataOrThrow(key);
     const metadatas = route.models.map(resolveMetadata);
@@ -610,18 +668,25 @@ export class ModelRouter {
           const metadata = resolveMetadata(key);
           const startedAt = Date.now();
           try {
-            logger.debug('Attempting failover candidate', {
+            logger.debug("Attempting failover candidate", {
               serviceName,
               modelKey: key,
             });
             const model = instantiateModel(serviceName, key, route);
             const { result, retriesUsed } = await callWithRetry(
               () => model.call(input),
-              route.retry,
+              route.retry
             );
             const endedAt = Date.now();
             attempts.push(
-              buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+              buildAttempt(
+                metadata,
+                "success",
+                startedAt,
+                endedAt,
+                undefined,
+                retriesUsed
+              )
             );
             const telemetry = buildTelemetry({
               serviceName,
@@ -631,25 +696,25 @@ export class ModelRouter {
             });
             return { ...result, telemetry };
           } catch (error) {
-            logger.warn('Failover candidate failed', {
+            logger.warn("Failover candidate failed", {
               serviceName,
               modelKey: key,
               error: error instanceof Error ? error.message : String(error),
             });
             const endedAt = Date.now();
             const retriesUsed =
-              error && typeof error === 'object'
+              error && typeof error === "object"
                 ? (error as { retriesUsed?: number }).retriesUsed
                 : undefined;
             attempts.push(
               buildAttempt(
                 metadata,
-                'error',
+                "error",
                 startedAt,
                 endedAt,
                 toErrorMessage(error),
-                retriesUsed,
-              ),
+                retriesUsed
+              )
             );
             lastError = error;
             continue;
@@ -662,14 +727,15 @@ export class ModelRouter {
           attempts,
         });
         const finalError =
-          lastError ?? new Error(`All models failed for service "${serviceName}".`);
+          lastError ??
+          new Error(`All models failed for service "${serviceName}".`);
         attachTelemetryToError(finalError, telemetry);
         throw finalError;
       },
       ...(caps.supportsStreaming
         ? {
             async *streamCall(
-              input: ModelCallInput,
+              input: ModelCallInput
             ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
               let lastError: unknown;
               const attempts: ModelCallAttempt[] = [];
@@ -683,18 +749,18 @@ export class ModelRouter {
                   attempts.push(
                     buildAttempt(
                       metadata,
-                      'error',
+                      "error",
                       skippedAt,
                       skippedAt,
-                      'streaming_not_supported',
-                    ),
+                      "streaming_not_supported"
+                    )
                   );
                   continue;
                 }
 
                 let yieldedAny = false;
-                let accumulatedText = '';
-                let usage: ModelStreamResult['usage'];
+                let accumulatedText = "";
+                let usage: ModelStreamResult["usage"];
                 const startedAt = Date.now();
 
                 try {
@@ -702,11 +768,20 @@ export class ModelRouter {
                   while (true) {
                     const { value, done } = await generator.next();
                     if (done) {
-                      const finalText = value?.text?.length ? value.text : accumulatedText;
+                      const finalText = value?.text?.length
+                        ? value.text
+                        : accumulatedText;
                       usage = value?.usage ?? usage;
                       const endedAt = Date.now();
                       attempts.push(
-                        buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                        buildAttempt(
+                          metadata,
+                          "success",
+                          startedAt,
+                          endedAt,
+                          undefined,
+                          0
+                        )
                       );
                       const telemetry = buildTelemetry({
                         serviceName,
@@ -727,7 +802,13 @@ export class ModelRouter {
                 } catch (error) {
                   const endedAt = Date.now();
                   attempts.push(
-                    buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                    buildAttempt(
+                      metadata,
+                      "error",
+                      startedAt,
+                      endedAt,
+                      toErrorMessage(error)
+                    )
                   );
                   // If we haven't yielded anything yet, we can try the next candidate.
                   if (!yieldedAny) {
@@ -751,7 +832,10 @@ export class ModelRouter {
                 attempts,
               });
               const finalError =
-                lastError ?? new Error(`No streaming-capable models available for "${serviceName}".`);
+                lastError ??
+                new Error(
+                  `No streaming-capable models available for "${serviceName}".`
+                );
               attachTelemetryToError(finalError, telemetry);
               throw finalError;
             },
@@ -763,7 +847,7 @@ export class ModelRouter {
 
   private createRotatingFailoverModel(
     serviceName: string,
-    route: NormalizedRotatingFailoverRouteConfig,
+    route: NormalizedRotatingFailoverRouteConfig
   ): BaseModel {
     const resolveMetadata = (key: ModelKey) => this.getMetadataOrThrow(key);
     const metadatas = route.models.map(resolveMetadata);
@@ -789,7 +873,7 @@ export class ModelRouter {
           const startedAt = Date.now();
 
           try {
-            logger.debug('Attempting rotating failover candidate', {
+            logger.debug("Attempting rotating failover candidate", {
               serviceName,
               modelKey: key,
               startingIndex,
@@ -798,11 +882,18 @@ export class ModelRouter {
             const model = instantiateModel(serviceName, key, route);
             const { result, retriesUsed } = await callWithRetry(
               () => model.call(input),
-              route.retry,
+              route.retry
             );
             const endedAt = Date.now();
             attempts.push(
-              buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+              buildAttempt(
+                metadata,
+                "success",
+                startedAt,
+                endedAt,
+                undefined,
+                retriesUsed
+              )
             );
             const telemetry = buildTelemetry({
               serviceName,
@@ -812,25 +903,25 @@ export class ModelRouter {
             });
             return { ...result, telemetry };
           } catch (error) {
-            logger.warn('Rotating failover candidate failed', {
+            logger.warn("Rotating failover candidate failed", {
               serviceName,
               modelKey: key,
               error: error instanceof Error ? error.message : String(error),
             });
             const endedAt = Date.now();
             const retriesUsed =
-              error && typeof error === 'object'
+              error && typeof error === "object"
                 ? (error as { retriesUsed?: number }).retriesUsed
                 : undefined;
             attempts.push(
               buildAttempt(
                 metadata,
-                'error',
+                "error",
                 startedAt,
                 endedAt,
                 toErrorMessage(error),
-                retriesUsed,
-              ),
+                retriesUsed
+              )
             );
             lastError = error;
             continue;
@@ -843,14 +934,15 @@ export class ModelRouter {
           attempts,
         });
         const finalError =
-          lastError ?? new Error(`All models failed for service "${serviceName}".`);
+          lastError ??
+          new Error(`All models failed for service "${serviceName}".`);
         attachTelemetryToError(finalError, telemetry);
         throw finalError;
       },
       ...(caps.supportsStreaming
         ? {
             async *streamCall(
-              input: ModelCallInput,
+              input: ModelCallInput
             ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
               const startingIndex = rotationState.get(serviceName) ?? 0;
               const nextIndex = (startingIndex + 1) % route.models.length;
@@ -858,7 +950,8 @@ export class ModelRouter {
               const attempts: ModelCallAttempt[] = [];
 
               for (let offset = 0; offset < route.models.length; offset += 1) {
-                const candidateIndex = (startingIndex + offset) % route.models.length;
+                const candidateIndex =
+                  (startingIndex + offset) % route.models.length;
                 const key = route.models[candidateIndex];
                 const candidate = instantiateModel(serviceName, key, route);
                 const metadata = resolveMetadata(key);
@@ -868,28 +961,37 @@ export class ModelRouter {
                   attempts.push(
                     buildAttempt(
                       metadata,
-                      'error',
+                      "error",
                       skippedAt,
                       skippedAt,
-                      'streaming_not_supported',
-                    ),
+                      "streaming_not_supported"
+                    )
                   );
                   continue;
                 }
 
-                let accumulatedText = '';
-                let usage: ModelStreamResult['usage'];
+                let accumulatedText = "";
+                let usage: ModelStreamResult["usage"];
                 const startedAt = Date.now();
                 try {
                   const generator = candidate.streamCall(input);
                   while (true) {
                     const { value, done } = await generator.next();
                     if (done) {
-                      const finalText = value?.text?.length ? value.text : accumulatedText;
+                      const finalText = value?.text?.length
+                        ? value.text
+                        : accumulatedText;
                       usage = value?.usage ?? usage;
                       const endedAt = Date.now();
                       attempts.push(
-                        buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                        buildAttempt(
+                          metadata,
+                          "success",
+                          startedAt,
+                          endedAt,
+                          undefined,
+                          0
+                        )
                       );
                       const telemetry = buildTelemetry({
                         serviceName,
@@ -909,7 +1011,13 @@ export class ModelRouter {
                 } catch (error) {
                   const endedAt = Date.now();
                   attempts.push(
-                    buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                    buildAttempt(
+                      metadata,
+                      "error",
+                      startedAt,
+                      endedAt,
+                      toErrorMessage(error)
+                    )
                   );
                   continue;
                 }
@@ -923,18 +1031,18 @@ export class ModelRouter {
               try {
                 const { result, retriesUsed } = await callWithRetry(
                   () => model.call(input),
-                  route.retry,
+                  route.retry
                 );
                 const endedAt = Date.now();
                 attempts.push(
                   buildAttempt(
                     metadata,
-                    'success',
+                    "success",
                     startedAt,
                     endedAt,
                     undefined,
-                    retriesUsed,
-                  ),
+                    retriesUsed
+                  )
                 );
                 const telemetry = buildTelemetry({
                   serviceName,
@@ -947,18 +1055,18 @@ export class ModelRouter {
               } catch (error) {
                 const endedAt = Date.now();
                 const retriesUsed =
-                  error && typeof error === 'object'
+                  error && typeof error === "object"
                     ? (error as { retriesUsed?: number }).retriesUsed
                     : undefined;
                 attempts.push(
                   buildAttempt(
                     metadata,
-                    'error',
+                    "error",
                     startedAt,
                     endedAt,
                     toErrorMessage(error),
-                    retriesUsed,
-                  ),
+                    retriesUsed
+                  )
                 );
                 const telemetry = buildTelemetry({
                   serviceName,
@@ -979,7 +1087,7 @@ export class ModelRouter {
 
   private createRoundRobinModel(
     serviceName: string,
-    route: NormalizedRoundRobinRouteConfig,
+    route: NormalizedRoundRobinRouteConfig
   ): BaseModel {
     const resolveMetadata = (key: ModelKey) => this.getMetadataOrThrow(key);
     const metadatas = route.models.map(resolveMetadata);
@@ -995,7 +1103,7 @@ export class ModelRouter {
         const nextIndex = (currentIndex + 1) % route.models.length;
         rotationState.set(serviceName, nextIndex);
         const key = route.models[currentIndex];
-        logger.debug('Selected round robin candidate', {
+        logger.debug("Selected round robin candidate", {
           serviceName,
           modelKey: key,
           nextIndex,
@@ -1006,11 +1114,18 @@ export class ModelRouter {
         try {
           const { result, retriesUsed } = await callWithRetry(
             () => model.call(input),
-            route.retry,
+            route.retry
           );
           const endedAt = Date.now();
           const attempts = [
-            buildAttempt(metadata, 'success', startedAt, endedAt, undefined, retriesUsed),
+            buildAttempt(
+              metadata,
+              "success",
+              startedAt,
+              endedAt,
+              undefined,
+              retriesUsed
+            ),
           ];
           const telemetry = buildTelemetry({
             serviceName,
@@ -1022,17 +1137,17 @@ export class ModelRouter {
         } catch (error) {
           const endedAt = Date.now();
           const retriesUsed =
-            error && typeof error === 'object'
+            error && typeof error === "object"
               ? (error as { retriesUsed?: number }).retriesUsed
               : undefined;
           const attempts = [
             buildAttempt(
               metadata,
-              'error',
+              "error",
               startedAt,
               endedAt,
               toErrorMessage(error),
-              retriesUsed,
+              retriesUsed
             ),
           ];
           const telemetry = buildTelemetry({
@@ -1048,7 +1163,7 @@ export class ModelRouter {
       ...(caps.supportsStreaming
         ? {
             async *streamCall(
-              input: ModelCallInput,
+              input: ModelCallInput
             ): AsyncGenerator<ModelStreamChunk, ModelStreamResult, undefined> {
               const currentIndex = rotationState.get(serviceName) ?? 0;
               const nextIndex = (currentIndex + 1) % route.models.length;
@@ -1059,18 +1174,27 @@ export class ModelRouter {
               const metadata = resolveMetadata(key);
               const startedAt = Date.now();
               if (model.streamCall) {
-                let accumulatedText = '';
-                let usage: ModelStreamResult['usage'];
+                let accumulatedText = "";
+                let usage: ModelStreamResult["usage"];
                 try {
                   const generator = model.streamCall(input);
                   while (true) {
                     const { value, done } = await generator.next();
                     if (done) {
-                      const finalText = value?.text?.length ? value.text : accumulatedText;
+                      const finalText = value?.text?.length
+                        ? value.text
+                        : accumulatedText;
                       usage = value?.usage ?? usage;
                       const endedAt = Date.now();
                       const attempts = [
-                        buildAttempt(metadata, 'success', startedAt, endedAt, undefined, 0),
+                        buildAttempt(
+                          metadata,
+                          "success",
+                          startedAt,
+                          endedAt,
+                          undefined,
+                          0
+                        ),
                       ];
                       const telemetry = buildTelemetry({
                         serviceName,
@@ -1090,7 +1214,13 @@ export class ModelRouter {
                 } catch (error) {
                   const endedAt = Date.now();
                   const attempts = [
-                    buildAttempt(metadata, 'error', startedAt, endedAt, toErrorMessage(error)),
+                    buildAttempt(
+                      metadata,
+                      "error",
+                      startedAt,
+                      endedAt,
+                      toErrorMessage(error)
+                    ),
                   ];
                   const telemetry = buildTelemetry({
                     serviceName,
@@ -1108,17 +1238,17 @@ export class ModelRouter {
               try {
                 const { result, retriesUsed } = await callWithRetry(
                   () => model.call(input),
-                  route.retry,
+                  route.retry
                 );
                 const endedAt = Date.now();
                 const attempts = [
                   buildAttempt(
                     metadata,
-                    'success',
+                    "success",
                     startedFallbackAt,
                     endedAt,
                     undefined,
-                    retriesUsed,
+                    retriesUsed
                   ),
                 ];
                 const telemetry = buildTelemetry({
@@ -1132,17 +1262,17 @@ export class ModelRouter {
               } catch (error) {
                 const endedAt = Date.now();
                 const retriesUsed =
-                  error && typeof error === 'object'
+                  error && typeof error === "object"
                     ? (error as { retriesUsed?: number }).retriesUsed
                     : undefined;
                 const attempts = [
                   buildAttempt(
                     metadata,
-                    'error',
+                    "error",
                     startedFallbackAt,
                     endedAt,
                     toErrorMessage(error),
-                    retriesUsed,
+                    retriesUsed
                   ),
                 ];
                 const telemetry = buildTelemetry({
@@ -1163,7 +1293,7 @@ export class ModelRouter {
 
   private createCapabilityModel(
     serviceName: string,
-    route: NormalizedCapabilityRouteConfig,
+    route: NormalizedCapabilityRouteConfig
   ): BaseModel {
     const candidateMetas = route.candidates
       ? route.candidates.map((key) => this.getMetadataOrThrow(key))
@@ -1173,13 +1303,13 @@ export class ModelRouter {
 
     if (matches.length === 0) {
       throw new Error(
-        `No models available for service "${serviceName}" that match the capability filter.`,
+        `No models available for service "${serviceName}" that match the capability filter.`
       );
     }
 
     const sorter = route.sort ?? defaultCapabilitySort;
     const [winner] = [...matches].sort(sorter);
-    logger.info('Selected capability route winner', {
+    logger.info("Selected capability route winner", {
       serviceName,
       modelKey: winner.key,
       label: winner.label,
@@ -1188,7 +1318,7 @@ export class ModelRouter {
       serviceName,
       winner.key,
       route,
-      ServiceRouteStrategy.Capability,
+      ServiceRouteStrategy.Capability
     );
   }
 
@@ -1209,9 +1339,14 @@ export const setModelRouterLogLevel = (level: LogLevel): void => {
 
 const defaultRouter = new ModelRouter();
 
-export const registerServiceRoute = (serviceName: string, config: ServiceRouteConfig): void => {
+export const registerServiceRoute = (
+  serviceName: string,
+  config: ServiceRouteConfig
+): void => {
   defaultRouter.registerServiceRoute(serviceName, config);
 };
 
-export const getModelFor = (serviceName: string, overrideKey?: ModelKey): BaseModel =>
-  defaultRouter.getModelFor(serviceName, overrideKey);
+export const getModelFor = (
+  serviceName: string,
+  overrideKey?: ModelKey
+): BaseModel => defaultRouter.getModelFor(serviceName, overrideKey);
