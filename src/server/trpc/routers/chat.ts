@@ -399,6 +399,7 @@ export const chatRouter = router({
         costTier: model.costTier ?? null,
         description: model.description ?? null,
         supportsStreaming: model.supportsStreaming ?? false,
+        supportsReasoning: model.supportsReasoning ?? false,
       }));
 
     return models;
@@ -475,6 +476,7 @@ export const chatRouter = router({
             projectId: input.projectId,
             name,
             modelKey: input.modelKey,
+            reasoningEnabled: false,
           },
         });
       } else {
@@ -482,6 +484,7 @@ export const chatRouter = router({
           where: { id: thread.id },
           data: {
             modelKey: input.modelKey,
+            reasoningEnabled: false,
           },
         });
       }

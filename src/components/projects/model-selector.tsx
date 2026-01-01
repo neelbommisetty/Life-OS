@@ -18,6 +18,7 @@ export type ModelOption = {
   costTier?: string | null;
   description?: string | null;
   supportsStreaming?: boolean;
+  supportsReasoning?: boolean;
 };
 
 type Props = {
