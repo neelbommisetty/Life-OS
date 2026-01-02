@@ -19,8 +19,10 @@ import {
 import { cn } from "@/lib/utils";
 import { PriorityBadge } from "./priority-badge";
 import { ChatMarkdown } from "./chat-markdown";
+import { api } from "@/trpc/client";
 
 type MessageBubbleProps = {
+  projectId: string;
   message: ChatMessage;
   themeStyle: CSSProperties;
   hasAccentColor: boolean;
@@ -37,6 +39,7 @@ type MessageBubbleProps = {
 };
 
 export function MessageBubble({
+  projectId,
   message,
   themeStyle,
   hasAccentColor,
@@ -52,6 +55,7 @@ export function MessageBubble({
   isPending,
 }: MessageBubbleProps) {
   const [isTasksExpanded, setIsTasksExpanded] = useState(false);
+  const [isReasoningOpen, setIsReasoningOpen] = useState(false);
   const isUser = message.role === "USER";
   const isAssistant = message.role === "ASSISTANT";
   const isSystem = message.role === "SYSTEM";
@@ -112,6 +116,14 @@ export function MessageBubble({
         : effectiveModelProvider;
     return `${effectiveModelLabel} (${providerName})`;
   }, [effectiveModelLabel, effectiveModelProvider]);
+
+  const reasoningQuery = api.chat.getMessageReasoning.useQuery(
+    { projectId, messageId: message.id },
+    {
+      enabled: isAssistant && isReasoningOpen,
+      staleTime: 1000 * 60 * 5,
+    }
+  );
 
   const statusLabel = useMemo(() => {
     if (!messageStatus) return null;
@@ -237,6 +249,39 @@ export function MessageBubble({
               <SaveIcon className="h-3 w-3" />
               {artifactActionLabel}
             </button>
+          )}
+        </div>
+      )}
+
+      {isAssistant && (
+        <div className="ml-11 max-w-[85%] w-full">
+          <button
+            type="button"
+            onClick={() => setIsReasoningOpen((prev) => !prev)}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-foreground/80 transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+          >
+            {isReasoningOpen ? <ChevronUpIcon className="h-3 w-3" /> : <ChevronDownIcon className="h-3 w-3" />}
+            Reasoning
+          </button>
+
+          {isReasoningOpen && (
+            <div className="mt-2 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-[11px] text-muted-foreground">
+              {reasoningQuery.isLoading && (
+                <span>Loading reasoning...</span>
+              )}
+              {reasoningQuery.error && (
+                <span>Unable to load reasoning.</span>
+              )}
+              {!reasoningQuery.isLoading && !reasoningQuery.error && (
+                reasoningQuery.data?.content ? (
+                  <pre className="whitespace-pre-wrap font-mono text-[11px] text-foreground/80">
+                    {reasoningQuery.data.content}
+                  </pre>
+                ) : (
+                  <span>No reasoning output for this response.</span>
+                )
+              )}
+            </div>
           )}
         </div>
       )}

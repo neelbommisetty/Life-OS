@@ -20,6 +20,7 @@ export function useChatStreaming({
 }: UseChatStreamingParams) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
+  const [streamingReasoning, setStreamingReasoning] = useState("");
   const [optimisticUserMessage, setOptimisticUserMessage] = useState<
     string | null
   >(null);
@@ -46,6 +47,7 @@ export function useChatStreaming({
 
     setPendingAssistantId(null);
     setStreamingContent("");
+    setStreamingReasoning("");
     setOptimisticUserMessage(null);
     setOptimisticStatus(null);
     setStreamError(null);
@@ -82,6 +84,7 @@ export function useChatStreaming({
     }) => {
       setIsStreaming(true);
       setStreamingContent("");
+      setStreamingReasoning("");
       setOptimisticUserMessage(content ?? null);
       setOptimisticStatus(content ? "sending" : null);
       setPendingAssistantId(null);
@@ -136,6 +139,8 @@ export function useChatStreaming({
             for (const event of events) {
               if (event.type === "chunk" && event.text) {
                 setStreamingContent((prev) => prev + event.text);
+              } else if (event.type === "reasoning_chunk" && event.text) {
+                setStreamingReasoning((prev) => prev + event.text);
               } else if (event.type === "error") {
                 setStreamError(event.error || "Stream error occurred");
               } else if (event.type === "message_saved" && event.messageId) {
@@ -211,6 +216,7 @@ export function useChatStreaming({
 
         setIsStreaming(false);
         setStreamingContent("");
+        setStreamingReasoning("");
         if (!shouldKeepOptimistic) {
           setOptimisticUserMessage(null);
           setOptimisticStatus(null);
@@ -249,6 +255,7 @@ export function useChatStreaming({
     isStreaming,
     streamingThreadId,
     streamingContent,
+    streamingReasoning,
     optimisticUserMessage,
     optimisticStatus,
     pendingAssistantId,

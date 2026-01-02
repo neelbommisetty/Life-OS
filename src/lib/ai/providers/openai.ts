@@ -36,6 +36,7 @@ export interface OpenAIModelOverrides {
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
   readonly supportsStreaming?: boolean;
+  readonly supportsReasoning?: boolean;
   readonly name?: string;
 }
 
@@ -103,6 +104,20 @@ const readOutputText = (value: unknown): string | undefined => {
   return typeof textValue === 'string' ? textValue : undefined;
 };
 
+const readReasoningText = (value: unknown): string | undefined => {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const type = typeof value.type === 'string' ? value.type : undefined;
+  if (type !== 'reasoning_text') {
+    return undefined;
+  }
+
+  const textValue = value.text;
+  return typeof textValue === 'string' ? textValue : undefined;
+};
+
 const extractResponseText = (response: Response): string => {
   const directText = response.output_text;
 
@@ -140,6 +155,45 @@ const extractResponseText = (response: Response): string => {
   return textChunks.join('');
 };
 
+const extractReasoningText = (response: Response): string | undefined => {
+  const reasoningChunks: string[] = [];
+
+  for (const item of response.output ?? []) {
+    if (!isObject(item)) {
+      continue;
+    }
+
+    if (item.type === 'message') {
+      const contentEntries = Array.isArray(item.content) ? item.content : [];
+      for (const content of contentEntries) {
+        const text = readReasoningText(content);
+        if (typeof text === 'string') {
+          reasoningChunks.push(text);
+        }
+      }
+    } else if (item.type === 'reasoning') {
+      const contentEntries = Array.isArray(item.content) ? item.content : [];
+      for (const content of contentEntries) {
+        const text = readReasoningText(content);
+        if (typeof text === 'string') {
+          reasoningChunks.push(text);
+        }
+      }
+    } else {
+      const text = readReasoningText(item);
+      if (typeof text === 'string') {
+        reasoningChunks.push(text);
+      }
+    }
+  }
+
+  if (reasoningChunks.length === 0) {
+    return undefined;
+  }
+
+  return reasoningChunks.join('');
+};
+
 const readResponseUsage = (response: Response): ModelUsage | undefined => {
   const usage = response.usage;
   if (!usage) {
@@ -152,6 +206,10 @@ const readResponseUsage = (response: Response): ModelUsage | undefined => {
     typeof usage.input_tokens_details?.cached_tokens === 'number'
       ? usage.input_tokens_details.cached_tokens
       : undefined;
+  const reasoningTokens =
+    typeof usage.output_tokens_details?.reasoning_tokens === 'number'
+      ? usage.output_tokens_details.reasoning_tokens
+      : undefined;
   const totalTokens = typeof usage.total_tokens === 'number'
     ? usage.total_tokens
     : inputTokens !== undefined && outputTokens !== undefined
@@ -163,6 +221,7 @@ const readResponseUsage = (response: Response): ModelUsage | undefined => {
     outputTokens,
     totalTokens,
     cacheReadInputTokens: cachedTokens,
+    reasoningTokens,
   };
 };
 
@@ -188,6 +247,7 @@ export const createOpenAIModel = (
   const resolvedModes = (overrides.modes ?? DEFAULT_OPENAI_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
   const supportsStreaming = overrides.supportsStreaming ?? true; // OpenAI supports streaming by default
+  const supportsReasoning = overrides.supportsReasoning ?? false;
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens;
 
@@ -197,6 +257,7 @@ export const createOpenAIModel = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -224,6 +285,12 @@ export const createOpenAIModel = (
         request.max_output_tokens = maxOutputTokens;
       }
 
+      if (input.reasoning) {
+        request.reasoning = {
+          effort: input.reasoning.effort ?? 'medium',
+        };
+      }
+
       if (mode === 'json') {
         const schema = (input.jsonSchema ?? { type: 'object' }) as Record<string, unknown>;
         request.text = {
@@ -241,9 +308,10 @@ export const createOpenAIModel = (
       );
 
       const text = extractResponseText(response);
+      const reasoningText = extractReasoningText(response);
       const usage = readResponseUsage(response);
 
-      return { text, usage };
+      return { text, usage, reasoningText };
     },
 
     ...(supportsStreaming
@@ -274,12 +342,19 @@ export const createOpenAIModel = (
               request.max_output_tokens = maxOutputTokens;
             }
 
+            if (input.reasoning) {
+              request.reasoning = {
+                effort: input.reasoning.effort ?? 'medium',
+              };
+            }
+
             const stream = await client.responses.create(
               request,
               input.signal ? { signal: input.signal } : undefined,
             );
 
             let accumulatedText = '';
+            let accumulatedReasoning = '';
             let usage: ModelUsage | undefined;
 
             for await (const event of stream) {
@@ -290,14 +365,39 @@ export const createOpenAIModel = (
                   accumulatedText += delta;
                   yield { text: delta, done: false };
                 }
+              } else if (event.type === 'response.reasoning_text.delta') {
+                const delta = (event as { delta?: string }).delta ?? '';
+                if (delta) {
+                  accumulatedReasoning += delta;
+                  yield { text: '', reasoningText: delta, done: false };
+                }
+              } else if (event.type === 'response.reasoning_text.done') {
+                const doneText = (event as { text?: string }).text ?? '';
+                if (doneText && !accumulatedReasoning) {
+                  accumulatedReasoning = doneText;
+                  yield { text: '', reasoningText: doneText, done: false };
+                }
               } else if (event.type === 'response.completed') {
                 usage = readUsageFromStreamEvent(event);
+                if (!accumulatedReasoning) {
+                  const completedResponse = (event as { response?: Response }).response;
+                  if (completedResponse) {
+                    const completedReasoning = extractReasoningText(completedResponse);
+                    if (completedReasoning) {
+                      accumulatedReasoning = completedReasoning;
+                    }
+                  }
+                }
                 // Stream completed
                 yield { text: '', done: true };
               }
             }
 
-            return { text: accumulatedText, usage };
+            return {
+              text: accumulatedText,
+              usage,
+              reasoningText: accumulatedReasoning || undefined,
+            };
           },
         }
       : {}),
@@ -324,6 +424,7 @@ const createOpenAIModelDefinition = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning: config.supportsReasoning,
       maxOutputTokens: config.maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -340,6 +441,7 @@ const createOpenAIModelDefinition = (
           modes: resolvedModes,
           supportsJson,
           supportsStreaming,
+          supportsReasoning: config.supportsReasoning,
           name: config.label,
         },
         options,
@@ -355,6 +457,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Enhanced GPT-5.2 Pro variant producing smarter and more precise responses.',
     releaseStage: 'ga',
     costTier: CostTier.Enterprise,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 21,
       outputUsdPer1m: 168,
@@ -368,6 +471,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Latest flagship GPT-5.2 model offering instant and thinking modes for coding and agentic tasks.',
     releaseStage: 'ga',
     costTier: CostTier.Premium,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 1.75,
       outputUsdPer1m: 14,
@@ -382,6 +486,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Intelligent reasoning model for coding and agentic tasks with configurable reasoning effort.',
     releaseStage: 'ga',
     costTier: CostTier.Standard,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 1.25,
       outputUsdPer1m: 10,
@@ -396,6 +501,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'A faster, cost-efficient version of GPT-5 for well-defined tasks.',
     releaseStage: 'ga',
     costTier: CostTier.Economy,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 0.25,
       outputUsdPer1m: 2,
@@ -410,6 +516,7 @@ const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
     description: 'Fastest, most cost-efficient version of GPT-5.',
     releaseStage: 'ga',
     costTier: CostTier.Economy,
+    supportsReasoning: true,
     pricing: {
       inputUsdPer1m: 0.05,
       outputUsdPer1m: 0.4,

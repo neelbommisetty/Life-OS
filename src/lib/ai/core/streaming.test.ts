@@ -33,6 +33,12 @@ describe("SSE Encoding", () => {
     expect(encoded).toBe('data: {"type":"message_saved","messageId":"msg_123"}\n\n');
   });
 
+  test("encodes reasoning_chunk event correctly", () => {
+    const event: StreamEvent = { type: "reasoning_chunk", text: "Thinking" };
+    const encoded = encodeSSE(event);
+    expect(encoded).toBe('data: {"type":"reasoning_chunk","text":"Thinking"}\n\n');
+  });
+
   test("handles special characters in text", () => {
     const event: StreamEvent = { type: "chunk", text: 'Hello "world"\nNew line' };
     const encoded = encodeSSE(event);
@@ -64,6 +70,12 @@ describe("SSE Parsing - Single Line", () => {
     const line = 'data: {"type":"message_saved","messageId":"abc123"}';
     const event = parseSSELine(line);
     expect(event).toEqual({ type: "message_saved", messageId: "abc123" });
+  });
+
+  test("parses reasoning_chunk event", () => {
+    const line = 'data: {"type":"reasoning_chunk","text":"Trace"}';
+    const event = parseSSELine(line);
+    expect(event).toEqual({ type: "reasoning_chunk", text: "Trace" });
   });
 
   test("returns null for non-data lines", () => {
@@ -244,4 +256,3 @@ const x = 42;
     expect(parsed?.text).toBe(unicodeText);
   });
 });
-

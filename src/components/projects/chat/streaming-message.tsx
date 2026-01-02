@@ -1,11 +1,13 @@
 "use client";
 
-import { LoaderIcon, StopCircleIcon } from "lucide-react";
+import { LoaderIcon, StopCircleIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 import { ChatMarkdown } from "../chat-markdown";
+import { useState } from "react";
 
 type Props = {
   isStreaming: boolean;
   streamingContent: string;
+  streamingReasoning: string;
   pendingAssistantId: string | null;
   onStopStreaming: () => void;
 };
@@ -13,9 +15,11 @@ type Props = {
 export function StreamingMessage({
   isStreaming,
   streamingContent,
+  streamingReasoning,
   pendingAssistantId,
   onStopStreaming,
 }: Props) {
+  const [showReasoning, setShowReasoning] = useState(false);
   // Only show if we are actively streaming OR we have streaming content but are still waiting for the DB message (pendingAssistantId)
   if (!isStreaming && (!streamingContent || !pendingAssistantId)) {
     return null;
@@ -49,6 +53,24 @@ export function StreamingMessage({
           <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
             <LoaderIcon className="h-4 w-4 animate-spin" />
             <span className="text-xs">Thinking...</span>
+          </div>
+        )}
+
+        {streamingReasoning && (
+          <div className="mt-4 rounded-lg border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+            <button
+              type="button"
+              onClick={() => setShowReasoning((prev) => !prev)}
+              className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80 hover:text-foreground"
+            >
+              {showReasoning ? <ChevronUpIcon className="h-3 w-3" /> : <ChevronDownIcon className="h-3 w-3" />}
+              Reasoning
+            </button>
+            {showReasoning && (
+              <div className="mt-2 whitespace-pre-wrap text-[11px] text-foreground/80">
+                {streamingReasoning}
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -32,6 +32,7 @@ export interface GeminiModelOverrides {
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
   readonly supportsStreaming?: boolean;
+  readonly supportsReasoning?: boolean;
   readonly name?: string;
 }
 
@@ -262,6 +263,7 @@ export const createGeminiModel = (
   const resolvedModes = (overrides.modes ?? DEFAULT_GEMINI_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
   const supportsStreaming = overrides.supportsStreaming ?? true; // Gemini supports streaming by default
+  const supportsReasoning = overrides.supportsReasoning ?? false;
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens;
   const generativeModel = client.getGenerativeModel({ model });
@@ -272,6 +274,7 @@ export const createGeminiModel = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -378,6 +381,7 @@ const createGeminiModelDefinition = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning: config.supportsReasoning,
       maxOutputTokens: config.maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -394,6 +398,7 @@ const createGeminiModelDefinition = (
           modes: resolvedModes,
           supportsJson,
           supportsStreaming,
+          supportsReasoning: config.supportsReasoning,
           name: config.label,
         },
         options,

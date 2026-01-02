@@ -14,6 +14,10 @@ type Props = {
   projectEmoji?: string | null;
   threadTitle?: string;
   activeModel?: ModelOption;
+  reasoningEnabled?: boolean;
+  showReasoningToggle?: boolean;
+  reasoningUpdating?: boolean;
+  onToggleReasoning?: (nextEnabled: boolean) => void;
   themeStyle?: CSSProperties;
   hasAccentColor?: boolean;
   isDrawer?: boolean;
@@ -24,6 +28,10 @@ export function ChatHeader({
   projectEmoji,
   threadTitle,
   activeModel,
+  reasoningEnabled = false,
+  showReasoningToggle = false,
+  reasoningUpdating = false,
+  onToggleReasoning,
   themeStyle,
   hasAccentColor,
   isDrawer
@@ -64,6 +72,29 @@ export function ChatHeader({
       </div>
 
       <div className="flex items-center gap-2">
+        {showReasoningToggle && onToggleReasoning && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={reasoningEnabled}
+            disabled={reasoningUpdating}
+            onClick={() => onToggleReasoning(!reasoningEnabled)}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide transition",
+              reasoningEnabled
+                ? "border-primary/50 bg-primary text-primary-foreground"
+                : "border-border bg-muted/40 text-muted-foreground",
+              reasoningUpdating && "opacity-60 cursor-not-allowed"
+            )}
+            title="Toggle reasoning"
+          >
+            <span className={cn(
+              "h-2.5 w-2.5 rounded-full transition",
+              reasoningEnabled ? "bg-primary-foreground" : "bg-muted-foreground/60"
+            )} />
+            <span>Reasoning</span>
+          </button>
+        )}
         {hasAccentColor && (
           <div
             className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight"

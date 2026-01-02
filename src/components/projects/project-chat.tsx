@@ -120,6 +120,17 @@ export function ProjectChat({
     },
   });
 
+  const setThreadReasoningMutation = api.chat.setThreadReasoning.useMutation({
+    onSuccess: (updatedThread) => {
+      utils.chat.listThreads.setData({ projectId }, (existing) => {
+        if (!existing) return [updatedThread];
+        return existing.map((thread) =>
+          thread.id === updatedThread.id ? updatedThread : thread
+        );
+      });
+    },
+  });
+
   const createThreadMutation = api.chat.createThread.useMutation({
     onSuccess: (thread) => {
       utils.chat.listThreads.setData({ projectId }, (existing) => {
@@ -163,6 +174,7 @@ export function ProjectChat({
     isStreaming,
     streamingThreadId,
     streamingContent,
+    streamingReasoning,
     optimisticUserMessage,
     optimisticStatus,
     pendingAssistantId,
@@ -252,6 +264,21 @@ export function ProjectChat({
       projectId,
       threadId: effectiveThreadId,
       modelKey,
+    });
+  };
+
+  const handleReasoningToggle = (nextEnabled: boolean) => {
+    if (
+      !effectiveThreadId ||
+      !activeModel?.supportsReasoning ||
+      setThreadReasoningMutation.isPending
+    ) {
+      return;
+    }
+    setThreadReasoningMutation.mutate({
+      projectId,
+      threadId: effectiveThreadId,
+      reasoningEnabled: nextEnabled,
     });
   };
 
@@ -409,12 +436,17 @@ export function ProjectChat({
           projectEmoji={projectQuery.data?.icon}
           threadTitle={activeThread?.name}
           activeModel={activeModel}
+          reasoningEnabled={activeThread?.reasoningEnabled ?? false}
+          showReasoningToggle={Boolean(activeModel?.supportsReasoning)}
+          reasoningUpdating={setThreadReasoningMutation.isPending}
+          onToggleReasoning={handleReasoningToggle}
           themeStyle={themeStyle}
           hasAccentColor={hasAccentColor}
           isDrawer={isDrawer}
         />
 
         <ChatMessages
+          projectId={projectId}
           messages={messages}
           isLoading={messagesQuery.isLoading || threadsQuery.isLoading}
           isFetchingNextPage={messagesQuery.isFetchingNextPage}
@@ -429,6 +461,7 @@ export function ProjectChat({
           isActiveThreadStreaming={isActiveThreadStreaming}
           isStreaming={isStreaming}
           streamingContent={streamingContent}
+          streamingReasoning={streamingReasoning}
           pendingAssistantId={pendingAssistantId}
           streamError={streamError}
           tasksPending={tasksPending}

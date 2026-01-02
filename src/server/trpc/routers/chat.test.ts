@@ -2,8 +2,10 @@ import { describe, test as it, expect } from "bun:test";
 import {
   getThreadSchema,
   listMessagesSchema,
+  getMessageReasoningSchema,
   sendMessageSchema,
   setThreadModelSchema,
+  setThreadReasoningSchema,
   listThreadsSchema,
   createThreadSchema,
   archiveThreadSchema,
@@ -123,6 +125,27 @@ describe("Chat Validations", () => {
     });
   });
 
+  describe("setThreadReasoningSchema", () => {
+    it("validates reasoning toggle input", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        threadId: "clxyz987654321",
+        reasoningEnabled: true,
+      };
+      const result = setThreadReasoningSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects missing thread ID", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        reasoningEnabled: false,
+      };
+      const result = setThreadReasoningSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
   describe("listMessagesSchema", () => {
     it("validates basic pagination input", () => {
       const input = {
@@ -151,6 +174,25 @@ describe("Chat Validations", () => {
         limit: 0,
       };
       const result = listMessagesSchema.safeParse(input);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("getMessageReasoningSchema", () => {
+    it("validates message reasoning lookup", () => {
+      const input = {
+        projectId: "clxyz123456789",
+        messageId: "clxyz987654321",
+      };
+      const result = getMessageReasoningSchema.safeParse(input);
+      expect(result.success).toBe(true);
+    });
+
+    it("rejects missing message ID", () => {
+      const input = {
+        projectId: "clxyz123456789",
+      };
+      const result = getMessageReasoningSchema.safeParse(input);
       expect(result.success).toBe(false);
     });
   });

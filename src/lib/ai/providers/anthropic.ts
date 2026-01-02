@@ -42,6 +42,7 @@ export interface AnthropicModelOverrides {
   readonly modes?: readonly ModelCallMode[];
   readonly supportsJson?: boolean;
   readonly supportsStreaming?: boolean;
+  readonly supportsReasoning?: boolean;
   readonly name?: string;
 }
 
@@ -287,6 +288,7 @@ export const createAnthropicModel = (
   const resolvedModes = (overrides.modes ?? DEFAULT_ANTHROPIC_MODES) as readonly ModelCallMode[];
   const supportsJson = overrides.supportsJson ?? resolvedModes.includes('json');
   const supportsStreaming = overrides.supportsStreaming ?? true; // Anthropic supports streaming by default
+  const supportsReasoning = overrides.supportsReasoning ?? false;
   const resolvedTags = overrides.tags ? [...overrides.tags] : undefined;
   const maxOutputTokens = overrides.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS;
 
@@ -296,6 +298,7 @@ export const createAnthropicModel = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning,
       maxOutputTokens,
       contextWindow: overrides.contextWindow,
       costTier: overrides.costTier,
@@ -445,6 +448,7 @@ const createAnthropicModelDefinition = (
       modes: resolvedModes,
       supportsJson,
       supportsStreaming,
+      supportsReasoning: config.supportsReasoning,
       maxOutputTokens,
       contextWindow: config.contextWindow,
       costTier: config.costTier,
@@ -461,6 +465,7 @@ const createAnthropicModelDefinition = (
           modes: resolvedModes,
           supportsJson,
           supportsStreaming,
+          supportsReasoning: config.supportsReasoning,
           name: config.label,
         },
         options,

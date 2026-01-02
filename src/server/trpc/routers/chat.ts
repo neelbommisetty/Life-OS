@@ -4,8 +4,10 @@ import { z } from "zod";
 import {
   getThreadSchema,
   listMessagesSchema,
+  getMessageReasoningSchema,
   sendMessageSchema,
   setThreadModelSchema,
+  setThreadReasoningSchema,
   listThreadsSchema,
   createThreadSchema,
   archiveThreadSchema,
@@ -54,6 +56,16 @@ const resolveAiStatus = (error: unknown): "ERROR" | "ABORTED" => {
 };
 
 const resolveTokenCount = (text: string, usageTokens?: number | null) => {
+  if (typeof usageTokens === "number") {
+    return { tokenCount: usageTokens, tokenCountSource: "usage" };
+  }
+  return { tokenCount: estimateTokens(text), tokenCountSource: "estimate" };
+};
+
+const resolveReasoningTokenCount = (
+  text: string,
+  usageTokens?: number | null
+) => {
   if (typeof usageTokens === "number") {
     return { tokenCount: usageTokens, tokenCountSource: "usage" };
   }
@@ -387,6 +399,31 @@ export const chatRouter = router({
       }
     }),
 
+  getMessageReasoning: publicProcedure
+    .input(getMessageReasoningSchema)
+    .query(async ({ ctx, input }) => {
+      const message = await ctx.prisma.chatMessage.findFirst({
+        where: {
+          id: input.messageId,
+          thread: {
+            projectId: input.projectId,
+          },
+        },
+        select: { id: true },
+      });
+
+      if (!message) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Message not found",
+        });
+      }
+
+      return ctx.prisma.chatMessageReasoning.findUnique({
+        where: { messageId: input.messageId },
+      });
+    }),
+
   listModels: publicProcedure.query(() => {
     const models = modelRegistry
       .listMetadata()
@@ -398,6 +435,7 @@ export const chatRouter = router({
         costTier: model.costTier ?? null,
         description: model.description ?? null,
         supportsStreaming: model.supportsStreaming ?? false,
+        supportsReasoning: model.supportsReasoning ?? false,
       }));
 
     return models;
@@ -474,6 +512,7 @@ export const chatRouter = router({
             projectId: input.projectId,
             name,
             modelKey: input.modelKey,
+            reasoningEnabled: false,
           },
         });
       } else {
@@ -481,6 +520,7 @@ export const chatRouter = router({
           where: { id: thread.id },
           data: {
             modelKey: input.modelKey,
+            reasoningEnabled: false,
           },
         });
       }
@@ -492,6 +532,46 @@ export const chatRouter = router({
       });
 
       return thread;
+    }),
+
+  setThreadReasoning: publicProcedure
+    .input(setThreadReasoningSchema)
+    .mutation(async ({ ctx, input }) => {
+      const start = Date.now();
+      logger.debug("Setting chat thread reasoning", {
+        projectId: input.projectId,
+        threadId: input.threadId,
+        reasoningEnabled: input.reasoningEnabled,
+      });
+
+      const thread = await ctx.prisma.chatThread.findFirst({
+        where: {
+          id: input.threadId,
+          projectId: input.projectId,
+        },
+      });
+
+      if (!thread) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Thread not found",
+        });
+      }
+
+      const updatedThread = await ctx.prisma.chatThread.update({
+        where: { id: thread.id },
+        data: {
+          reasoningEnabled: input.reasoningEnabled,
+        },
+      });
+
+      logger.info("Chat thread reasoning updated", {
+        threadId: updatedThread.id,
+        reasoningEnabled: updatedThread.reasoningEnabled,
+        durationMs: Date.now() - start,
+      });
+
+      return updatedThread;
     }),
 
   sendMessage: publicProcedure
@@ -908,6 +988,9 @@ export const chatRouter = router({
               modelLabel: "Auto routing",
               modelProvider: null,
             };
+        const reasoningEnabled = Boolean(
+          thread.reasoningEnabled && modelMetadata?.supportsReasoning
+        );
 
         // Call AI model
         const chatModel = getModelFor("project_chat", overrideKey);
@@ -917,6 +1000,7 @@ export const chatRouter = router({
           aiResult = await chatModel.call({
             prompt: fullPrompt,
             mode: "text",
+            ...(reasoningEnabled ? { reasoning: { effort: "medium" } } : {}),
           });
           const callEndAt = new Date();
           await recordAiCall({
@@ -970,6 +1054,19 @@ export const chatRouter = router({
             ...assistantModelData,
           },
         });
+
+        if (aiResult.reasoningText?.trim()) {
+          await ctx.prisma.chatMessageReasoning.create({
+            data: {
+              messageId: assistantMessage.id,
+              content: aiResult.reasoningText.trim(),
+              ...resolveReasoningTokenCount(
+                aiResult.reasoningText,
+                aiResult.usage?.reasoningTokens
+              ),
+            },
+          });
+        }
 
         await ctx.prisma.chatThread.update({
           where: { id: thread.id },
