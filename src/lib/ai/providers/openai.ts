@@ -171,6 +171,14 @@ const extractReasoningText = (response: Response): string | undefined => {
           reasoningChunks.push(text);
         }
       }
+    } else if (item.type === 'reasoning') {
+      const contentEntries = Array.isArray(item.content) ? item.content : [];
+      for (const content of contentEntries) {
+        const text = readReasoningText(content);
+        if (typeof text === 'string') {
+          reasoningChunks.push(text);
+        }
+      }
     } else {
       const text = readReasoningText(item);
       if (typeof text === 'string') {
@@ -371,6 +379,15 @@ export const createOpenAIModel = (
                 }
               } else if (event.type === 'response.completed') {
                 usage = readUsageFromStreamEvent(event);
+                if (!accumulatedReasoning) {
+                  const completedResponse = (event as { response?: Response }).response;
+                  if (completedResponse) {
+                    const completedReasoning = extractReasoningText(completedResponse);
+                    if (completedReasoning) {
+                      accumulatedReasoning = completedReasoning;
+                    }
+                  }
+                }
                 // Stream completed
                 yield { text: '', done: true };
               }
