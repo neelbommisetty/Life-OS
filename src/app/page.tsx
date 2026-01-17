@@ -8,7 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Bot, CheckSquare, FileText, FolderKanban } from "lucide-react";
+import { Bot, CheckSquare, DollarSign, FileText, FolderKanban } from "lucide-react";
 import Link from "next/link";
 
 export default function Page() {
@@ -40,6 +40,13 @@ export default function Page() {
       icon: FileText,
       href: "/notes",
       color: "text-orange-500",
+    },
+    {
+      title: "Pricing",
+      description: "View AI model pricing and cost information.",
+      icon: DollarSign,
+      href: "/pricing",
+      color: "text-emerald-500",
     },
   ];
 
