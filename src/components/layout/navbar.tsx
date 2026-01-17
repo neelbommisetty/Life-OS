@@ -15,7 +15,7 @@ export function Navbar() {
               <LayoutDashboard className="h-5 w-5" />
             </div>
             <span className="hidden text-lg font-bold tracking-tight text-foreground sm:inline-block">
-              Project OS
+              Life-OS
             </span>
           </Link>
           <Link

@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Use this reference when building features for Project OS so contributions stay consistent with our Next.js App Router, Prisma, and AI-first focus.
+Use this reference when building features for Life-OS so contributions stay consistent with our Next.js App Router, Prisma, and AI-first focus.
 
 ## Project Structure & Module Organization
 - `src/app` contains server-first routes, layouts, and route handlers. Co-locate client components only when interactivity demands `use client`.

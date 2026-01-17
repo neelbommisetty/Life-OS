@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Project OS",
+  title: "Life-OS",
   description: "Manage your ideas, tasks, and progress in one place.",
 };
 

@@ -23,7 +23,7 @@ export function RecentProjects({ projects }: Props) {
           Your creative space is empty
         </h3>
         <p className="mt-3 text-sm text-muted-foreground max-w-sm mx-auto leading-relaxed">
-          Project OS is your companion for turning ideas into reality. Start by creating a project to track your goals, tasks, and AI brainstorms.
+          Life-OS is your companion for turning ideas into reality. Start by creating a project to track your goals, tasks, and AI brainstorms.
         </p>
         <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
           <CreateProjectDialog />
