@@ -1,38 +1,39 @@
 ## Framework and language
 
-- Next.js App Router with TypeScript only. Keep server actions/server components preferred where possible.
+- Next.js 16 App Router with TypeScript only. Keep server actions/server components preferred where possible.
+- React 19 with React Compiler enabled (via `babel-plugin-react-compiler`).
 - Use Bun for install/dev scripts; match package.json scripts (avoid npm/yarn commands).
 - Keep minimal polyfills; no Node-only APIs in the client.
 
 ## Styling and UI
 
-- Tailwind is primary styling; prefer utility classes. Co-locate component-specific styles via className.
-- **Headless UI**: Use `@headlessui/react` for all interactive components (menus, dialogs, tabs, listboxes) to ensure accessibility and consistent behavior.
-- **Icons**: Use `lucide-react` for all icons.
-- **Animations**: Use `framer-motion` for complex animations; CSS transitions for simple hover states.
+- **shadcn/ui**: Use shadcn/ui components from `@/components/ui` for all UI components. Components are configured with Radix Maia style, RSC support, and CSS variables. Add new components via `bunx shadcn@latest add <component>`.
+- Tailwind CSS 4 is primary styling; prefer utility classes. Co-locate component-specific styles via className.
+- **Icons**: Use `lucide-react` for all icons (configured in shadcn setup).
+- Use the `cn()` utility from `@/lib/utils` for conditional className merging.
+- Prefer CSS transitions for animations; add animation libraries only when complex animations are required.
 
 ## Data and API layer
 
-- Use tRPC for API routes; avoid raw fetch/REST unless integrating third parties.
-- Prefer end-to-end types: derive client inputs from tRPC router schemas (zod).
-- Database: Prisma with Postgres; allow SQLite only for local fallback. Keep schema in `prisma/schema.prisma`.
-- Run migrations via Bun scripts (e.g., `bun prisma migrate dev`) and keep generated types committed if already tracked.
+- Use Convex for backend, database, and real-time features. Define queries, mutations, and actions in Convex functions.
+- Prefer Convex React hooks (`useQuery`, `useMutation`, `useAction`) for client-side data fetching and mutations.
+- Keep Convex schema and functions organized in the Convex directory structure.
 
 ## State and data fetching
 
 - Default to server components. Use client components only for interactivity.
-- For server data, prefer tRPC procedures invoked via server helpers. For client hydration, use tRPC React hooks/providers.
-- Cache boundaries: use React cache/Next.js revalidation when safe; avoid unnecessary `no-store`.
+- For server data, use Convex queries/actions via server helpers. For client hydration, use Convex React hooks.
+- Leverage Convex's built-in reactivity and caching; avoid unnecessary re-fetching.
 
 ## Drag and drop (Kanban)
 
-- Use `@dnd-kit` for drag/drop. Keep sensors, collision detection, and sortable contexts in dedicated hooks/components.
+- Use HTML5 drag and drop API or add a drag/drop library only when needed. Keep drag/drop logic in dedicated hooks/components.
 - Maintain accessible drag handles and keyboard interaction where feasible.
 
 ## Testing and quality
 
 - **Testing**: Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Run tests with `bun test` or `bun run test`. No external test frameworks (Vitest, Jest, etc.).
-- Type-first: add zod validation at tRPC boundaries. Avoid `any`.
+- Type-first: leverage TypeScript and Convex's type inference. Avoid `any`.
 - Keep components small and reusable; lift shared logic into hooks/utilities.
 - Prefer ESLint/TypeScript fixes over disabling rules; if disabling, justify inline.
 
@@ -54,3 +55,7 @@
 
 - Environment variables: document in `.env.example` and access via Next.js env conventions.
 - Keep accessibility in mind: aria labels for inputs/interactive elements; keyboard support for dialogs/menus.
+
+## Legacy folder
+
+- The `legacy/` folder contains current existing logic, but treat it as reference only; all decisions (product specs, project tech stack, and more) are intended to be re-evaluated.
