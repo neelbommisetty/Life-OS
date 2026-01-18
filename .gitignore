@@ -43,3 +43,5 @@ next-env.d.ts
 
 # cursor worktrees
 /.cursor/worktrees/*
+
+/src/generated/prisma
