@@ -1,7 +1,8 @@
+import { authClient } from '@/lib/auth/client';
+import { NeonAuthUIProvider, UserButton } from '@neondatabase/auth/react';
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import "./globals.css";
-
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
 const geistSans = Geist({
@@ -25,11 +26,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+        <NeonAuthUIProvider
+          authClient={authClient}
+          redirectTo="/"
+          emailOTP={false}
+        >
+          <header className='flex justify-end items-center p-4 gap-4 h-16'>
+            <UserButton size="icon" />
+          </header>
+          {children}
+        </NeonAuthUIProvider>
       </body>
     </html>
   );
