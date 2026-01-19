@@ -11,3 +11,43 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+enum ChatRole {
+  SYSTEM
+  USER
+  ASSISTANT
+}
+
+model ChatThread {
+  id            String        @id @default(cuid())
+  userId        String        // From Neon Auth
+  name          String        @default("New thread")
+  modelKey      String?
+  summary       String?
+  summaryUpTo   DateTime?
+  lastChattedAt DateTime      @default(now())
+  archivedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  messages      ChatMessage[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([userId, archivedAt, lastChattedAt])
+}
+
+model ChatMessage {
+  id               String     @id @default(cuid())
+  threadId         String
+  thread           ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role             ChatRole
+  content          String
+  modelKey         String?
+  modelLabel       String?
+  modelProvider    String?
+  tokenCount       Int?
+  tokenCountSource String?
+  createdAt        DateTime   @default(now())
+
+  @@index([threadId, createdAt])
+}
