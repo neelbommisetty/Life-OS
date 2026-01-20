@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { initializeProviders } from './config';
+import { initializeChatServices } from './chat-services';
 
 /**
  * Server-side AI provider initialization.
@@ -20,4 +21,7 @@ import { initializeProviders } from './config';
 
 // Initialize providers on module import
 initializeProviders();
+
+// Initialize chat services (registers models with the registry)
+initializeChatServices();
 

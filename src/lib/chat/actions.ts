@@ -5,6 +5,8 @@ import { authServer } from "@/lib/auth/server";
 import { createLogger } from "@/lib/logger";
 import { modelRegistry } from "@/lib/ai";
 import type { ModelKey } from "@/lib/ai/providers/types";
+// Initialize AI providers and chat services
+import "@/lib/ai/init";
 import type { Prisma } from "@prisma/client";
 import {
   listThreadsSchema,
