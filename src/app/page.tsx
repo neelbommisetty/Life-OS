@@ -17,7 +17,7 @@ export default function Page() {
       title: "AI Chat",
       description: "Chat with AI models for brainstorming and knowledge.",
       icon: Bot,
-      href: "/ai-chat",
+      href: "/chat",
       color: "text-purple-500",
     },
     {
