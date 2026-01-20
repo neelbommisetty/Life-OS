@@ -73,12 +73,8 @@ export function ChatMarkdown({ content, className, tone = "default" }: Props) {
   return (
     <div
       className={cn(
-        "chat-markdown prose prose-sm dark:prose-invert max-w-none",
-        "prose-p:my-2 prose-pre:my-2 prose-ul:my-2 prose-ol:my-2",
-        "prose-headings:mb-2 prose-headings:mt-4 first:prose-headings:mt-0",
-        "prose-code:text-xs prose-code:before:content-none prose-code:after:content-none",
-        "prose-pre:bg-muted prose-pre:text-foreground prose-pre:rounded-lg",
-        tone === "inverted" && "prose-invert",
+        "chat-markdown",
+        tone === "inverted" && "chat-markdown--inverted",
         className
       )}
     >

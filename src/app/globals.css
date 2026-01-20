@@ -134,3 +134,216 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Chat Markdown Styles */
+.chat-markdown {
+  --chat-code-bg: var(--muted);
+  --chat-code-border: var(--border);
+  --chat-code-fg: var(--foreground);
+  --chat-code-muted: var(--muted-foreground);
+  --chat-code-keyword: #0ea5e9; /* sky-500 */
+  --chat-code-title: #14b8a6; /* teal-500 */
+  --chat-code-string: #f97316; /* orange-500 */
+  --chat-code-number: #f59e0b; /* amber-500 */
+  --chat-code-attr: #2563eb; /* blue-600 */
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.chat-markdown--inverted {
+  /* For inverted (user messages), use primary-foreground for text */
+  --chat-inverted-fg: var(--primary-foreground);
+  --chat-code-bg: var(--chat-inverted-fg);
+  --chat-code-border: var(--chat-inverted-fg);
+  --chat-code-fg: var(--chat-inverted-fg);
+  --chat-code-muted: var(--chat-inverted-fg);
+  /* Syntax highlighting colors adjusted for inverted backgrounds (light colors for dark backgrounds) */
+  --chat-code-keyword: #67e8f9; /* cyan-200 */
+  --chat-code-title: #a7f3d0; /* emerald-200 */
+  --chat-code-string: #fde68a; /* amber-200 */
+  --chat-code-number: #fcd34d; /* amber-300 */
+  --chat-code-attr: #93c5fd; /* blue-300 */
+}
+
+.chat-markdown > :not(:last-child) {
+  margin-bottom: 0.75rem;
+}
+
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3,
+.chat-markdown h4 {
+  font-weight: 600;
+  line-height: 1.35;
+  margin-top: 0;
+}
+
+.chat-markdown h1 {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown h2 {
+  font-size: 1.05rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown h3 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown h4 {
+  font-size: 0.95rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown p:first-child {
+  margin-top: 0;
+}
+
+.chat-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-markdown a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.chat-markdown ul,
+.chat-markdown ol {
+  padding-left: 1.25rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.chat-markdown li + li {
+  margin-top: 0.25rem;
+}
+
+.chat-markdown blockquote {
+  border-left: 2px solid var(--chat-code-border);
+  padding-left: 0.75rem;
+  color: var(--chat-code-muted);
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown code {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-size: 0.85em;
+  background: var(--chat-code-bg);
+  color: var(--chat-code-fg);
+  border: 1px solid var(--chat-code-border);
+  border-radius: 0.45rem;
+  padding: 0.1rem 0.35rem;
+}
+
+.chat-markdown--inverted code {
+  background: color-mix(in srgb, var(--chat-code-bg) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chat-code-border) 20%, transparent);
+}
+
+.chat-markdown pre {
+  background: var(--chat-code-bg);
+  color: var(--chat-code-fg);
+  border: 1px solid var(--chat-code-border);
+  border-radius: 0.6rem;
+  padding: 0.75rem;
+  overflow-x: auto;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown--inverted pre {
+  background: color-mix(in srgb, var(--chat-code-bg) 12%, transparent);
+  border-color: color-mix(in srgb, var(--chat-code-border) 20%, transparent);
+}
+
+.chat-markdown pre code {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font-size: 0.85em;
+}
+
+.chat-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85em;
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--chat-code-border);
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+.chat-markdown hr {
+  border-color: var(--chat-code-border);
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.chat-markdown .hljs {
+  background: transparent;
+  color: var(--chat-code-fg);
+}
+
+.chat-markdown .hljs-comment,
+.chat-markdown .hljs-quote {
+  color: var(--chat-code-muted);
+  font-style: italic;
+}
+
+.chat-markdown--inverted .hljs-comment,
+.chat-markdown--inverted .hljs-quote {
+  color: color-mix(in srgb, var(--chat-code-muted) 65%, transparent);
+}
+
+.chat-markdown .hljs-keyword,
+.chat-markdown .hljs-selector-tag,
+.chat-markdown .hljs-type,
+.chat-markdown .hljs-built_in {
+  color: var(--chat-code-keyword);
+}
+
+.chat-markdown .hljs-title,
+.chat-markdown .hljs-section,
+.chat-markdown .hljs-function {
+  color: var(--chat-code-title);
+}
+
+.chat-markdown .hljs-string,
+.chat-markdown .hljs-literal {
+  color: var(--chat-code-string);
+}
+
+.chat-markdown .hljs-number,
+.chat-markdown .hljs-symbol,
+.chat-markdown .hljs-bullet {
+  color: var(--chat-code-number);
+}
+
+.chat-markdown .hljs-attr,
+.chat-markdown .hljs-attribute,
+.chat-markdown .hljs-name {
+  color: var(--chat-code-attr);
+}
