@@ -302,21 +302,21 @@ export function ChatClient() {
 
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col sm:flex-row rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-      <ThreadSelector
-        threads={threads}
-        value={effectiveThreadId}
-        onChange={(threadId) => setThreadIdInUrl(threadId)}
-        onCreate={handleCreateThread}
-        onArchive={handleArchiveThread}
-        isCreating={isCreatingThread}
-        isArchiving={isArchivingThread}
-        isLocked={false}
-        isStreaming={isStreaming}
-        streamingThreadId={streamingThreadId}
-        layout="side"
-      />
+        <ThreadSelector
+          threads={threads}
+          value={effectiveThreadId}
+          onChange={(threadId) => setThreadIdInUrl(threadId)}
+          onCreate={handleCreateThread}
+          onArchive={handleArchiveThread}
+          isCreating={isCreatingThread}
+          isArchiving={isArchivingThread}
+          isLocked={false}
+          isStreaming={isStreaming}
+          streamingThreadId={streamingThreadId}
+          layout="side"
+        />
 
-      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
         <ChatHeader
           threadTitle={activeThread?.name}
           activeModel={activeModel}

@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 type ThreadOption = {
   id: string;
@@ -63,6 +65,7 @@ export function ThreadSelector({
           : "border-b border-border sm:h-full sm:w-64 sm:border-b-0 sm:border-r"
       )}
     >
+      {/* Header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
         <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           <MessageSquareIcon className="h-4 w-4" />
@@ -70,96 +73,97 @@ export function ThreadSelector({
         </div>
         <div className="flex items-center gap-2">
           {value && (
-            <button
+            <Button
               type="button"
               onClick={onArchive}
               disabled={isArchiving || isLocked}
-              className={cn(
-                "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition",
-                "hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30",
-                "disabled:cursor-not-allowed disabled:opacity-60"
-              )}
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
               title="Archive thread"
               aria-label="Archive thread"
             >
               <ArchiveIcon className="h-4 w-4" />
-            </button>
+            </Button>
           )}
-          <button
+          <Button
             type="button"
             onClick={onCreate}
             disabled={isCreating || isLocked}
-            className={cn(
-              "flex h-8 w-8 items-center justify-center rounded-md border border-border bg-background text-muted-foreground shadow-sm transition",
-              "hover:text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30",
-              "disabled:cursor-not-allowed disabled:opacity-60"
-            )}
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
             title="New thread"
             aria-label="Create new thread"
           >
             <PlusIcon className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
+      {/* Search */}
       {showSearch && (
         <div className="px-3 py-2 border-b border-border/50">
           <div className="relative">
-            <SearchIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
+            <SearchIcon className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground z-10" />
+            <Input
               type="text"
               placeholder="Search threads..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border border-border bg-background py-1.5 pl-8 pr-7 text-xs focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+              className="pl-8 pr-7 text-xs h-8"
             />
             {searchQuery && (
-              <button
+              <Button
+                type="button"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-sm p-0.5 hover:bg-muted text-muted-foreground transition-colors"
+                variant="ghost"
+                size="icon"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded-sm p-0.5"
                 aria-label="Clear search"
               >
                 <XIcon className="h-3 w-3" />
-              </button>
+              </Button>
             )}
           </div>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto min-h-0 p-3 space-y-1">
-        {filteredThreads.length === 0 && (
-          <div className="px-3 py-4 text-center text-xs text-muted-foreground bg-muted/20 rounded-lg border border-dashed border-border">
+      {/* Thread list */}
+      <div className="flex-1 overflow-y-auto min-h-0 p-2 space-y-0.5">
+        {filteredThreads.length === 0 ? (
+          <div className="px-3 py-4 text-center text-xs text-muted-foreground">
             {searchQuery ? "No matching threads found." : "No threads yet."}
           </div>
+        ) : (
+          filteredThreads.map((thread) => {
+            const isSelected = value === thread.id;
+            const showStreamingIndicator =
+              isStreaming && streamingThreadId === thread.id;
+            return (
+              <div
+                key={thread.id}
+                onClick={() => !isLocked && onChange(thread.id)}
+                className={cn(
+                  "w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors",
+                  isSelected
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
+                  isLocked && "cursor-not-allowed opacity-60"
+                )}
+              >
+                <span className="truncate flex-1 text-left">{thread.name}</span>
+                {showStreamingIndicator ? (
+                  <LoaderIcon className="h-3.5 w-3.5 animate-spin text-primary shrink-0 ml-2" />
+                ) : (
+                  isSelected && (
+                    <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 ml-2" />
+                  )
+                )}
+              </div>
+            );
+          })
         )}
-        {filteredThreads.map((thread) => {
-          const isSelected = value === thread.id;
-          const showStreamingIndicator =
-            isStreaming && streamingThreadId === thread.id;
-          return (
-            <button
-              key={thread.id}
-              onClick={() => onChange(thread.id)}
-              disabled={isLocked}
-              className={cn(
-                "group w-full flex items-center justify-between gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-all",
-                isSelected
-                  ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
-                isLocked && "cursor-not-allowed opacity-60"
-              )}
-            >
-              <span className="truncate flex-1">{thread.name}</span>
-              {showStreamingIndicator ? (
-                <LoaderIcon className="h-3.5 w-3.5 animate-spin text-primary shrink-0" />
-              ) : (
-                isSelected && (
-                  <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
-                )
-              )}
-            </button>
-          );
-        })}
       </div>
     </div>
   );
