@@ -1,9 +1,10 @@
 import "server-only";
 
-import { initializeChatServices } from "@/lib/ai/chat-services";
 import { modelRegistry } from "@/lib/ai/providers/registry";
 import { PricingCatalog } from "./pricing-catalog";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+// Initialize AI providers and chat services
+import "@/lib/ai/init";
 
 export const dynamic = "force-static";
 
@@ -25,7 +26,6 @@ const toModelCatalog = () =>
     });
 
 export default function PricingPage() {
-  initializeChatServices();
 
   const modelCatalog = toModelCatalog();
 

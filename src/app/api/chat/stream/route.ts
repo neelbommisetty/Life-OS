@@ -15,13 +15,12 @@ import {
   type StreamEvent,
 } from "@/lib/chat-utils";
 import { createLogger } from "@/lib/logger";
-import { modelRegistry, getModelFor, initializeChatServices } from "@/lib/ai";
+import { modelRegistry, getModelFor } from "@/lib/ai";
 import type { ModelKey, ModelStreamResult } from "@/lib/ai";
+// Initialize AI providers and chat services
+import "@/lib/ai/init";
 
 const logger = createLogger("api:chat:stream");
-
-// Initialize chat AI services
-initializeChatServices();
 
 // Token cap before triggering summarization (~30k tokens)
 const HISTORY_TOKEN_CAP = 30000;
