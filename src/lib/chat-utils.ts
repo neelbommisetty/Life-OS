@@ -199,6 +199,7 @@ export function resolveTokenCount(text: string, usageTokens?: number | null) {
 /**
  * Check if a thread name is a placeholder (to determine if title should be generated)
  */
-export function isPlaceholderThreadName(name: string): boolean {
+export function isPlaceholderThreadName(name: string | null | undefined): boolean {
+  if (!name) return false;
   return /^New thread( \(\d+\))?$/.test(name);
 }
