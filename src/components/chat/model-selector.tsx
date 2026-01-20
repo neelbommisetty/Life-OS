@@ -1,17 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Separator } from "@/components/ui/separator";
 import { Bot, Feather, Gem, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export type ModelOption = {
   key: string;
@@ -123,86 +121,114 @@ export function ModelSelector({
   const currentIconClassName =
     currentMeta?.iconClassName ?? "text-muted-foreground";
 
+  const [open, setOpen] = useState(false);
+
   const handleValueChange = (nextValue: string) => {
     if (nextValue === "auto") {
       onChange(null);
-      return;
+    } else {
+      onChange(nextValue);
     }
-    onChange(nextValue);
+    setOpen(false);
   };
 
   return (
-    <Select
-      value={selectedKey}
-      onValueChange={handleValueChange}
-      disabled={isDisabled}
-    >
-      <SelectTrigger
-        aria-label="Select model"
-        title={errorMessage ?? "Select model"}
-        className={cn(
-          "h-10 w-10 p-0 justify-center border-border bg-background shadow-sm",
-          "focus:ring-2 focus:ring-ring focus:ring-offset-2",
-          "disabled:cursor-not-allowed disabled:opacity-60",
-          "[&>svg:last-child]:hidden", // Hide the default chevron
-          hasError && "border-red-500 text-red-500",
-          buttonClassName
-        )}
-      >
-        {isBusy ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <CurrentIcon className={cn("h-4 w-4", currentIconClassName)} />
-        )}
-        <SelectValue className="hidden">
-          {currentModel?.label ?? "Auto routing"}
-        </SelectValue>
-      </SelectTrigger>
-
-      <SelectContent
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          disabled={isDisabled}
+          aria-label="Select model"
+          title={errorMessage ?? "Select model"}
+          className={cn(
+            "h-10 w-10 p-0 justify-center border-border bg-background shadow-sm",
+            "focus:ring-2 focus:ring-ring focus:ring-offset-2",
+            "disabled:cursor-not-allowed disabled:opacity-60",
+            hasError && "border-red-500 text-red-500",
+            buttonClassName
+          )}
+        >
+          {isBusy ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <CurrentIcon className={cn("h-4 w-4", currentIconClassName)} />
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
         align="end"
-        className="w-64 max-h-80"
+        className="w-80 max-h-[80vh] overflow-y-auto"
       >
-        {/* Auto option */}
-        <SelectGroup>
-          <SelectLabel>Auto</SelectLabel>
-          <SelectItem value="auto">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-primary" />
-              <div className="flex flex-col">
-                <span className="font-medium">Auto routing</span>
-                <span className="text-[10px] text-muted-foreground">
-                  Uses default model fallback
-                </span>
-              </div>
+        <div className="flex flex-col gap-4">
+          {/* Auto option */}
+          <div className="flex flex-col gap-2">
+            <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">
+              Auto
             </div>
-          </SelectItem>
-        </SelectGroup>
+            <Button
+              type="button"
+              variant={selectedKey === "auto" ? "default" : "ghost"}
+              className="w-full justify-start h-auto py-3 px-3"
+              onClick={() => handleValueChange("auto")}
+            >
+              <div className="flex items-center gap-3 w-full">
+                <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                <div className="flex flex-col items-start text-left">
+                  <span className="font-medium text-sm">Auto routing</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Uses default model fallback
+                  </span>
+                </div>
+              </div>
+            </Button>
+          </div>
 
-        {/* Grouped models by tier */}
-        {groupedModels.map((group) => (
-          <SelectGroup key={group.tierKey}>
-            <SelectLabel>{group.meta.label}</SelectLabel>
-            {group.tierModels.map((model) => {
-              const meta = getProviderMeta(model.provider);
-              const Icon = meta.icon;
-              return (
-                <SelectItem key={model.key} value={model.key}>
-                  <div className="flex items-center gap-2">
-                    <Icon className={cn("h-4 w-4", meta.iconClassName)} />
-                    <div className="flex flex-col">
-                      <span className="font-medium">{model.label}</span>
-                      <span className="text-[10px] text-muted-foreground">
+          {/* Grouped models by tier */}
+          {groupedModels.map((group, groupIndex) => (
+            <div key={group.tierKey} className="flex flex-col gap-2">
+              {groupIndex > 0 && <Separator />}
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1">
+                {group.meta.label}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {group.tierModels.map((model) => {
+                  const meta = getProviderMeta(model.provider);
+                  const Icon = meta.icon;
+                  const isSelected = value === model.key;
+                  return (
+                    <Button
+                      key={model.key}
+                      type="button"
+                      variant={isSelected ? "default" : "ghost"}
+                      className="w-full justify-start h-auto py-2.5 px-2.5 flex-col items-start"
+                      onClick={() => handleValueChange(model.key)}
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        <Icon
+                          className={cn(
+                            "h-4 w-4 shrink-0",
+                            isSelected
+                              ? "text-primary-foreground"
+                              : meta.iconClassName
+                          )}
+                        />
+                        <span className="font-medium text-xs truncate flex-1 text-left">
+                          {model.label}
+                        </span>
+                      </div>
+                      <span className="text-[10px] text-muted-foreground w-full text-left mt-0.5">
                         {meta.label}
                       </span>
-                    </div>
-                  </div>
-                </SelectItem>
-              );
-            })}
-          </SelectGroup>
-        ))}
-      </SelectContent>
-    </Select>
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
