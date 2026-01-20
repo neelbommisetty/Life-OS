@@ -7,6 +7,7 @@ import {
   MessageSquareIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Card, CardContent } from "@/components/ui/card";
 
 type PromptSuggestion = {
   label: string;
@@ -55,24 +56,27 @@ export function ChatEmptyState({ onSelectPrompt }: Props) {
 
       <div className="mt-10 grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-3">
         {SUGGESTIONS.map((suggestion) => (
-          <button
+          <Card
             key={suggestion.label}
             onClick={() => onSelectPrompt(suggestion.prompt)}
             className={cn(
-              "group flex flex-col items-start rounded-xl border border-border bg-card/50 p-4 text-left transition-all",
-              "hover:bg-muted/50 hover:shadow-md hover:border-primary/50"
+              "group cursor-pointer transition-all",
+              "hover:bg-muted/50 hover:shadow-md hover:border-primary/50",
+              "bg-card/50"
             )}
           >
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-muted transition-colors group-hover:bg-background text-primary">
-              <suggestion.icon className="h-5 w-5" />
-            </div>
-            <div className="font-medium text-sm text-foreground group-hover:text-primary transition-colors">
-              {suggestion.label}
-            </div>
-            <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
-              {suggestion.prompt}
-            </div>
-          </button>
+            <CardContent className="p-4">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-muted transition-colors group-hover:bg-background text-primary">
+                <suggestion.icon className="h-5 w-5" />
+              </div>
+              <div className="font-medium text-sm text-foreground group-hover:text-primary transition-colors">
+                {suggestion.label}
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                {suggestion.prompt}
+              </div>
+            </CardContent>
+          </Card>
         ))}
       </div>
     </div>

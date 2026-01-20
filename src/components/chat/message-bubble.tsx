@@ -4,6 +4,9 @@ import { useMemo } from "react";
 import type { ChatMessage } from "@prisma/client";
 import { RotateCcwIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { ChatMarkdown } from "./chat-markdown";
 
 type MessageBubbleProps = {
@@ -67,9 +70,9 @@ export function MessageBubble({
   if (isSystem) {
     return (
       <div className="flex justify-center my-2">
-        <span className="text-xs bg-muted text-muted-foreground px-3 py-1 rounded-full">
+        <Badge variant="secondary" className="text-xs px-3 py-1 rounded-full">
           {message.content}
-        </span>
+        </Badge>
       </div>
     );
   }
@@ -97,19 +100,23 @@ export function MessageBubble({
         >
           {isUser ? "You" : "AI"}
         </div>
-        <div
-          className={cn(
-            "rounded-lg px-4 py-3 text-sm shadow-sm",
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-card border border-border text-foreground"
-          )}
-        >
-          <ChatMarkdown
-            content={message.content}
-            tone={isUser ? "inverted" : "default"}
-          />
-        </div>
+        {isUser ? (
+          <div className="rounded-lg px-4 py-3 text-sm shadow-sm bg-primary text-primary-foreground">
+            <ChatMarkdown
+              content={message.content}
+              tone="inverted"
+            />
+          </div>
+        ) : (
+          <Card className="rounded-lg shadow-sm">
+            <CardContent className="px-4 py-3 text-sm">
+              <ChatMarkdown
+                content={message.content}
+                tone="default"
+              />
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {statusLabel && (
@@ -137,16 +144,18 @@ export function MessageBubble({
           <span className="text-muted-foreground/60">•</span>
           <span title={timestampLabel}>{timestampLabel}</span>
           {onRegenerate && (
-            <button
+            <Button
               type="button"
               onClick={() => onRegenerate(message.id)}
               disabled={!canRegenerate || isPending}
-              className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-foreground/80 transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
+              variant="outline"
+              size="xs"
+              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-foreground/80"
               title="Regenerate response"
             >
               <RotateCcwIcon className="h-3 w-3" />
               Regenerate
-            </button>
+            </Button>
           )}
         </div>
       )}

@@ -3,6 +3,9 @@
 import { useRef, useEffect } from "react";
 import { SendIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { ModelSelector, type ModelOption } from "./model-selector";
 
 type Props = {
@@ -70,7 +73,7 @@ export function ChatInput({
         />
 
         <div className="relative flex-1 group">
-          <textarea
+          <Textarea
             ref={inputRef}
             value={input}
             onChange={(e) => {
@@ -91,26 +94,25 @@ export function ChatInput({
             )}
           />
 
-          <button
+          <Button
             type="submit"
             disabled={!input.trim() || isPending || !effectiveThreadId}
+            size="icon"
             className={cn(
-              "absolute right-2 bottom-2 flex h-8 w-8 items-center justify-center rounded-lg font-medium text-sm transition-all",
-              "focus:outline-none focus:ring-2",
-              "disabled:cursor-not-allowed disabled:opacity-30",
-              "bg-primary text-primary-foreground hover:bg-primary/90 focus:ring-primary/30"
+              "absolute right-2 bottom-2 h-8 w-8 rounded-lg",
+              "focus:ring-primary/30"
             )}
             aria-label="Send message"
           >
             <SendIcon className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
       </div>
 
       <div className="mt-2 text-center">
         <p className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-50">
-          Press <kbd className="font-sans">Enter</kbd> to send •{" "}
-          <kbd className="font-sans">Shift + Enter</kbd> for new line
+          Press <Kbd>Enter</Kbd> to send •{" "}
+          <Kbd>Shift + Enter</Kbd> for new line
         </p>
       </div>
     </form>

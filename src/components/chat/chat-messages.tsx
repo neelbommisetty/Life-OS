@@ -2,6 +2,8 @@
 
 import type { RefObject } from "react";
 import { LoaderIcon, AlertCircleIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { MessageBubble } from "./message-bubble";
 import { ChatEmptyState } from "./chat-empty-state";
 import { StreamingMessage } from "./streaming-message";
@@ -79,10 +81,10 @@ export function ChatMessages({
     >
       {isFetchingNextPage && (
         <div className="flex justify-center">
-          <div className="flex items-center gap-2 rounded-full bg-muted px-4 py-1.5 text-xs text-muted-foreground">
+          <Badge variant="secondary" className="flex items-center gap-2 rounded-full px-4 py-1.5 text-xs">
             <LoaderIcon className="h-3 w-3 animate-spin" />
             Loading older messages...
-          </div>
+          </Badge>
         </div>
       )}
 
@@ -149,19 +151,21 @@ export function ChatMessages({
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
             AI
           </div>
-          <div className="flex-1 rounded-lg bg-muted px-4 py-3">
-            <LoaderIcon className="h-4 w-4 animate-spin text-muted-foreground" />
-          </div>
+          <Card className="flex-1">
+            <CardContent className="px-4 py-3">
+              <LoaderIcon className="h-4 w-4 animate-spin text-muted-foreground" />
+            </CardContent>
+          </Card>
         </div>
       )}
 
       {/* Stream error message */}
       {streamError && (
         <div className="flex justify-center my-2 animate-in zoom-in-95 duration-300">
-          <div className="flex items-center gap-2 rounded-full bg-destructive/10 text-destructive px-4 py-1.5 text-xs border border-destructive/20 shadow-sm">
+          <Badge variant="destructive" className="flex items-center gap-2 rounded-full px-4 py-1.5 text-xs border border-destructive/20 shadow-sm">
             <AlertCircleIcon className="h-3 w-3" />
             {streamError}
-          </div>
+          </Badge>
         </div>
       )}
     </div>

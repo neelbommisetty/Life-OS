@@ -2,6 +2,7 @@
 
 import { SparklesIcon, BotIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import type { ModelOption } from "./model-selector";
 
 type Props = {
@@ -50,10 +51,10 @@ export function ChatHeader({ threadTitle, activeModel, isDrawer }: Props) {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight bg-primary/10 text-primary">
+        <Badge variant="default" className="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight bg-primary/10 text-primary">
           <SparklesIcon className="h-2.5 w-2.5" />
           <span>AI Assistant</span>
-        </div>
+        </Badge>
       </div>
     </div>
   );
