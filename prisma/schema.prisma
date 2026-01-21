@@ -18,6 +18,19 @@ enum ChatRole {
   ASSISTANT
 }
 
+enum AiCallType {
+  CHAT_STREAM
+  CHAT_BLOCKING
+  SUMMARY_CALL
+  TITLE_GEN_CALL
+}
+
+enum AiCallStatus {
+  SUCCESS
+  ERROR
+  ABORTED
+}
+
 model ChatThread {
   id            String        @id @default(cuid())
   userId        String        // From Neon Auth
@@ -30,6 +43,7 @@ model ChatThread {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   messages      ChatMessage[]
+  aiCalls       AiCall[]
 
   @@unique([userId, name])
   @@index([userId])
@@ -50,4 +64,58 @@ model ChatMessage {
   createdAt        DateTime   @default(now())
 
   @@index([threadId, createdAt])
+}
+
+model AiCall {
+  id                       String       @id @default(cuid())
+  userId                   String
+
+  // Optional relations for attribution
+  threadId                 String?
+  thread                   ChatThread?  @relation(fields: [threadId], references: [id], onDelete: SetNull)
+  messageId                String?      // Links to the ChatMessage this call produced
+
+  // Call classification
+  callType                 AiCallType
+
+  // Model identification
+  providerId               String
+  modelKey                 String?
+  modelId                  String?
+
+  // Token metrics
+  inputTokens              Int?
+  outputTokens             Int?
+  totalTokens              Int?
+  cacheCreationInputTokens Int?
+  cacheReadInputTokens     Int?
+  totalStreamedTokens      Int?
+
+  // Streaming timing (full metrics)
+  streamingStartAt         DateTime?
+  streamingEndAt           DateTime?
+  streamingTps             Float?       // Tokens per second
+
+  // Request timing
+  requestStartAt           DateTime
+  firstTokenAt             DateTime?
+  responseEndAt            DateTime?
+  totalLatencyMs           Int?
+
+  // Cost tracking
+  costUsd                  Decimal      @db.Decimal(12, 6)
+  cacheCreationCostUsd     Decimal?     @db.Decimal(12, 6)
+  cacheReadCostUsd         Decimal?     @db.Decimal(12, 6)
+  priceSnapshot            Json         // Snapshot of pricing at call time
+
+  // Status and metadata
+  status                   AiCallStatus
+  attempts                 Json?        // Array of all model attempts for failover
+
+  createdAt                DateTime     @default(now())
+
+  @@index([userId, requestStartAt])
+  @@index([threadId, requestStartAt])
+  @@index([providerId, modelId])
+  @@index([callType])
 }
