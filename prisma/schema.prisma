@@ -148,3 +148,16 @@ model Task {
   @@index([userId, status])
   @@index([userId, deletedAt])
 }
+
+model Note {
+  id        String    @id @default(cuid())
+  userId    String    // From Neon Auth
+  title     String
+  content   String    // Markdown content
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([userId, deletedAt])
+}
