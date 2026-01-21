@@ -1,27 +1,15 @@
-import 'server-only';
+import "server-only";
 
-import { initializeProviders } from './config';
-import { initializeChatServices } from './chat-services';
+import { initializeProviders } from "./config";
+import { initializeChatServices } from "./chat-services";
 
 /**
  * Server-side AI provider initialization.
  *
- * This module automatically initializes AI providers from environment variables
- * when imported. Import this module in server components, server actions, or
- * API routes that use AI functionality.
- *
- * @example
- * ```ts
- * import '@/lib/ai/init';
- *
- * // Now AI providers are configured and ready to use
- * import { modelRegistry } from '@/lib/ai';
- * ```
+ * Import this module in server components, server actions, or API routes that
+ * use AI functionality to ensure providers and service routes are registered.
  */
 
-// Initialize providers on module import
 initializeProviders();
-
-// Initialize chat services (registers models with the registry)
 initializeChatServices();
 

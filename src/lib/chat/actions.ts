@@ -98,6 +98,10 @@ export async function listThreads(input?: ListThreadsInput) {
       data: {
         userId,
         name,
+        lastChattedAt: new Date(),
+      },
+      include: {
+        project: true,
       },
     });
     threads = [created];
