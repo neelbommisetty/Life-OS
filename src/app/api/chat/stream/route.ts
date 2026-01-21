@@ -17,6 +17,12 @@ import {
 import { createLogger } from "@/lib/logger";
 import { modelRegistry, getModelFor } from "@/lib/ai";
 import type { ModelKey, ModelStreamResult } from "@/lib/ai";
+import {
+  wrapWithTracking,
+  createChatTrackingContext,
+  createSummaryTrackingContext,
+  createTitleGenTrackingContext,
+} from "@/lib/ai/tracking";
 // Initialize AI providers and chat services
 import "@/lib/ai/init";
 
@@ -97,7 +103,12 @@ function queueThreadTitleGeneration(params: {
 
   void (async () => {
     try {
-      const model = getModelFor("project_chat_summary");
+      const baseModel = getModelFor("project_chat_summary");
+      const trackingContext = createTitleGenTrackingContext({
+        userId,
+        threadId,
+      });
+      const model = wrapWithTracking(baseModel, trackingContext);
       const prompt = buildThreadTitlePrompt(firstMessage);
 
       const result = await model.call({
@@ -323,7 +334,12 @@ export async function POST(request: Request) {
 
       // Call summarization model (blocking - OK for background task)
       const summaryPrompt = buildSummarizationPrompt(oldMessages);
-      const summaryModel = getModelFor("project_chat_summary");
+      const baseSummaryModel = getModelFor("project_chat_summary");
+      const summaryTrackingContext = createSummaryTrackingContext({
+        userId,
+        threadId: thread.id,
+      });
+      const summaryModel = wrapWithTracking(baseSummaryModel, summaryTrackingContext);
 
       logger.debug("Calling summarization model", {
         oldMessageCount: oldMessages.length,
@@ -405,8 +421,14 @@ export async function POST(request: Request) {
           modelProvider: null,
         };
 
-    // Get the chat model
-    const chatModel = getModelFor("project_chat", overrideKey);
+    // Get the chat model with tracking
+    const baseChatModel = getModelFor("project_chat", overrideKey);
+    const chatTrackingContext = createChatTrackingContext({
+      userId,
+      threadId: thread.id,
+      isStreaming: Boolean(baseChatModel.streamCall),
+    });
+    const chatModel = wrapWithTracking(baseChatModel, chatTrackingContext);
 
     // Check if model supports streaming
     if (!chatModel.streamCall) {
