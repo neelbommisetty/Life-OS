@@ -43,6 +43,24 @@ enum Priority {
   HIGH
 }
 
+model Project {
+  id             String      @id @default(cuid())
+  userId         String
+  name           String
+  description    String?
+  aiInstructions String?
+  archivedAt     DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  chatThreads    ChatThread[]
+  tasks          Task[]
+  notes          Note[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@index([userId, archivedAt])
+}
+
 model ChatThread {
   id            String        @id @default(cuid())
   userId        String        // From Neon Auth
@@ -54,12 +72,15 @@ model ChatThread {
   archivedAt    DateTime?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  projectId     String?
+  project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   messages      ChatMessage[]
   aiCalls       AiCall[]
 
   @@unique([userId, name])
   @@index([userId])
   @@index([userId, archivedAt, lastChattedAt])
+  @@index([projectId])
 }
 
 model ChatMessage {
@@ -143,10 +164,13 @@ model Task {
   deletedAt   DateTime?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+  projectId   String?
+  project     Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([userId, status])
   @@index([userId, deletedAt])
+  @@index([projectId])
 }
 
 model Note {
@@ -157,7 +181,10 @@ model Note {
   deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  projectId String?
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([userId, deletedAt])
+  @@index([projectId])
 }
