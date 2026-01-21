@@ -35,7 +35,8 @@ import {
   getNoteById,
 } from "@/lib/notes/actions";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
-import type { Note } from "@prisma/client";
+import type { Note, Project } from "@prisma/client";
+import { ProjectBadge } from "@/components/projects/project-badge";
 
 type NoteDraft = {
   id?: string;
@@ -50,17 +51,19 @@ function createEmptyDraft(): NoteDraft {
   };
 }
 
+type NoteWithProject = Note & { project: Project | null };
+
 export function NotesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [notes, setNotes] = useState<Note[]>([]);
+  const [notes, setNotes] = useState<NoteWithProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState<NoteDraft>(createEmptyDraft());
   const [previewMode, setPreviewMode] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [noteToDelete, setNoteToDelete] = useState<Note | null>(null);
+  const [noteToDelete, setNoteToDelete] = useState<NoteWithProject | null>(null);
   const [isCreating, startCreateTransition] = useTransition();
   const [isUpdating, startUpdateTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -93,7 +96,7 @@ export function NotesClient() {
     setSheetOpen(true);
   };
 
-  const handleEdit = (note: Note) => {
+  const handleEdit = (note: NoteWithProject) => {
     setDraft({
       id: note.id,
       title: note.title,
@@ -155,7 +158,7 @@ export function NotesClient() {
     }
   };
 
-  const handleDeleteClick = (note: Note) => {
+  const handleDeleteClick = (note: NoteWithProject) => {
     setNoteToDelete(note);
     setDeleteDialogOpen(true);
   };
@@ -232,7 +235,7 @@ export function NotesClient() {
               <CardContent className="p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
                       <Link
                         href={`/notes/${note.id}`}
@@ -240,6 +243,12 @@ export function NotesClient() {
                       >
                         {note.title}
                       </Link>
+                      {note.project && (
+                        <ProjectBadge
+                          projectId={note.project.id}
+                          projectName={note.project.name}
+                        />
+                      )}
                     </div>
                     {note.content && (
                       <p className="text-sm text-muted-foreground line-clamp-2">

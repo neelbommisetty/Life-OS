@@ -12,10 +12,15 @@ import { cn } from "@/lib/utils";
 import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ProjectBadge } from "@/components/projects/project-badge";
 
 type ThreadOption = {
   id: string;
   name: string;
+  project?: {
+    id: string;
+    name: string;
+  } | null;
 };
 
 type Props = {
@@ -145,20 +150,31 @@ export function ThreadSelector({
                 key={thread.id}
                 onClick={() => !isLocked && onChange(thread.id)}
                 className={cn(
-                  "w-full flex items-center justify-between rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors",
+                  "w-full flex flex-col gap-1.5 rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors",
                   isSelected
                     ? "bg-primary/10 text-primary font-medium"
                     : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                   isLocked && "cursor-not-allowed opacity-60"
                 )}
               >
-                <span className="truncate flex-1 text-left">{thread.name}</span>
-                {showStreamingIndicator ? (
-                  <LoaderIcon className="h-3.5 w-3.5 animate-spin text-primary shrink-0 ml-2" />
-                ) : (
-                  isSelected && (
-                    <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 ml-2" />
-                  )
+                <div className="flex items-center justify-between w-full">
+                  <span className="truncate flex-1 text-left">{thread.name}</span>
+                  {showStreamingIndicator ? (
+                    <LoaderIcon className="h-3.5 w-3.5 animate-spin text-primary shrink-0 ml-2" />
+                  ) : (
+                    isSelected && (
+                      <div className="h-1.5 w-1.5 rounded-full bg-primary shrink-0 ml-2" />
+                    )
+                  )}
+                </div>
+                {thread.project && (
+                  <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                    <ProjectBadge
+                      projectId={thread.project.id}
+                      projectName={thread.project.name}
+                      className="text-xs"
+                    />
+                  </div>
                 )}
               </div>
             );

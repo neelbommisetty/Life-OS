@@ -19,7 +19,9 @@ import {
   listMessages,
   listModels,
 } from "@/lib/chat/actions";
-import type { ChatThread, ChatMessage } from "@prisma/client";
+import type { ChatThread, ChatMessage, Project } from "@prisma/client";
+
+type ChatThreadWithProject = ChatThread & { project: Project | null };
 
 export function ChatClient() {
   const router = useRouter();
@@ -27,7 +29,7 @@ export function ChatClient() {
   const searchParams = useSearchParams();
   const threadIdParam = searchParams.get("threadId");
 
-  const [threads, setThreads] = useState<ChatThread[]>([]);
+  const [threads, setThreads] = useState<ChatThreadWithProject[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [input, setInput] = useState("");

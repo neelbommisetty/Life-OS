@@ -39,7 +39,8 @@ import {
   updateTask,
   deleteTask,
 } from "@/lib/tasks/actions";
-import type { Task, TaskStatus, Priority } from "@prisma/client";
+import type { Task, TaskStatus, Priority, Project } from "@prisma/client";
+import { ProjectBadge } from "@/components/projects/project-badge";
 
 const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   TODO: "To Do",
@@ -98,15 +99,17 @@ function formatDateDisplay(date: Date | null | undefined): string {
   });
 }
 
+type TaskWithProject = Task & { project: Project | null };
+
 export function TasksClient() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const [tasks, setTasks] = useState<TaskWithProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<TaskStatus | "ALL">("ALL");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(createEmptyDraft());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<TaskWithProject | null>(null);
   const [isCreating, startCreateTransition] = useTransition();
   const [isUpdating, startUpdateTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
@@ -139,7 +142,7 @@ export function TasksClient() {
     setSheetOpen(true);
   };
 
-  const handleEdit = (task: Task) => {
+  const handleEdit = (task: TaskWithProject) => {
     setDraft({
       id: task.id,
       title: task.title,
@@ -191,7 +194,7 @@ export function TasksClient() {
     }
   };
 
-  const handleDeleteClick = (task: Task) => {
+  const handleDeleteClick = (task: TaskWithProject) => {
     setTaskToDelete(task);
     setDeleteDialogOpen(true);
   };
@@ -298,6 +301,12 @@ export function TasksClient() {
                       >
                         {PRIORITY_LABELS[task.priority]}
                       </Badge>
+                      {task.project && (
+                        <ProjectBadge
+                          projectId={task.project.id}
+                          projectName={task.project.name}
+                        />
+                      )}
                     </div>
                     {task.description && (
                       <p className="text-sm text-muted-foreground line-clamp-2">
