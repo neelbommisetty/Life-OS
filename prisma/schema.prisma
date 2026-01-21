@@ -31,6 +31,18 @@ enum AiCallStatus {
   ABORTED
 }
 
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 model ChatThread {
   id            String        @id @default(cuid())
   userId        String        // From Neon Auth
@@ -118,4 +130,21 @@ model AiCall {
   @@index([threadId, requestStartAt])
   @@index([providerId, modelId])
   @@index([callType])
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  userId      String     // From Neon Auth
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?
+  deletedAt   DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, deletedAt])
 }
