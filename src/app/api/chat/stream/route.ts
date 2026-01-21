@@ -191,6 +191,7 @@ export async function POST(request: Request) {
             messages: {
               orderBy: { createdAt: "asc" },
             },
+            project: true,
           },
         })
       : await prisma.chatThread.findFirst({
@@ -203,6 +204,7 @@ export async function POST(request: Request) {
             messages: {
               orderBy: { createdAt: "asc" },
             },
+            project: true,
           },
         });
 
@@ -224,6 +226,7 @@ export async function POST(request: Request) {
           messages: {
             orderBy: { createdAt: "asc" },
           },
+          project: true,
         },
       });
     }
@@ -362,6 +365,7 @@ export async function POST(request: Request) {
           messages: {
             orderBy: { createdAt: "asc" },
           },
+          project: true,
         },
       });
 
@@ -372,7 +376,14 @@ export async function POST(request: Request) {
     }
 
     // Build prompt with system context + history
-    const systemPrompt = buildSystemPrompt();
+    const projectContext = thread.project
+      ? {
+          name: thread.project.name,
+          description: thread.project.description,
+          aiInstructions: thread.project.aiInstructions,
+        }
+      : undefined;
+    const systemPrompt = buildSystemPrompt(projectContext);
     const messagesForAI = allMessages.filter((msg) => {
       // If we have a summary, only include messages after summaryUpTo
       if (thread.summaryUpTo) {

@@ -10,8 +10,12 @@ export function estimateTokens(text: string): number {
 /**
  * Build system prompt for standalone AI chat
  */
-export function buildSystemPrompt(): string {
-  return `You are a helpful AI assistant in Life-OS, a personal productivity platform.
+export function buildSystemPrompt(projectContext?: {
+  name: string;
+  description?: string | null;
+  aiInstructions?: string | null;
+}): string {
+  let prompt = `You are a helpful AI assistant in Life-OS, a personal productivity platform.
 
 Your role is to help users with:
 - Brainstorming ideas and exploring concepts
@@ -22,6 +26,21 @@ Your role is to help users with:
 
 Be concise, helpful, and creative. Adapt your communication style to match the user's needs.
 Format your responses using markdown when appropriate for better readability.`;
+
+  // Inject project context if provided
+  if (projectContext) {
+    prompt += `\n\n## Project Context: ${projectContext.name}`;
+    
+    if (projectContext.description) {
+      prompt += `\n\n${projectContext.description}`;
+    }
+    
+    if (projectContext.aiInstructions) {
+      prompt += `\n\n### Instructions\n${projectContext.aiInstructions}`;
+    }
+  }
+
+  return prompt;
 }
 
 /**
