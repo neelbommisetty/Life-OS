@@ -63,7 +63,3 @@
 
 - Environment variables: document in `.env.example` and access via Next.js env conventions.
 - Keep accessibility in mind: aria labels for inputs/interactive elements; keyboard support for dialogs/menus.
-
-## Legacy folder
-
-- The `legacy/` folder contains current existing logic, but treat it as reference only; all decisions (product specs, project tech stack, and more) are intended to be re-evaluated.
