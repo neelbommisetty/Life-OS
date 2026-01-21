@@ -35,6 +35,7 @@ export const createTaskSchema = z.object({
   status: taskStatusEnum.default("TODO"),
   priority: priorityEnum.default("MEDIUM"),
   dueDate: dateStringSchema,
+  projectId: z.string().cuid().optional(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial().extend({

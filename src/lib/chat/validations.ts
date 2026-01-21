@@ -6,6 +6,7 @@ export const listThreadsSchema = z.object({
 
 export const createThreadSchema = z.object({
   name: z.string().min(1).max(120).optional(),
+  projectId: z.string().cuid().optional(),
 });
 
 export const archiveThreadSchema = z.object({

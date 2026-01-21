@@ -70,6 +70,9 @@ export async function listNotes(input?: ListNotesInput) {
   const notes = await prisma.note.findMany({
     where,
     orderBy: NOTE_ORDER,
+    include: {
+      project: true,
+    },
   });
 
   logger.info("Notes listed successfully", {
@@ -137,6 +140,7 @@ export async function createNote(input?: CreateNoteInput) {
       userId,
       title: parsed.title,
       content: parsed.content,
+      projectId: parsed.projectId,
     },
   });
 

@@ -7,6 +7,7 @@ export const listNotesSchema = z.object({
 export const createNoteSchema = z.object({
   title: z.string().min(1, "Title is required").max(500),
   content: z.string().max(100000), // Large limit for markdown content
+  projectId: z.string().cuid().optional(),
 });
 
 export const updateNoteSchema = createNoteSchema.partial().extend({

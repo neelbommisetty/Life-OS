@@ -86,6 +86,9 @@ export async function listThreads(input?: ListThreadsInput) {
       ...(includeArchived ? {} : { archivedAt: null }),
     },
     orderBy: THREAD_ORDER,
+    include: {
+      project: true,
+    },
   });
 
   // Auto-create a default thread if none exist
@@ -127,6 +130,10 @@ export async function createThread(input?: CreateThreadInput) {
       userId,
       name,
       lastChattedAt: new Date(),
+      projectId: parsed.projectId,
+    },
+    include: {
+      project: true,
     },
   });
 
@@ -166,6 +173,9 @@ export async function archiveThread(input: ArchiveThreadInput) {
     where: { id: parsed.threadId },
     data: {
       archivedAt: new Date(),
+    },
+    include: {
+      project: true,
     },
   });
 
@@ -240,6 +250,9 @@ export async function setThreadModel(input: SetThreadModelInput) {
     where: { id: thread.id },
     data: {
       modelKey: parsed.modelKey,
+    },
+    include: {
+      project: true,
     },
   });
 

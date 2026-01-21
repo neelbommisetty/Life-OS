@@ -91,6 +91,9 @@ export async function listTasks(input?: ListTasksInput) {
   const tasks = await prisma.task.findMany({
     where,
     orderBy: TASK_ORDER,
+    include: {
+      project: true,
+    },
   });
 
   logger.info("Tasks listed successfully", {
@@ -125,6 +128,7 @@ export async function createTask(input?: CreateTaskInput) {
       status: parsed.status,
       priority: parsed.priority,
       dueDate: coerceDate(parsed.dueDate),
+      projectId: parsed.projectId,
     },
   });
 
