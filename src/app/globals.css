@@ -3,7 +3,10 @@
 @import "shadcn/tailwind.css";
 @import "@neondatabase/auth/ui/tailwind";
 
-@custom-variant dark (&:is(.dark *));
+@plugin "@tailwindcss/typography";
+
+/* Force dark mode */
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
   --color-background: var(--background);
@@ -46,83 +49,125 @@
   --radius-2xl: calc(var(--radius) + 8px);
   --radius-3xl: calc(var(--radius) + 12px);
   --radius-4xl: calc(var(--radius) + 16px);
+
+  /* Custom Prose for Harmony */
+  --color-prose-body: var(--foreground);
+  --color-prose-headings: var(--primary);
+  --color-prose-leads: var(--muted-foreground);
+  --color-prose-links: var(--primary);
+  --color-prose-bold: var(--primary);
+  --color-prose-counters: var(--secondary);
+  --color-prose-bullets: var(--secondary);
+  --color-prose-hr: var(--border);
+  --color-prose-quotes: var(--accent);
+  --color-prose-quote-borders: var(--accent);
+  --color-prose-captions: var(--muted-foreground);
+  --color-prose-code: var(--accent);
+  --color-prose-pre-code: var(--foreground);
+  --color-prose-pre-bg: var(--muted);
+  --color-prose-th-borders: var(--border);
+  --color-prose-td-borders: var(--border);
 }
 
 @layer base {
   :root {
-    /* Light mode */
-    --background: hsl(210 20% 98%);
-    --foreground: hsl(222 15% 12%);
-    --primary: hsl(190 28% 35%); /* calm teal */
-    --primary-foreground: hsl(210 20% 98%);
-    --secondary: hsl(210 12% 90%);
-    --accent: hsl(210 16% 92%);
-    --border: hsl(210 12% 86%);
+    /* Calm & Elegant Dark Theme - Cosmic Blue Base */
 
-    /* Additional variables for shadcn components */
-    --card: hsl(210 20% 98%);
-    --card-foreground: hsl(222 15% 12%);
-    --popover: hsl(210 20% 98%);
-    --popover-foreground: hsl(222 15% 12%);
-    --secondary-foreground: hsl(222 15% 16%);
-    --muted: hsl(210 14% 94%);
-    --muted-foreground: hsl(214 10% 40%);
-    --accent-foreground: hsl(222 15% 14%);
-    --destructive: hsl(0 72% 52%);
-    --destructive-foreground: hsl(210 20% 98%);
-    --input: hsl(210 12% 86%);
-    --ring: hsl(190 28% 35%);
+    /* Base background: Deep Cosmic Blue (hsl(240, 20%, 10%)) */
+    --background: hsl(240, 20%, 10%);
+    /* Foreground: Soft Stardust White (hsl(240, 10%, 90%)) */
+    --foreground: hsl(240, 10%, 90%);
+
+    /* Primary: Soft Electric Violet (hsl(265, 50%, 65%)) */
+    --primary: hsl(265, 50%, 65%);
+    /* Primary Foreground: Deep Background for contrast */
+    --primary-foreground: hsl(240, 20%, 10%);
+
+    /* Secondary: Calm Teal / Sage (hsl(180, 25%, 45%)) */
+    --secondary: hsl(180, 25%, 45%);
+    --secondary-foreground: hsl(240, 10%, 95%);
+
+    /* Accent: Dusty Rose (hsl(330, 40%, 60%)) - used for hover states or highlights */
+    --accent: hsl(330, 40%, 60%);
+    --accent-foreground: hsl(240, 10%, 95%);
+
+    /* Muted: Subtle Blue-Grey (hsl(240, 15%, 25%)) */
+    --muted: hsl(240, 15%, 20%);
+    --muted-foreground: hsl(240, 10%, 60%);
+
+    /* Card/Surface: Slightly lighter than background (hsl(240, 18%, 13%)) */
+    --card: hsl(240, 18%, 13%);
+    --card-foreground: hsl(240, 10%, 90%);
+
+    /* Popover: Same as Card */
+    --popover: hsl(240, 18%, 13%);
+    --popover-foreground: hsl(240, 10%, 90%);
+
+    /* Border: Subtle Definition (hsl(240, 15%, 22%)) */
+    --border: hsl(240, 15%, 22%);
+    --input: hsl(240, 15%, 22%);
+
+    /* Destructive: Soft Red */
+    --destructive: hsl(0, 60%, 60%);
+    --destructive-foreground: hsl(240, 10%, 95%);
+
+    /* Ring: Matches Primary */
+    --ring: hsl(265, 50%, 65%);
+
     --radius: 0.625rem;
-    --chart-1: hsl(190 35% 45%);
-    --chart-2: hsl(190 28% 40%);
-    --chart-3: hsl(200 22% 36%);
-    --chart-4: hsl(210 18% 32%);
-    --chart-5: hsl(220 12% 28%);
-    --sidebar: hsl(210 18% 97%);
-    --sidebar-foreground: hsl(222 15% 12%);
-    --sidebar-primary: hsl(190 28% 35%);
-    --sidebar-primary-foreground: hsl(210 20% 98%);
-    --sidebar-accent: hsl(210 16% 92%);
-    --sidebar-accent-foreground: hsl(222 15% 14%);
-    --sidebar-border: hsl(210 12% 88%);
-    --sidebar-ring: hsl(190 28% 35%);
+
+    /* Charts - Harmony of the palette */
+    --chart-1: hsl(265, 50%, 65%); /* Violet */
+    --chart-2: hsl(180, 25%, 45%); /* Teal */
+    --chart-3: hsl(330, 40%, 60%); /* Rose */
+    --chart-4: hsl(210, 50%, 60%); /* Soft Blue */
+    --chart-5: hsl(40, 50%, 60%);  /* Muted Gold */
+
+    /* Sidebar - Matches background or slightly darker */
+    --sidebar: hsl(240, 22%, 9%);
+    --sidebar-foreground: hsl(240, 10%, 85%);
+    --sidebar-primary: hsl(265, 50%, 65%);
+    --sidebar-primary-foreground: hsl(240, 20%, 10%);
+    --sidebar-accent: hsl(240, 15%, 18%);
+    --sidebar-accent-foreground: hsl(240, 10%, 90%);
+    --sidebar-border: hsl(240, 15%, 20%);
+    --sidebar-ring: hsl(265, 50%, 65%);
   }
 
+  /* Ensure dark mode class uses the same variables, essentially enforcing dark mode */
   .dark {
-    --background: hsl(220 15% 8%); /* deep charcoal */
-    --foreground: hsl(210 20% 96%);
-    --primary: hsl(190 28% 45%); /* teal accent */
-    --primary-foreground: hsl(210 20% 96%);
-    --secondary: hsl(220 12% 18%);
-    --accent: hsl(220 12% 22%);
-    --border: hsl(220 12% 24%);
-
-    /* Additional variables for shadcn components */
-    --card: hsl(220 14% 12%);
-    --card-foreground: hsl(210 20% 96%);
-    --popover: hsl(220 14% 12%);
-    --popover-foreground: hsl(210 20% 96%);
-    --secondary-foreground: hsl(210 20% 96%);
-    --muted: hsl(220 10% 20%);
-    --muted-foreground: hsl(214 10% 70%);
-    --accent-foreground: hsl(210 20% 96%);
-    --destructive: hsl(0 70% 50%);
-    --destructive-foreground: hsl(210 20% 96%);
-    --input: hsl(220 12% 26%);
-    --ring: hsl(190 28% 45%);
-    --chart-1: hsl(190 35% 55%);
-    --chart-2: hsl(190 28% 48%);
-    --chart-3: hsl(200 22% 42%);
-    --chart-4: hsl(210 18% 36%);
-    --chart-5: hsl(220 12% 30%);
-    --sidebar: hsl(220 14% 10%);
-    --sidebar-foreground: hsl(210 20% 96%);
-    --sidebar-primary: hsl(190 28% 45%);
-    --sidebar-primary-foreground: hsl(210 20% 96%);
-    --sidebar-accent: hsl(220 12% 18%);
-    --sidebar-accent-foreground: hsl(210 20% 96%);
-    --sidebar-border: hsl(220 12% 22%);
-    --sidebar-ring: hsl(190 28% 45%);
+    --background: hsl(240, 20%, 10%);
+    --foreground: hsl(240, 10%, 90%);
+    --primary: hsl(265, 50%, 65%);
+    --primary-foreground: hsl(240, 20%, 10%);
+    --secondary: hsl(180, 25%, 45%);
+    --secondary-foreground: hsl(240, 10%, 95%);
+    --accent: hsl(330, 40%, 60%);
+    --accent-foreground: hsl(240, 10%, 95%);
+    --muted: hsl(240, 15%, 20%);
+    --muted-foreground: hsl(240, 10%, 60%);
+    --card: hsl(240, 18%, 13%);
+    --card-foreground: hsl(240, 10%, 90%);
+    --popover: hsl(240, 18%, 13%);
+    --popover-foreground: hsl(240, 10%, 90%);
+    --border: hsl(240, 15%, 22%);
+    --input: hsl(240, 15%, 22%);
+    --destructive: hsl(0, 60%, 60%);
+    --destructive-foreground: hsl(240, 10%, 95%);
+    --ring: hsl(265, 50%, 65%);
+    --chart-1: hsl(265, 50%, 65%);
+    --chart-2: hsl(180, 25%, 45%);
+    --chart-3: hsl(330, 40%, 60%);
+    --chart-4: hsl(210, 50%, 60%);
+    --chart-5: hsl(40, 50%, 60%);
+    --sidebar: hsl(240, 22%, 9%);
+    --sidebar-foreground: hsl(240, 10%, 85%);
+    --sidebar-primary: hsl(265, 50%, 65%);
+    --sidebar-primary-foreground: hsl(240, 20%, 10%);
+    --sidebar-accent: hsl(240, 15%, 18%);
+    --sidebar-accent-foreground: hsl(240, 10%, 90%);
+    --sidebar-border: hsl(240, 15%, 20%);
+    --sidebar-ring: hsl(265, 50%, 65%);
   }
 }
 
@@ -133,37 +178,55 @@
   body {
     @apply bg-background text-foreground;
   }
+  code {
+    font-family:
+      "Fira Code", var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
+    font-variant-ligatures: normal;
+    font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
+  }
+  pre {
+    font-family:
+      "Fira Code", var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+      "Liberation Mono", "Courier New", monospace;
+    font-variant-ligatures: normal;
+    font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
+  }
 }
 
-/* Chat Markdown Styles */
+/* Chat Markdown Styles - Adapted for new theme */
 .chat-markdown {
   --chat-code-bg: var(--muted);
   --chat-code-border: var(--border);
   --chat-code-fg: var(--foreground);
   --chat-code-muted: var(--muted-foreground);
-  --chat-code-keyword: #0ea5e9; /* sky-500 */
-  --chat-code-title: #14b8a6; /* teal-500 */
-  --chat-code-string: #f97316; /* orange-500 */
-  --chat-code-number: #f59e0b; /* amber-500 */
-  --chat-code-attr: #2563eb; /* blue-600 */
+
+  /* Syntax Highlighting based on new palette */
+  --chat-code-keyword: hsl(265, 50%, 65%); /* Violet */
+  --chat-code-title: hsl(210, 50%, 60%); /* Soft Blue */
+  --chat-code-string: hsl(180, 25%, 45%); /* Teal */
+  --chat-code-number: hsl(40, 50%, 60%); /* Gold */
+  --chat-code-attr: hsl(330, 40%, 60%); /* Rose */
+
   overflow-wrap: anywhere;
   word-break: break-word;
   line-height: 1.6;
 }
 
 .chat-markdown--inverted {
-  /* For inverted (user messages), use primary-foreground for text */
+  /* For inverted (user messages), use primary-foreground if the bubble is primary colored */
   --chat-inverted-fg: var(--primary-foreground);
-  --chat-code-bg: var(--chat-inverted-fg);
-  --chat-code-border: var(--chat-inverted-fg);
+  --chat-code-bg: rgba(0,0,0,0.2);
+  --chat-code-border: rgba(0,0,0,0.1);
   --chat-code-fg: var(--chat-inverted-fg);
-  --chat-code-muted: var(--chat-inverted-fg);
-  /* Syntax highlighting colors adjusted for inverted backgrounds (light colors for dark backgrounds) */
-  --chat-code-keyword: #67e8f9; /* cyan-200 */
-  --chat-code-title: #a7f3d0; /* emerald-200 */
-  --chat-code-string: #fde68a; /* amber-200 */
-  --chat-code-number: #fcd34d; /* amber-300 */
-  --chat-code-attr: #93c5fd; /* blue-300 */
+  --chat-code-muted: rgba(255,255,255,0.7);
+
+  /* Syntax colors for inverted - usually needs to be readable on the violet background */
+  --chat-code-keyword: hsl(265, 90%, 90%);
+  --chat-code-title: hsl(210, 90%, 90%);
+  --chat-code-string: hsl(180, 80%, 85%);
+  --chat-code-number: hsl(40, 90%, 90%);
+  --chat-code-attr: hsl(330, 80%, 90%);
 }
 
 .chat-markdown > :not(:last-child) {
@@ -243,7 +306,8 @@
 }
 
 .chat-markdown code {
-  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+  font-family:
+    "Fira Code", var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
     "Liberation Mono", "Courier New", monospace;
   font-size: 0.85em;
   background: var(--chat-code-bg);
@@ -251,6 +315,8 @@
   border: 1px solid var(--chat-code-border);
   border-radius: 0.45rem;
   padding: 0.1rem 0.35rem;
+  font-variant-ligatures: normal;
+  font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
 }
 
 .chat-markdown--inverted code {
@@ -267,6 +333,11 @@
   overflow-x: auto;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
+  font-family:
+    "Fira Code", var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-variant-ligatures: normal;
+  font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
 }
 
 .chat-markdown--inverted pre {
@@ -278,13 +349,16 @@
   background: transparent;
   border: 0;
   padding: 0;
-  font-size: 0.85em;
+  font-size: 1rem;
+  font-family: inherit;
+  font-variant-ligatures: normal;
+  font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
 }
 
 .chat-markdown table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85em;
+  font-size: 1rem;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
 }

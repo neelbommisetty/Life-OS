@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
+    "@fontsource/fira-code": "^5.2.7",
     "@google/generative-ai": "^0.24.1",
     "@neondatabase/auth": "^0.1.0-beta.21",
     "@prisma/adapter-neon": "^7.2.0",
@@ -42,6 +43,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/bun": "latest",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -49,8 +52,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.3",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "@types/bun": "latest"
+    "typescript": "^5"
   },
   "ignoreScripts": [
     "sharp",
