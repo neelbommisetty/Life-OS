@@ -4,6 +4,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import Link from "next/link";
 import { LayoutDashboard } from "lucide-react";
+import { ThemeProvider } from "@/components/theme-provider";
+import { ModeToggle } from "@/components/mode-toggle";
 import "@fontsource/fira-code";
 import "./globals.css";
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
@@ -33,24 +35,34 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <NeonAuthUIProvider
-          authClient={authClient}
-          redirectTo="/"
-          emailOTP={false}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
         >
-          <header className='flex justify-between items-center p-4 gap-4 h-16 border-b border-border'>
-            <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <LayoutDashboard className="h-5 w-5" />
+          <NeonAuthUIProvider
+            authClient={authClient}
+            redirectTo="/"
+            emailOTP={false}
+          >
+            <header className='flex justify-between items-center p-4 gap-4 h-16 border-b border-border'>
+              <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <LayoutDashboard className="h-5 w-5" />
+                </div>
+                <span className="hidden text-lg font-bold tracking-tight text-foreground sm:inline-block">
+                  Life-OS
+                </span>
+              </Link>
+              <div className="flex items-center gap-4">
+                <ModeToggle />
+                <UserButton size="icon" />
               </div>
-              <span className="hidden text-lg font-bold tracking-tight text-foreground sm:inline-block">
-                Life-OS
-              </span>
-            </Link>
-            <UserButton size="icon" />
-          </header>
-          {children}
-        </NeonAuthUIProvider>
+            </header>
+            {children}
+          </NeonAuthUIProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

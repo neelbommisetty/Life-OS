@@ -93,50 +93,50 @@
 
 @layer base {
   :root {
-    /* --- Light Mode Palette --- */
-    --background: hsl(240, 8%, 98%);
-    --foreground: hsl(240, 10%, 15%);
+    /* --- Light Mode Palette (Simple/Clean) --- */
+    --background: hsl(0, 0%, 100%);
+    --foreground: hsl(240, 10%, 3.9%);
 
-    /* Primary: Refined Indigo-Violet */
-    --primary: hsl(252, 55%, 58%);
+    /* Primary: Strong Blue */
+    --primary: hsl(221, 83%, 53%);
     --primary-foreground: hsl(0, 0%, 100%);
 
-    /* Secondary: Sage Teal */
-    --secondary: hsl(172, 35%, 42%);
-    --secondary-foreground: hsl(0, 0%, 100%);
+    /* Secondary: Light Gray */
+    --secondary: hsl(240, 4.8%, 95.9%);
+    --secondary-foreground: hsl(240, 5.9%, 10%);
 
-    /* Accent: Warm Coral */
-    --accent: hsl(12, 65%, 62%);
-    --accent-foreground: hsl(0, 0%, 100%);
+    /* Accent: Subtle Blue-Gray */
+    --accent: hsl(210, 40%, 96.1%);
+    --accent-foreground: hsl(222.2, 47.4%, 11.2%);
 
-    /* Muted & Neutral */
-    --muted: hsl(240, 5%, 94%);
-    --muted-foreground: hsl(240, 4%, 45%);
+    /* Muted */
+    --muted: hsl(240, 4.8%, 95.9%);
+    --muted-foreground: hsl(240, 3.8%, 46.1%);
 
     --card: hsl(0, 0%, 100%);
-    --card-foreground: hsl(240, 10%, 15%);
+    --card-foreground: hsl(240, 10%, 3.9%);
 
     --popover: hsl(0, 0%, 100%);
-    --popover-foreground: hsl(240, 10%, 15%);
+    --popover-foreground: hsl(240, 10%, 3.9%);
 
-    --border: hsl(240, 6%, 90%);
-    --input: hsl(240, 6%, 90%);
+    --border: hsl(240, 5.9%, 90%);
+    --input: hsl(240, 5.9%, 90%);
 
     /* Semantic Colors */
-    --success: hsl(152, 55%, 45%);
+    --success: hsl(142, 71%, 45%);
     --success-foreground: hsl(0, 0%, 100%);
-    --warning: hsl(38, 90%, 50%);
+    --warning: hsl(38, 92%, 50%);
     --warning-foreground: hsl(0, 0%, 100%);
-    --info: hsl(210, 65%, 55%);
+    --info: hsl(221, 83%, 53%);
     --info-foreground: hsl(0, 0%, 100%);
 
     /* Destructive */
-    --destructive: hsl(0, 65%, 55%);
-    --destructive-foreground: hsl(0, 0%, 100%);
+    --destructive: hsl(0, 84%, 60%);
+    --destructive-foreground: hsl(0, 0%, 98%);
 
-    --ring: hsl(252, 55%, 58%);
+    --ring: hsl(221, 83%, 53%);
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
     /* Spacing System (Base 4px) */
     --space-0-5: 0.125rem; /* 2px */
@@ -163,76 +163,76 @@
     --text-6xl: 3.75rem;
 
     /* Charts */
-    --chart-1: hsl(252, 55%, 58%);
-    --chart-2: hsl(172, 35%, 42%);
-    --chart-3: hsl(12, 65%, 62%);
-    --chart-4: hsl(210, 65%, 55%);
-    --chart-5: hsl(38, 90%, 50%);
+    --chart-1: hsl(221, 83%, 53%);
+    --chart-2: hsl(173, 58%, 39%);
+    --chart-3: hsl(197, 37%, 24%);
+    --chart-4: hsl(43, 74%, 66%);
+    --chart-5: hsl(27, 87%, 67%);
 
     /* Sidebar */
-    --sidebar: hsl(240, 5%, 96%);
-    --sidebar-foreground: hsl(240, 5%, 26%);
-    --sidebar-primary: hsl(252, 55%, 58%);
-    --sidebar-primary-foreground: hsl(0, 0%, 100%);
-    --sidebar-accent: hsl(240, 5%, 90%);
-    --sidebar-accent-foreground: hsl(240, 5%, 15%);
-    --sidebar-border: hsl(240, 6%, 90%);
-    --sidebar-ring: hsla(252, 55%, 58%, 0.5);
+    --sidebar: hsl(0, 0%, 98%);
+    --sidebar-foreground: hsl(240, 5.3%, 26.1%);
+    --sidebar-primary: hsl(240, 5.9%, 10%);
+    --sidebar-primary-foreground: hsl(0, 0%, 98%);
+    --sidebar-accent: hsl(240, 4.8%, 95.9%);
+    --sidebar-accent-foreground: hsl(240, 5.9%, 10%);
+    --sidebar-border: hsl(220, 13%, 91%);
+    --sidebar-ring: hsl(217, 91%, 60%);
   }
 
   .dark {
-    /* --- Dark Mode Palette (Refined Cosmic) --- */
-    --background: hsl(240, 20%, 10%);
-    --foreground: hsl(240, 10%, 90%);
+    /* --- Dark Mode Palette (Simple/Clean) --- */
+    --background: hsl(240, 10%, 3.9%);
+    --foreground: hsl(0, 0%, 98%);
 
-    /* Primary: Refined Indigo-Violet */
-    --primary: hsl(252, 50%, 65%);
-    --primary-foreground: hsl(240, 20%, 10%);
+    /* Primary: Bright Blue */
+    --primary: hsl(217, 91%, 60%);
+    --primary-foreground: hsl(0, 0%, 100%);
 
-    /* Secondary: Sage Teal */
-    --secondary: hsl(172, 30%, 45%);
-    --secondary-foreground: hsl(240, 10%, 95%);
+    /* Secondary: Dark Gray */
+    --secondary: hsl(240, 3.7%, 15.9%);
+    --secondary-foreground: hsl(0, 0%, 98%);
 
-    /* Accent: Warm Coral */
-    --accent: hsl(12, 55%, 60%);
-    --accent-foreground: hsl(240, 10%, 95%);
+    /* Accent: Dark Blue-Gray */
+    --accent: hsl(217, 19%, 27%);
+    --accent-foreground: hsl(0, 0%, 98%);
 
-    /* Muted & Neutral */
-    --muted: hsl(240, 15%, 18%);
-    --muted-foreground: hsl(240, 10%, 65%);
+    /* Muted */
+    --muted: hsl(240, 3.7%, 15.9%);
+    --muted-foreground: hsl(240, 5%, 64.9%);
 
-    --card: hsl(240, 18%, 13%);
-    --card-foreground: hsl(240, 10%, 90%);
+    --card: hsl(240, 10%, 3.9%);
+    --card-foreground: hsl(0, 0%, 98%);
 
-    --popover: hsl(240, 18%, 13%);
-    --popover-foreground: hsl(240, 10%, 90%);
+    --popover: hsl(240, 10%, 3.9%);
+    --popover-foreground: hsl(0, 0%, 98%);
 
-    --border: hsl(240, 15%, 22%);
-    --input: hsl(240, 15%, 22%);
+    --border: hsl(240, 3.7%, 15.9%);
+    --input: hsl(240, 3.7%, 15.9%);
 
     /* Semantic Colors */
-    --success: hsl(152, 50%, 45%);
-    --success-foreground: hsl(240, 10%, 95%);
-    --warning: hsl(38, 80%, 50%);
-    --warning-foreground: hsl(240, 10%, 95%);
-    --info: hsl(210, 60%, 55%);
-    --info-foreground: hsl(240, 10%, 95%);
+    --success: hsl(142, 71%, 45%);
+    --success-foreground: hsl(0, 0%, 100%);
+    --warning: hsl(38, 92%, 50%);
+    --warning-foreground: hsl(0, 0%, 100%);
+    --info: hsl(217, 91%, 60%);
+    --info-foreground: hsl(0, 0%, 100%);
 
     /* Destructive */
-    --destructive: hsl(0, 60%, 60%);
-    --destructive-foreground: hsl(240, 10%, 95%);
+    --destructive: hsl(0, 62%, 30.6%);
+    --destructive-foreground: hsl(0, 0%, 98%);
 
-    --ring: hsl(252, 50%, 65%);
+    --ring: hsl(217, 91%, 60%);
 
     /* Sidebar - Dark Mode */
-    --sidebar: hsl(240, 22%, 9%);
-    --sidebar-foreground: hsl(240, 10%, 85%);
-    --sidebar-primary: hsl(252, 50%, 65%);
-    --sidebar-primary-foreground: hsl(240, 20%, 10%);
-    --sidebar-accent: hsl(240, 15%, 18%);
-    --sidebar-accent-foreground: hsl(240, 10%, 90%);
-    --sidebar-border: hsl(240, 15%, 20%);
-    --sidebar-ring: hsla(252, 50%, 65%, 0.5);
+    --sidebar: hsl(240, 5.9%, 10%);
+    --sidebar-foreground: hsl(240, 4.8%, 95.9%);
+    --sidebar-primary: hsl(224.3, 76.3%, 48%);
+    --sidebar-primary-foreground: hsl(0, 0%, 100%);
+    --sidebar-accent: hsl(240, 3.7%, 15.9%);
+    --sidebar-accent-foreground: hsl(240, 4.8%, 95.9%);
+    --sidebar-border: hsl(240, 3.7%, 15.9%);
+    --sidebar-ring: hsl(217, 91%, 60%);
   }
 }
 
@@ -271,19 +271,20 @@
   }
 }
 
-/* Chat Markdown Styles - Adapted for new theme */
+/* Chat Markdown Styles - Clean & High Contrast */
+/* Chat Markdown Styles - Clean & High Contrast */
 .chat-markdown {
-  --chat-code-bg: var(--muted);
-  --chat-code-border: var(--border);
-  --chat-code-fg: var(--foreground);
-  --chat-code-muted: var(--muted-foreground);
+  --chat-code-bg: hsl(240, 4.8%, 95.9%); /* Light Gray */
+  --chat-code-border: hsl(240, 5.9%, 90%);
+  --chat-code-fg: hsl(240, 10%, 10%); /* Darker for better contrast */
+  --chat-code-muted: hsl(240, 3.8%, 55%);
 
-  /* Syntax Highlighting based on new palette */
-  --chat-code-keyword: hsl(265, 50%, 65%); /* Violet */
-  --chat-code-title: hsl(210, 50%, 60%); /* Soft Blue */
-  --chat-code-string: hsl(180, 25%, 45%); /* Teal */
-  --chat-code-number: hsl(40, 50%, 60%); /* Gold */
-  --chat-code-attr: hsl(330, 40%, 60%); /* Rose */
+  /* Refined Syntax Highlighting - Professional/Minimal */
+  --chat-code-keyword: hsl(221, 83%, 53%); /* Primary Blue */
+  --chat-code-title: hsl(221, 83%, 40%); /* Darker Blue */
+  --chat-code-string: hsl(173, 58%, 39%); /* Teal (Secondary) */
+  --chat-code-number: hsl(240, 10%, 10%); /* Foreground (Simple) */
+  --chat-code-attr: hsl(221, 83%, 53%); /* Blue */
 
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -291,19 +292,32 @@
 }
 
 .chat-markdown--inverted {
-  /* For inverted (user messages), use primary-foreground if the bubble is primary colored */
+  /* For inverted (user messages) */
   --chat-inverted-fg: var(--primary-foreground);
-  --chat-code-bg: rgba(0,0,0,0.2);
-  --chat-code-border: rgba(0,0,0,0.1);
+  --chat-code-bg: rgba(255, 255, 255, 0.2);
+  --chat-code-border: rgba(255, 255, 255, 0.3);
   --chat-code-fg: var(--chat-inverted-fg);
-  --chat-code-muted: rgba(255,255,255,0.7);
+  --chat-code-muted: rgba(255, 255, 255, 0.8);
 
-  /* Syntax colors for inverted - usually needs to be readable on the violet background */
-  --chat-code-keyword: hsl(265, 90%, 90%);
-  --chat-code-title: hsl(210, 90%, 90%);
-  --chat-code-string: hsl(180, 80%, 85%);
-  --chat-code-number: hsl(40, 90%, 90%);
-  --chat-code-attr: hsl(330, 80%, 90%);
+  /* Syntax for Inverted */
+  --chat-code-keyword: hsl(0, 0%, 100%); /* White */
+  --chat-code-title: hsl(0, 0%, 100%);
+  --chat-code-string: hsl(210, 100%, 95%);
+  --chat-code-number: hsl(0, 0%, 100%);
+  --chat-code-attr: hsl(210, 100%, 90%);
+}
+
+/* Dark Mode Overrides for Chat */
+.dark .chat-markdown:not(.chat-markdown--inverted) {
+  --chat-code-bg: hsl(240, 3.7%, 18%); /* Slightly lighter than card for visibility */
+  --chat-code-border: hsl(240, 3.7%, 25%);
+  --chat-code-fg: hsl(0, 0%, 95%);
+
+  --chat-code-keyword: hsl(217, 91%, 60%); /* Bright Blue */
+  --chat-code-title: hsl(217, 91%, 70%); /* Lighter Blue */
+  --chat-code-string: hsl(173, 58%, 50%); /* Teal */
+  --chat-code-number: hsl(0, 0%, 95%); /* Foreground */
+  --chat-code-attr: hsl(217, 91%, 60%);
 }
 
 .chat-markdown > :not(:last-child) {
@@ -316,51 +330,41 @@
 .chat-markdown h4 {
   font-weight: 600;
   line-height: 1.35;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: var(--foreground);
+}
+
+.chat-markdown h1:first-child,
+.chat-markdown h2:first-child,
+.chat-markdown h3:first-child,
+.chat-markdown h4:first-child {
   margin-top: 0;
 }
 
-.chat-markdown h1 {
-  font-size: 1.1rem;
-  margin-bottom: 0.5rem;
-}
-
-.chat-markdown h2 {
-  font-size: 1.05rem;
-  margin-bottom: 0.5rem;
-}
-
-.chat-markdown h3 {
-  font-size: 1rem;
-  margin-bottom: 0.5rem;
-}
-
-.chat-markdown h4 {
-  font-size: 0.95rem;
-  margin-bottom: 0.5rem;
-}
+.chat-markdown h1 { font-size: 1.125rem; }
+.chat-markdown h2 { font-size: 1.05rem; }
+.chat-markdown h3 { font-size: 1rem; }
+.chat-markdown h4 { font-size: 0.95rem; }
 
 .chat-markdown p {
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
 }
 
-.chat-markdown p:first-child {
-  margin-top: 0;
-}
-
-.chat-markdown p:last-child {
-  margin-bottom: 0;
-}
-
 .chat-markdown a {
-  color: inherit;
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.chat-markdown a:hover {
   text-decoration: underline;
-  text-underline-offset: 3px;
 }
 
 .chat-markdown ul,
 .chat-markdown ol {
-  padding-left: 1.25rem;
+  padding-left: 1.5rem;
   margin-top: 0.5rem;
   margin-bottom: 0.5rem;
 }
@@ -370,131 +374,82 @@
   margin-bottom: 0.25rem;
 }
 
-.chat-markdown li + li {
-  margin-top: 0.25rem;
-}
-
 .chat-markdown blockquote {
-  border-left: 2px solid var(--chat-code-border);
-  padding-left: 0.75rem;
-  color: var(--chat-code-muted);
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+  border-left: 3px solid var(--primary);
+  padding-left: 1rem;
+  color: var(--muted-foreground);
+  margin: 1rem 0;
+  font-style: italic;
+  background: var(--muted);
+  padding: 0.5rem 0.5rem 0.5rem 1rem;
+  border-radius: 0 0.25rem 0.25rem 0;
 }
 
+/* Inline Code - Subtle and clean */
 .chat-markdown code {
   font-family:
-    "Fira Code", var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
-  font-size: 0.85em;
-  background: var(--chat-code-bg);
-  color: var(--chat-code-fg);
-  border: 1px solid var(--chat-code-border);
-  border-radius: 0.45rem;
-  padding: 0.1rem 0.35rem;
-  font-variant-ligatures: normal;
-  font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
+    "Fira Code", var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.925em;
+  background: var(--muted);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.1em 0.3em;
+  font-weight: 500;
 }
 
-.chat-markdown--inverted code {
-  background: color-mix(in srgb, var(--chat-code-bg) 12%, transparent);
-  border-color: color-mix(in srgb, var(--chat-code-border) 20%, transparent);
-}
-
+/* Block Code - Distinct and prominent */
 .chat-markdown pre {
   background: var(--chat-code-bg);
   color: var(--chat-code-fg);
   border: 1px solid var(--chat-code-border);
-  border-radius: 0.6rem;
-  padding: 0.75rem;
+  border-radius: 0.5rem;
+  padding: 1rem;
   overflow-x: auto;
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
-  font-family:
-    "Fira Code", var(--font-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
-  font-variant-ligatures: normal;
-  font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
-}
-
-.chat-markdown--inverted pre {
-  background: color-mix(in srgb, var(--chat-code-bg) 12%, transparent);
-  border-color: color-mix(in srgb, var(--chat-code-border) 20%, transparent);
+  margin: 1rem 0;
 }
 
 .chat-markdown pre code {
   background: transparent;
   border: 0;
   padding: 0;
-  font-size: 1rem;
-  font-family: inherit;
-  font-variant-ligatures: normal;
-  font-feature-settings: "liga", "calt", "ss01", "ss02", "ss03", "ss04", "ss05", "ss06";
+  font-size: 0.96em;
+  color: inherit;
+  font-weight: 400;
 }
 
 .chat-markdown table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 1rem;
-  margin-top: 0.5rem;
-  margin-bottom: 0.5rem;
+  margin: 1rem 0;
+  font-size: 0.95rem;
 }
 
-.chat-markdown th,
-.chat-markdown td {
-  border: 1px solid var(--chat-code-border);
-  padding: 0.35rem 0.5rem;
+.chat-markdown th {
+  border-bottom: 2px solid var(--border);
   text-align: left;
+  padding: 0.5rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.chat-markdown td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.5rem;
+  color: var(--muted-foreground);
 }
 
 .chat-markdown hr {
-  border-color: var(--chat-code-border);
-  margin-top: 1rem;
-  margin-bottom: 1rem;
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 1.5rem 0;
 }
 
-.chat-markdown .hljs {
-  background: transparent;
-  color: var(--chat-code-fg);
-}
-
-.chat-markdown .hljs-comment,
-.chat-markdown .hljs-quote {
-  color: var(--chat-code-muted);
-  font-style: italic;
-}
-
-.chat-markdown--inverted .hljs-comment,
-.chat-markdown--inverted .hljs-quote {
-  color: color-mix(in srgb, var(--chat-code-muted) 65%, transparent);
-}
-
-.chat-markdown .hljs-keyword,
-.chat-markdown .hljs-selector-tag,
-.chat-markdown .hljs-type,
-.chat-markdown .hljs-built_in {
-  color: var(--chat-code-keyword);
-}
-
-.chat-markdown .hljs-title,
-.chat-markdown .hljs-section,
-.chat-markdown .hljs-function {
-  color: var(--chat-code-title);
-}
-
-.chat-markdown .hljs-string,
-.chat-markdown .hljs-literal {
-  color: var(--chat-code-string);
-}
-
-.chat-markdown .hljs-number,
-.chat-markdown .hljs-symbol,
-.chat-markdown .hljs-bullet {
-  color: var(--chat-code-number);
-}
-
-.chat-markdown .hljs-attr,
-.chat-markdown .hljs-attribute,
-.chat-markdown .hljs-name {
-  color: var(--chat-code-attr);
-}
+/* HLJS Overrides - Minimalist */
+.chat-markdown .hljs { background: transparent; color: var(--chat-code-fg); }
+.chat-markdown .hljs-comment, .chat-markdown .hljs-quote { color: var(--chat-code-muted); font-style: italic; }
+.chat-markdown .hljs-keyword, .chat-markdown .hljs-selector-tag, .chat-markdown .hljs-type, .chat-markdown .hljs-built_in { color: var(--chat-code-keyword); font-weight: 600; }
+.chat-markdown .hljs-title, .chat-markdown .hljs-section, .chat-markdown .hljs-function { color: var(--chat-code-title); font-weight: 600; }
+.chat-markdown .hljs-string, .chat-markdown .hljs-literal { color: var(--chat-code-string); }
+.chat-markdown .hljs-number, .chat-markdown .hljs-symbol, .chat-markdown .hljs-bullet { color: var(--chat-code-number); }
+.chat-markdown .hljs-attr, .chat-markdown .hljs-attribute, .chat-markdown .hljs-name { color: var(--chat-code-attr); }
