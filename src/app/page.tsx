@@ -11,7 +11,25 @@ import {
 import { Bot, CheckSquare, DollarSign, FileText, FolderKanban } from "lucide-react";
 import Link from "next/link";
 
-export default function Page() {
+import { authServer } from "@/lib/auth/server";
+
+export default async function Page() {
+  const { data: session } = await authServer.getSession();
+  const fullUserName = session?.user?.name || "there";
+  const firstName = fullUserName.split(" ")[0];
+
+  const now = new Date();
+  const hour = now.getHours();
+  let greeting = "Good Evening";
+  if (hour >= 5 && hour < 12) greeting = "Good Morning";
+  else if (hour >= 12 && hour < 17) greeting = "Good Afternoon";
+
+  const dateString = now.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+
   const features = [
     {
       title: "AI Chat",
@@ -53,11 +71,20 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-background p-8">
       <div className="max-w-5xl mx-auto space-y-12">
-        <header className="text-center space-y-4">
-          <h1 className="text-4xl font-bold tracking-tight">Welcome to Life-OS</h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Your personal productivity platform to organize work, ideas, and tasks.
-          </p>
+        <header className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+          <div className="space-y-1.5">
+            <h1 className="text-4xl font-bold tracking-tight text-foreground">
+              {greeting}, {firstName}
+            </h1>
+            <p className="text-lg text-muted-foreground">
+              Building what matters, one step at a time.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-secondary/50 border border-border w-fit h-fit mt-2">
+            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+              {dateString}
+            </span>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
