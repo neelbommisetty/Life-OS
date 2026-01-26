@@ -1,11 +1,10 @@
 import { authClient } from '@/lib/auth/client';
-import { NeonAuthUIProvider, UserButton } from '@neondatabase/auth/react';
+import { NeonAuthUIProvider } from '@neondatabase/auth/react';
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
-import Link from "next/link";
-import { LayoutDashboard } from "lucide-react";
+import { SideNav } from "@/components/navigation/side-nav";
+import { TopNav } from "@/components/navigation/top-nav";
 import { ThemeProvider } from "@/components/theme-provider";
-import { ModeToggle } from "@/components/mode-toggle";
 import "@fontsource/fira-code";
 import "./globals.css";
 const inter = Inter({subsets:['latin'],variable:'--font-sans'});
@@ -46,21 +45,15 @@ export default function RootLayout({
             redirectTo="/"
             emailOTP={false}
           >
-            <header className='flex justify-between items-center p-4 gap-4 h-16 border-b border-border'>
-              <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <LayoutDashboard className="h-5 w-5" />
-                </div>
-                <span className="hidden text-lg font-bold tracking-tight text-foreground sm:inline-block">
-                  Life-OS
-                </span>
-              </Link>
-              <div className="flex items-center gap-4">
-                <ModeToggle />
-                <UserButton size="icon" />
+            <div className="flex min-h-screen bg-background">
+              <SideNav />
+              <div className="flex flex-1 flex-col pl-[64px]">
+                <TopNav />
+                <main className="flex-1 px-6 pb-8 pt-6">
+                  {children}
+                </main>
               </div>
-            </header>
-            {children}
+            </div>
           </NeonAuthUIProvider>
         </ThemeProvider>
       </body>
