@@ -13,16 +13,6 @@
 - Use the `cn()` utility from `@/lib/utils` for conditional className merging.
 - Prefer CSS transitions for animations; add animation libraries only when complex animations are required.
 
-## Design System
-
-- **Reference**: Always consult `design-system.md` for comprehensive design system guidelines, color usage, typography, spacing, and component specifications.
-- **Colors**: Use semantic color tokens from CSS variables (`--primary`, `--secondary`, `--accent`, `--success`, `--warning`, `--info`, `--destructive`). Never hardcode hex/hsl values; always use semantic tokens for theme consistency.
-- **Typography**: Use the predefined type scale (`--text-xs` through `--text-6xl`). Standard HTML headings (`h1`-`h6`) are automatically styled. For body text, use `var(--text-base)` or Tailwind's `text-base` class.
-- **Spacing**: Use the base-4px spacing system. Default padding: `p-4` (16px) for containers, `gap-4` (16px) for flex/grid gaps, `m-8` (32px) for section margins. Use semantic spacing tokens (`--spacing-component-gap`, `--spacing-section-gap`) when appropriate.
-- **Components**: Follow component guidelines in `design-system.md`. Buttons use `rounded-4xl` (pill shape), cards use `rounded-2xl`, inputs match button styling.
-- **Accessibility**: Maintain WCAG 2.1 AA contrast ratios (4.5:1 for normal text, 3:1 for large text). Never disable focus rings; use the default `ring-3 ring-ring` focus style. Ensure touch targets are at least 44px.
-- **Theme Support**: The app supports both light and dark modes via system preference. All components should work seamlessly in both modes using CSS variables.
-
 ## Data and API layer
 
 - **Prisma + Neon**: Use Prisma ORM with Neon (PostgreSQL) for database operations. The Prisma client is automatically generated before `dev` and `build` commands via `prisma generate`.
@@ -43,11 +33,6 @@
 - For client-side data fetching, use server actions or API routes that wrap Prisma queries. Avoid exposing Prisma client to client components.
 - Use React Server Components for initial data loading; use client components with server actions for mutations.
 
-## Drag and drop (Kanban)
-
-- Use HTML5 drag and drop API or add a drag/drop library only when needed. Keep drag/drop logic in dedicated hooks/components.
-- Maintain accessible drag handles and keyboard interaction where feasible.
-
 ## Testing and quality
 
 - **Testing**: Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Run tests with `bun test` or `bun run test`. No external test frameworks (Vitest, Jest, etc.).
@@ -60,14 +45,6 @@
 - Co-locate server-only code away from client bundles; guard with `use server`/`use client` as needed.
 - Avoid long-running work in request handlers; offload to background jobs where applicable.
 - Keep imports absolute per tsconfig paths if configured; avoid deep relative paths.
-
-## Git Workflow
-
-- **Graphite**: Use [Graphite](https://docs.graphite.dev/) for all git branch management and PR workflows. Use `gt` CLI commands instead of raw git commands.
-- **Branch creation**: Use `gt branch create <name>` or `gt bc <name>` to create branches. Use `--stack` flag for dependent branches.
-- **PR submission**: Use `gt submit` or `gt s` to create PRs. Graphite handles stacked PRs automatically.
-- **Syncing**: Use `gt sync` to update branches with parent changes and rebase dependents.
-- **Commits**: Follow Conventional Commits (`feat:`, `fix:`, `chore:`). Never commit directly to `main`; always work in feature branches.
 
 ## Misc
 
