@@ -1,8 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
 import { useChatStreaming, useChatScroll } from "@/hooks";
 import {
   ThreadSelector,
@@ -38,7 +43,10 @@ export function ChatClient() {
   const [isLoadingModels, setIsLoadingModels] = useState(true);
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
   const [hasNextPage, setHasNextPage] = useState(false);
-  const [nextCursor, setNextCursor] = useState<{ id: string; createdAt: Date } | null>(null);
+  const [nextCursor, setNextCursor] = useState<{
+    id: string;
+    createdAt: Date;
+  } | null>(null);
   const [isCreatingThread, startCreateTransition] = useTransition();
   const [isArchivingThread, startArchiveTransition] = useTransition();
   const [isUpdatingModel, startModelTransition] = useTransition();
@@ -50,10 +58,11 @@ export function ChatClient() {
     if (!threads.length) return null;
     const paramIsValid =
       !!threadIdParam && threads.some((thread) => thread.id === threadIdParam);
-    return paramIsValid ? threadIdParam : threads[0]?.id ?? null;
+    return paramIsValid ? threadIdParam : (threads[0]?.id ?? null);
   }, [threadIdParam, threads]);
 
-  const activeThread = threads.find((thread) => thread.id === effectiveThreadId) ?? null;
+  const activeThread =
+    threads.find((thread) => thread.id === effectiveThreadId) ?? null;
   const activeModel = useMemo(() => {
     if (!activeThread?.modelKey) return undefined;
     return models.find((m) => m.key === activeThread.modelKey);
@@ -75,7 +84,7 @@ export function ChatClient() {
         router.push(url);
       }
     },
-    [pathname, router, searchParams]
+    [pathname, router, searchParams],
   );
 
   // Invalidation handler for streaming hook
@@ -98,7 +107,7 @@ export function ChatClient() {
         console.error("Failed to refresh threads:", error);
       }
     },
-    [pageSize]
+    [pageSize],
   );
 
   // Streaming hook
@@ -149,7 +158,8 @@ export function ChatClient() {
   });
 
   const isPending = isStreaming;
-  const isActiveThreadStreaming = isStreaming && streamingThreadId === effectiveThreadId;
+  const isActiveThreadStreaming =
+    isStreaming && streamingThreadId === effectiveThreadId;
   const lastMessageId = messages[messages.length - 1]?.id ?? null;
   const lastAssistantMessageId = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -217,12 +227,18 @@ export function ChatClient() {
     if (!paramIsValid) {
       setThreadIdInUrl(effectiveThreadId, true);
     }
-  }, [effectiveThreadId, setThreadIdInUrl, threadIdParam, threads, isLoadingThreads]);
+  }, [
+    effectiveThreadId,
+    setThreadIdInUrl,
+    threadIdParam,
+    threads,
+    isLoadingThreads,
+  ]);
 
   // Handlers
   const handleSubmit = async (
     e?: React.SyntheticEvent,
-    contentOverride?: string
+    contentOverride?: string,
   ) => {
     e?.preventDefault();
     const content = contentOverride || input.trim();
@@ -286,10 +302,12 @@ export function ChatClient() {
           modelKey,
         });
         setThreads((prev) =>
-          prev.map((t) => (t.id === updated.id ? updated : t))
+          prev.map((t) => (t.id === updated.id ? updated : t)),
         );
       } catch (error) {
-        setModelError(error instanceof Error ? error.message : "Failed to update model");
+        setModelError(
+          error instanceof Error ? error.message : "Failed to update model",
+        );
       }
     });
   };
@@ -299,26 +317,26 @@ export function ChatClient() {
       if (!effectiveThreadId || isPending) return;
       handleRegenerate(messageId, effectiveThreadId);
     },
-    [effectiveThreadId, handleRegenerate, isPending]
+    [effectiveThreadId, handleRegenerate, isPending],
   );
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col sm:flex-row rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-        <ThreadSelector
-          threads={threads}
-          value={effectiveThreadId}
-          onChange={(threadId) => setThreadIdInUrl(threadId)}
-          onCreate={handleCreateThread}
-          onArchive={handleArchiveThread}
-          isCreating={isCreatingThread}
-          isArchiving={isArchivingThread}
-          isLocked={false}
-          isStreaming={isStreaming}
-          streamingThreadId={streamingThreadId}
-          layout="side"
-        />
+    <div className="flex h-full flex-col sm:flex-row overflow-hidden">
+      <ThreadSelector
+        threads={threads}
+        value={effectiveThreadId}
+        onChange={(threadId) => setThreadIdInUrl(threadId)}
+        onCreate={handleCreateThread}
+        onArchive={handleArchiveThread}
+        isCreating={isCreatingThread}
+        isArchiving={isArchivingThread}
+        isLocked={false}
+        isStreaming={isStreaming}
+        streamingThreadId={streamingThreadId}
+        layout="side"
+      />
 
-        <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <ChatHeader
           threadTitle={activeThread?.name}
           activeModel={activeModel}

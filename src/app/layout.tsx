@@ -1,5 +1,5 @@
-import { authClient } from '@/lib/auth/client';
-import { NeonAuthUIProvider } from '@neondatabase/auth/react';
+import { authClient } from "@/lib/auth/client";
+import { NeonAuthUIProvider } from "@neondatabase/auth/react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { SideNav } from "@/components/navigation/side-nav";
@@ -7,7 +7,7 @@ import { TopNav } from "@/components/navigation/top-nav";
 import { ThemeProvider } from "@/components/theme-provider";
 import "@fontsource/fira-code";
 import "./globals.css";
-const inter = Inter({subsets:['latin'],variable:'--font-sans'});
+const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +21,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Life-OS",
-  description: "Your personal productivity platform to organize work, ideas, and tasks.",
+  description:
+    "Your personal productivity platform to organize work, ideas, and tasks.",
 };
 
 export default function RootLayout({
@@ -49,9 +50,7 @@ export default function RootLayout({
               <SideNav />
               <div className="flex flex-1 flex-col pl-[64px]">
                 <TopNav />
-                <main className="flex-1 px-6 pb-8 pt-6">
-                  {children}
-                </main>
+                <main className="h-dvh overflow-hidden">{children}</main>
               </div>
             </div>
           </NeonAuthUIProvider>
