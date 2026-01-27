@@ -25,6 +25,7 @@ import {
   listModels,
 } from "@/lib/chat/actions";
 import type { ChatThread, ChatMessage, Project } from "@prisma/client";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 type ChatThreadWithProject = ChatThread & { project: Project | null };
 
@@ -51,6 +52,7 @@ export function ChatClient() {
   const [isArchivingThread, startArchiveTransition] = useTransition();
   const [isUpdatingModel, startModelTransition] = useTransition();
   const [modelError, setModelError] = useState<string | null>(null);
+  const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const pageSize = 30;
 
   // Derived state
@@ -321,27 +323,34 @@ export function ChatClient() {
   );
 
   return (
-    <div className="flex h-full flex-col sm:flex-row overflow-hidden">
-      <ThreadSelector
-        threads={threads}
-        value={effectiveThreadId}
-        onChange={(threadId) => setThreadIdInUrl(threadId)}
-        onCreate={handleCreateThread}
-        onArchive={handleArchiveThread}
-        isCreating={isCreatingThread}
-        isArchiving={isArchivingThread}
-        isLocked={false}
-        isStreaming={isStreaming}
-        streamingThreadId={streamingThreadId}
-        layout="side"
-      />
+    <>
+      {/* Desktop Grid Layout */}
+      <div className="hidden sm:grid h-full grid-cols-[minmax(240px,256px)_1fr] grid-rows-[auto_1fr_auto] overflow-hidden">
+        {/* Thread Column - spans all 3 rows */}
+        <div className="grid grid-rows-subgrid row-span-3 border-r border-border bg-muted/30 overflow-hidden">
+          <ThreadSelector
+            threads={threads}
+            value={effectiveThreadId}
+            onChange={(threadId) => setThreadIdInUrl(threadId)}
+            onCreate={handleCreateThread}
+            onArchive={handleArchiveThread}
+            isCreating={isCreatingThread}
+            isArchiving={isArchivingThread}
+            isLocked={false}
+            isStreaming={isStreaming}
+            streamingThreadId={streamingThreadId}
+            layout="side"
+          />
+        </div>
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {/* Chat Column - Row 1: Header */}
         <ChatHeader
           threadTitle={activeThread?.name}
           activeModel={activeModel}
+          onMenuToggle={() => setIsMobileDrawerOpen(true)}
         />
 
+        {/* Chat Column - Row 2: Messages (scrollable) */}
         <ChatMessages
           messages={messages}
           isLoading={isLoadingMessages || isLoadingThreads}
@@ -365,6 +374,7 @@ export function ChatClient() {
           onSelectPrompt={(prompt) => handleSubmit(undefined, prompt)}
         />
 
+        {/* Chat Column - Row 3: Input (fixed) */}
         <ChatInput
           input={input}
           setInput={setInput}
@@ -380,6 +390,76 @@ export function ChatClient() {
           modelErrorMessage={modelError ?? undefined}
         />
       </div>
-    </div>
+
+      {/* Mobile Layout with Drawer */}
+      <div className="grid sm:hidden h-full grid-cols-1 grid-rows-[auto_1fr_auto] overflow-hidden">
+        {/* Row 1: Header with menu toggle */}
+        <ChatHeader
+          threadTitle={activeThread?.name}
+          activeModel={activeModel}
+          onMenuToggle={() => setIsMobileDrawerOpen(true)}
+        />
+
+        {/* Row 2: Messages (scrollable) */}
+        <ChatMessages
+          messages={messages}
+          isLoading={isLoadingMessages || isLoadingThreads}
+          isFetchingNextPage={isFetchingNextPage}
+          effectiveThreadId={effectiveThreadId}
+          lastMessageId={lastMessageId}
+          lastAssistantMessageId={lastAssistantMessageId}
+          activeModel={activeModel}
+          optimisticUserMessage={optimisticUserMessage}
+          optimisticStatus={optimisticStatus}
+          isActiveThreadStreaming={isActiveThreadStreaming}
+          isStreaming={isStreaming}
+          streamingContent={streamingContent}
+          pendingAssistantId={pendingAssistantId}
+          streamError={streamError}
+          isPending={isPending}
+          messagesContainerRef={messagesContainerRef}
+          onScroll={handleScroll}
+          onRegenerate={handleRegenerateClick}
+          onStopStreaming={handleStopStreaming}
+          onSelectPrompt={(prompt) => handleSubmit(undefined, prompt)}
+        />
+
+        {/* Row 3: Input (fixed) */}
+        <ChatInput
+          input={input}
+          setInput={setInput}
+          onSubmit={handleSubmit}
+          onKeyDown={handleKeyDown}
+          isPending={isPending}
+          effectiveThreadId={effectiveThreadId}
+          models={models}
+          activeModelKey={activeThread?.modelKey ?? null}
+          onModelChange={handleModelChange}
+          modelsLoading={isLoadingModels}
+          modelUpdating={isUpdatingModel}
+          modelErrorMessage={modelError ?? undefined}
+        />
+      </div>
+
+      {/* Mobile Drawer for Thread Selector */}
+      <Sheet open={isMobileDrawerOpen} onOpenChange={setIsMobileDrawerOpen}>
+        <SheetContent side="left" className="w-80 p-0">
+          <ThreadSelector
+            threads={threads}
+            value={effectiveThreadId}
+            onChange={(threadId) => setThreadIdInUrl(threadId)}
+            onCreate={handleCreateThread}
+            onArchive={handleArchiveThread}
+            isCreating={isCreatingThread}
+            isArchiving={isArchivingThread}
+            isLocked={false}
+            isStreaming={isStreaming}
+            streamingThreadId={streamingThreadId}
+            isMobile
+            onThreadSelect={() => setIsMobileDrawerOpen(false)}
+          />
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

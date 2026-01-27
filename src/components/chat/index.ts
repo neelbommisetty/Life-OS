@@ -1,4 +1,4 @@
-export { ThreadSelector } from "./thread-selector";
+export { ThreadSelector, ThreadsHeader, ThreadsList } from "./thread-selector";
 export { ChatHeader } from "./chat-header";
 export { ChatMessages } from "./chat-messages";
 export { ChatInput } from "./chat-input";

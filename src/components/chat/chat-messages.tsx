@@ -59,14 +59,18 @@ export function ChatMessages({
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-1 min-h-0 items-center justify-center">
         <LoaderIcon className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
 
   if (isEmpty && !optimisticUserMessage && !isActiveThreadStreaming) {
-    return <ChatEmptyState onSelectPrompt={onSelectPrompt} />;
+    return (
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <ChatEmptyState onSelectPrompt={onSelectPrompt} />
+      </div>
+    );
   }
 
   return (
