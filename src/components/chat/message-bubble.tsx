@@ -2,10 +2,9 @@
 
 import { useMemo } from "react";
 import type { ChatMessage } from "@prisma/client";
-import { RotateCcwIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { RotateCcwIcon, SparklesIcon } from "lucide-react";
+import { cn, formatRelativeTime } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ChatMarkdown } from "./chat-markdown";
 
@@ -60,11 +59,42 @@ export function MessageBubble({
   }, [messageStatus]);
 
   const timestampLabel = useMemo(() => {
-    return new Intl.DateTimeFormat("en-US", {
+    const now = new Date();
+    const messageDate = new Date(message.createdAt);
+    
+    // Check if message is from today
+    const isToday =
+      now.getDate() === messageDate.getDate() &&
+      now.getMonth() === messageDate.getMonth() &&
+      now.getFullYear() === messageDate.getFullYear();
+    
+    // Check if message is from yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday =
+      yesterday.getDate() === messageDate.getDate() &&
+      yesterday.getMonth() === messageDate.getMonth() &&
+      yesterday.getFullYear() === messageDate.getFullYear();
+    
+    const timeString = new Intl.DateTimeFormat("en-US", {
       hour: "numeric",
       minute: "2-digit",
       hour12: true,
-    }).format(message.createdAt);
+    }).format(messageDate);
+    
+    if (isToday) {
+      return timeString;
+    } else if (isYesterday) {
+      return `Yesterday at ${timeString}`;
+    } else {
+      // Show full date for older messages
+      const dateString = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric",
+        year: now.getFullYear() !== messageDate.getFullYear() ? "numeric" : undefined,
+      }).format(messageDate);
+      return `${dateString} at ${timeString}`;
+    }
   }, [message.createdAt]);
 
   if (isSystem) {
@@ -77,88 +107,78 @@ export function MessageBubble({
     );
   }
 
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-2",
-        isUser ? "items-end" : "items-start"
-      )}
-    >
-      <div
-        className={cn(
-          "flex items-start gap-3 max-w-[85%]",
-          isUser && "flex-row-reverse"
-        )}
-      >
-        <div
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-            isUser
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-foreground"
-          )}
-        >
-          {isUser ? "You" : "AI"}
-        </div>
-        {isUser ? (
-          <div className="rounded-lg px-4 py-3 text-sm shadow-sm bg-primary text-primary-foreground">
-            <ChatMarkdown
-              content={message.content}
-              tone="inverted"
-            />
+  // User message - right-aligned blue bubble
+  if (isUser) {
+    return (
+      <div className="flex flex-col items-end gap-1 w-full">
+        <div className="flex justify-end max-w-[85%]">
+          <div className="rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground">
+            <ChatMarkdown content={message.content} tone="inverted" />
           </div>
-        ) : (
-          <Card className="rounded-lg shadow-sm">
-            <CardContent className="px-4 py-3 text-sm">
-              <ChatMarkdown
-                content={message.content}
-                tone="default"
-              />
-            </CardContent>
-          </Card>
+        </div>
+        {statusLabel && (
+          <div
+            className={cn(
+              "text-[11px] px-2",
+              messageStatus === "failed"
+                ? "text-destructive"
+                : "text-muted-foreground"
+            )}
+            role="status"
+            aria-live="polite"
+          >
+            {statusLabel}
+          </div>
         )}
       </div>
+    );
+  }
 
-      {statusLabel && (
-        <div
-          className={cn(
-            "text-[11px]",
-            messageStatus === "failed"
-              ? "text-destructive"
-              : "text-muted-foreground",
-            isUser ? "mr-11 text-right" : "ml-11 text-left"
-          )}
-          role="status"
-          aria-live="polite"
-        >
-          {statusLabel}
+  // AI message - left-aligned with avatar
+  return (
+    <div className="flex flex-col items-start gap-2 w-full">
+      <div className="flex items-start gap-3 max-w-[85%]">
+        {/* AI Avatar */}
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+          <SparklesIcon className="h-4 w-4" />
         </div>
-      )}
 
-      {isAssistant && (
-        <div className="ml-11 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
-          <span className="inline-flex items-center gap-1">
-            <span className="font-medium text-foreground/80">Model</span>
-            <span>{modelLabelText}</span>
-          </span>
-          <span className="text-muted-foreground/60">•</span>
-          <span title={timestampLabel}>{timestampLabel}</span>
-          {onRegenerate && (
-            <Button
-              type="button"
-              onClick={() => onRegenerate(message.id)}
-              disabled={!canRegenerate || isPending}
-              variant="outline"
-              size="xs"
-              className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium text-foreground/80"
-              title="Regenerate response"
-            >
-              <RotateCcwIcon className="h-3 w-3" />
-              Regenerate
-            </Button>
-          )}
+        {/* Message Content */}
+        <div className="flex flex-col gap-1 min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-foreground">
+              Life-OS AI
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              {timestampLabel}
+            </span>
+          </div>
+          <div className="rounded-2xl rounded-tl-sm px-4 py-3 text-sm bg-muted">
+            <ChatMarkdown content={message.content} tone="default" />
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* AI Message Metadata */}
+      <div className="ml-11 flex flex-wrap items-center gap-3 text-[11px] text-muted-foreground">
+        <Badge variant="secondary" className="text-[10px] px-2 py-0.5">
+          {modelLabelText}
+        </Badge>
+        {onRegenerate && (
+          <Button
+            type="button"
+            onClick={() => onRegenerate(message.id)}
+            disabled={!canRegenerate || isPending}
+            variant="ghost"
+            size="xs"
+            className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium"
+            title="Regenerate response"
+          >
+            <RotateCcwIcon className="h-3 w-3" />
+            Regenerate
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
