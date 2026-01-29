@@ -7,7 +7,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
-import { Bot, Feather, Gem, Loader2, Sparkles } from "lucide-react";
+import { Bot, Feather, Gem, Loader2, Sparkles, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -28,31 +28,36 @@ type Props = {
   isUpdating?: boolean;
   errorMessage?: string | null;
   buttonClassName?: string;
+  displayMode?: "icon" | "text";
 };
 
 const PROVIDER_META: Record<
   string,
-  { label: string; icon: typeof Sparkles; iconClassName: string }
+  { label: string; icon: typeof Sparkles; iconClassName: string; dotClassName: string }
 > = {
   openai: {
     label: "OpenAI",
     icon: Sparkles,
     iconClassName: "text-emerald-500",
+    dotClassName: "bg-emerald-500",
   },
   anthropic: {
     label: "Anthropic",
     icon: Feather,
     iconClassName: "text-amber-500",
+    dotClassName: "bg-amber-500",
   },
   google: {
     label: "Google",
     icon: Gem,
     iconClassName: "text-blue-500",
+    dotClassName: "bg-blue-500",
   },
   xai: {
     label: "xAI",
     icon: Bot,
     iconClassName: "text-slate-500",
+    dotClassName: "bg-slate-500",
   },
 };
 
@@ -70,6 +75,7 @@ const getProviderMeta = (providerId: string) =>
     label: providerId,
     icon: Bot,
     iconClassName: "text-muted-foreground",
+    dotClassName: "bg-muted-foreground",
   };
 
 const getCostTierMeta = (tier?: string | null) =>
@@ -83,6 +89,7 @@ export function ModelSelector({
   isUpdating,
   errorMessage,
   buttonClassName,
+  displayMode = "icon",
 }: Props) {
   const hasError = Boolean(errorMessage);
   const currentModel = useMemo(
@@ -137,13 +144,15 @@ export function ModelSelector({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          variant="outline"
-          size="icon"
+          variant="ghost"
+          size={displayMode === "icon" ? "icon" : "default"}
           disabled={isDisabled}
           aria-label="Select model"
           title={errorMessage ?? "Select model"}
           className={cn(
-            "h-10 w-10 p-0 justify-center border-border bg-background shadow-sm",
+            displayMode === "icon" 
+              ? "h-10 w-10 p-0 justify-center border border-border bg-background shadow-sm"
+              : "h-10 px-3 rounded-lg gap-2 text-sm font-medium hover:bg-muted/50 transition-colors",
             "focus:ring-2 focus:ring-ring focus:ring-offset-2",
             "disabled:cursor-not-allowed disabled:opacity-60",
             hasError && "border-red-500 text-red-500",
@@ -152,8 +161,16 @@ export function ModelSelector({
         >
           {isBusy ? (
             <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
+          ) : displayMode === "icon" ? (
             <CurrentIcon className={cn("h-4 w-4", currentIconClassName)} />
+          ) : (
+            <>
+              <div className={cn("h-2 w-2 rounded-full shrink-0", currentMeta?.dotClassName ?? "bg-primary")} />
+              <span className="truncate max-w-[100px] sm:max-w-none">
+                {currentModel?.label ?? "Auto routing"}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0" />
+            </>
           )}
         </Button>
       </PopoverTrigger>

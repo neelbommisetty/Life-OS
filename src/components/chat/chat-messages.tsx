@@ -1,6 +1,6 @@
 "use client";
 
-import type { RefObject } from "react";
+import { type RefObject, useRef, useEffect } from "react";
 import { LoaderIcon, AlertCircleIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -56,6 +56,13 @@ export function ChatMessages({
   onSelectPrompt,
 }: Props) {
   const isEmpty = messages.length === 0;
+  const errorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (streamError && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [streamError]);
 
   if (isLoading) {
     return (
@@ -85,7 +92,10 @@ export function ChatMessages({
     >
       {isFetchingNextPage && (
         <div className="flex justify-center">
-          <Badge variant="secondary" className="flex items-center gap-2 rounded-full px-4 py-1.5 text-xs">
+          <Badge
+            variant="secondary"
+            className="flex items-center gap-2 rounded-full px-4 py-1.5 text-xs"
+          >
             <LoaderIcon className="h-3 w-3 animate-spin" />
             Loading older messages...
           </Badge>
@@ -163,10 +173,16 @@ export function ChatMessages({
         </div>
       )}
 
-      {/* Stream error message */}
+      {/* Stream error message - scroll into view when shown */}
       {streamError && (
-        <div className="flex justify-center my-2 animate-in zoom-in-95 duration-300">
-          <Badge variant="destructive" className="flex items-center gap-2 rounded-full px-4 py-1.5 text-xs border border-destructive/20 shadow-sm">
+        <div
+          ref={errorRef}
+          className="flex justify-center my-2 animate-in zoom-in-95 duration-300"
+        >
+          <Badge
+            variant="destructive"
+            className="flex items-center gap-2 rounded-full px-4 py-1.5 text-xs border border-destructive/20 shadow-sm"
+          >
             <AlertCircleIcon className="h-3 w-3" />
             {streamError}
           </Badge>
