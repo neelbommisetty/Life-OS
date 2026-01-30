@@ -44,12 +44,12 @@ export function KanbanColumn({
     <div
       ref={drop}
       className={cn(
-        "flex-1 min-w-[300px] rounded-lg border p-4 transition-colors",
+        "flex-1 min-w-[300px] h-full flex flex-col rounded-lg border p-4 transition-colors",
         COLUMN_COLORS[status],
         isOver && "ring-2 ring-primary ring-inset"
       )}
     >
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 shrink-0">
         <h2 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">
           {title}
         </h2>
@@ -58,7 +58,7 @@ export function KanbanColumn({
         </span>
       </div>
 
-      <div className="space-y-3 min-h-[200px]">
+      <div className="flex-1 overflow-y-auto space-y-3 min-h-[200px] pr-2">
         {tasks.map((task) => (
           <TaskCard
             key={task.id}

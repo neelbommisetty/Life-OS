@@ -67,7 +67,7 @@ function formatDate(date: Date | null | undefined): string {
   return new Date(date).toISOString().split("T")[0];
 }
 
-export function TasksClient() {
+export function TasksClient({ projectId }: { projectId?: string }) {
   const [tasks, setTasks] = useState<TaskWithProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -93,6 +93,7 @@ export function TasksClient() {
       // The backend now handles auto-archiving of tasks older than 7 days
       const result = await listTasks({
         search: search || undefined,
+        projectId,
       });
       setTasks(result);
     } catch (error) {
@@ -100,7 +101,7 @@ export function TasksClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [search]);
+  }, [search, projectId]);
 
   useEffect(() => {
     loadTasks();
@@ -154,6 +155,7 @@ export function TasksClient() {
             status: draft.status,
             priority: draft.priority,
             dueDate: draft.dueDate || null,
+            projectId,
           });
           setSheetOpen(false);
           await loadTasks();
@@ -207,9 +209,9 @@ export function TasksClient() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="container mx-auto max-w-7xl p-6 space-y-6">
+      <div className="h-full flex flex-col p-6 space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between shrink-0">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
             <p className="text-muted-foreground mt-1">
@@ -240,7 +242,7 @@ export function TasksClient() {
         </div>
 
         {/* Kanban Board */}
-        <div className="flex flex-col md:flex-row gap-6 overflow-x-auto pb-4">
+        <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-x-auto pb-4 min-h-0">
           <KanbanColumn
             title="To Do"
             status="TODO"
