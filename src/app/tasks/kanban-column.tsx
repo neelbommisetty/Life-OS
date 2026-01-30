@@ -16,7 +16,8 @@ interface KanbanColumnProps {
 
 const COLUMN_COLORS: Record<TaskStatus, string> = {
   TODO: "bg-blue-50/50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-900/20",
-  IN_PROGRESS: "bg-yellow-50/50 dark:bg-yellow-900/10 border-yellow-100 dark:border-yellow-900/20",
+  IN_PROGRESS:
+    "bg-yellow-50/50 dark:bg-yellow-900/10 border-yellow-100 dark:border-yellow-900/20",
   DONE: "bg-green-50/50 dark:bg-green-900/10 border-green-100 dark:border-green-900/20",
 };
 
@@ -46,7 +47,7 @@ export function KanbanColumn({
       className={cn(
         "flex-1 min-w-[300px] h-full flex flex-col rounded-lg border p-4 transition-colors",
         COLUMN_COLORS[status],
-        isOver && "ring-2 ring-primary ring-inset"
+        isOver && "ring-2 ring-primary ring-inset",
       )}
     >
       <div className="flex items-center justify-between mb-4 shrink-0">

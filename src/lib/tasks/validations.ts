@@ -25,7 +25,7 @@ const dateStringSchema = z
         return false;
       }
     },
-    { message: "Invalid date format" }
+    { message: "Invalid date format" },
   )
   .optional()
   .nullable();

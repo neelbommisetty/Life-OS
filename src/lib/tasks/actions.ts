@@ -39,7 +39,9 @@ async function getCurrentUserId(): Promise<string> {
  * Coerce date string to Date or return undefined
  * Handles both YYYY-MM-DD (from HTML date inputs) and ISO datetime strings
  */
-function coerceDate(dateString: string | null | undefined): Date | null | undefined {
+function coerceDate(
+  dateString: string | null | undefined,
+): Date | null | undefined {
   if (dateString === null || dateString === undefined) {
     return dateString;
   }
@@ -194,7 +196,8 @@ export async function updateTask(input: UpdateTaskInput) {
 
   const updateData: Prisma.TaskUpdateInput = {};
   if (parsed.title !== undefined) updateData.title = parsed.title;
-  if (parsed.description !== undefined) updateData.description = parsed.description;
+  if (parsed.description !== undefined)
+    updateData.description = parsed.description;
   if (parsed.status !== undefined) updateData.status = parsed.status;
   if (parsed.priority !== undefined) updateData.priority = parsed.priority;
   if (parsed.dueDate !== undefined) {
@@ -267,7 +270,7 @@ export async function deleteTask(input: DeleteTaskInput) {
  */
 export async function listArchivedTasks() {
   const userId = await getCurrentUserId();
-  
+
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
