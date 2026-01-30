@@ -35,7 +35,7 @@ export const aiConfig = {
  * Check if a provider is configured with an API key.
  */
 export const isProviderConfigured = (
-  provider: keyof typeof aiConfig
+  provider: keyof typeof aiConfig,
 ): boolean => {
   return Boolean(aiConfig[provider].apiKey);
 };
@@ -45,7 +45,7 @@ export const isProviderConfigured = (
  */
 export const getConfiguredProviders = (): (keyof typeof aiConfig)[] => {
   return (Object.keys(aiConfig) as (keyof typeof aiConfig)[]).filter(
-    isProviderConfigured
+    isProviderConfigured,
   );
 };
 

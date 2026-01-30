@@ -6,6 +6,7 @@ export const priorityEnum = z.enum(["LOW", "MEDIUM", "HIGH"]);
 export const listTasksSchema = z.object({
   search: z.string().optional(),
   status: taskStatusEnum.optional(),
+  projectId: z.string().cuid().optional(),
 });
 
 // Accept date strings (YYYY-MM-DD) or datetime strings (ISO)

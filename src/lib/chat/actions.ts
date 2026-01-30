@@ -83,6 +83,7 @@ export async function listThreads(input?: ListThreadsInput) {
   let threads = await prisma.chatThread.findMany({
     where: {
       userId,
+      ...(parsed.projectId ? { projectId: parsed.projectId } : {}),
       ...(includeArchived ? {} : { archivedAt: null }),
     },
     orderBy: THREAD_ORDER,

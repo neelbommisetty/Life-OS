@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const listThreadsSchema = z.object({
   includeArchived: z.boolean().optional(),
+  projectId: z.string().cuid().optional(),
 });
 
 export const createThreadSchema = z.object({

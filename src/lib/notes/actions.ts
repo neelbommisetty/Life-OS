@@ -52,6 +52,7 @@ export async function listNotes(input?: ListNotesInput) {
   const where: Prisma.NoteWhereInput = {
     userId,
     deletedAt: null, // Exclude soft-deleted notes
+    ...(parsed.projectId ? { projectId: parsed.projectId } : {}),
     ...(parsed.search
       ? {
           OR: [

@@ -25,7 +25,7 @@ import { FileText } from "lucide-react";
 
 type NoteWithProject = Note & { project: Project | null };
 
-export function NotesClient() {
+export function NotesClient({ projectId }: { projectId?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -48,7 +48,7 @@ export function NotesClient() {
     async function loadNotes() {
       setIsLoadingNotes(true);
       try {
-        const result = await listNotes();
+        const result = await listNotes({ projectId });
         setNotes(result);
       } catch (error) {
         console.error("Failed to load notes:", error);
@@ -57,7 +57,7 @@ export function NotesClient() {
       }
     }
     loadNotes();
-  }, []);
+  }, [projectId]);
 
   // Sync URL with selection
   const setNoteIdInUrl = useCallback(
@@ -107,7 +107,7 @@ export function NotesClient() {
   const handleCreateStart = () => {
     startTransition(async () => {
       try {
-        const created = await createNote({ title: "New Note", content: "" });
+        const created = await createNote({ title: "New Note", content: "", projectId });
         const newNote: NoteWithProject = { ...created, project: null };
         setNotes((prev) => [newNote, ...prev]);
         setNoteIdInUrl(created.id);
@@ -127,7 +127,7 @@ export function NotesClient() {
           setNotes((prev) => prev.map((n) => (n.id === id ? { ...n, ...updated } : n)));
         } else {
           // Create new
-          const created = await createNote({ title, content });
+          const created = await createNote({ title, content, projectId });
           // We need to fetch the full note to get the project relation if we want to be consistent, 
           // but createNote usually returns just the note. 
           // However, listNotes returns NoteWithProject. 

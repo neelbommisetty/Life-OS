@@ -72,6 +72,7 @@ export async function listTasks(input?: ListTasksInput) {
   const where: Prisma.TaskWhereInput = {
     userId,
     deletedAt: null, // Exclude soft-deleted tasks
+    ...(parsed.projectId ? { projectId: parsed.projectId } : {}),
     ...(parsed.status ? { status: parsed.status } : {}),
     ...(parsed.search
       ? {

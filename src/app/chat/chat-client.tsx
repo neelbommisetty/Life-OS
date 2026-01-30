@@ -29,7 +29,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 
 type ChatThreadWithProject = ChatThread & { project: Project | null };
 
-export function ChatClient() {
+export function ChatClient({ projectId }: { projectId?: string }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -103,13 +103,13 @@ export function ChatClient() {
       }
       // Refetch threads (for lastChattedAt updates)
       try {
-        const threadResult = await listThreads();
+        const threadResult = await listThreads({ projectId });
         setThreads(threadResult);
       } catch (error) {
         console.error("Failed to refresh threads:", error);
       }
     },
-    [pageSize],
+    [pageSize, projectId],
   );
 
   // Streaming hook
@@ -179,7 +179,7 @@ export function ChatClient() {
       setIsLoadingModels(true);
       try {
         const [threadsResult, modelsResult] = await Promise.all([
-          listThreads(),
+          listThreads({ projectId }),
           listModels(),
         ]);
         setThreads(threadsResult);
@@ -192,7 +192,7 @@ export function ChatClient() {
       }
     }
     loadInitialData();
-  }, []);
+  }, [projectId]);
 
   // Load messages when thread changes
   useEffect(() => {
@@ -266,7 +266,7 @@ export function ChatClient() {
   const handleCreateThread = () => {
     startCreateTransition(async () => {
       try {
-        const thread = await createThread();
+        const thread = await createThread({ projectId });
         setThreads((prev) => [thread, ...prev]);
         setThreadIdInUrl(thread.id);
       } catch (error) {

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const listNotesSchema = z.object({
   search: z.string().optional(),
+  projectId: z.string().cuid().optional(),
 });
 
 export const createNoteSchema = z.object({
