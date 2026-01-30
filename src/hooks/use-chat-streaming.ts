@@ -5,13 +5,11 @@ import { parseSSEChunk, handleStreamError } from "@/lib/chat-utils";
 import type { ChatMessage } from "@prisma/client";
 
 type UseChatStreamingParams = {
-  pageSize: number;
   messages: ChatMessage[];
   onInvalidate: (threadId: string) => void;
 };
 
 export function useChatStreaming({
-  pageSize,
   messages,
   onInvalidate,
 }: UseChatStreamingParams) {

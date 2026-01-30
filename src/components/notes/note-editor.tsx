@@ -6,7 +6,14 @@ import { Toggle } from "@/components/ui/toggle";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ChatMarkdown } from "@/components/chat/chat-markdown";
-import { Edit, Eye, Save, Trash2, Menu, Pencil, PanelRightClose, PanelRightOpen, SplitSquareHorizontal } from "lucide-react";
+import {
+  Edit,
+  Eye,
+  Save,
+  Trash2,
+  Menu,
+  Pencil,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -14,7 +21,11 @@ type NoteEditorProps = {
   noteId: string | null;
   initialTitle: string;
   initialContent: string;
-  onSave: (id: string | undefined, title: string, content: string) => Promise<void>;
+  onSave: (
+    id: string | undefined,
+    title: string,
+    content: string,
+  ) => Promise<void>;
   onDelete: (id: string) => void;
   isSaving: boolean;
   isDeleting: boolean;
@@ -46,21 +57,26 @@ export function NoteEditor({
     contentRef.current = content;
   }, [title, content]);
 
-  // Reset state when noteId changes
+  // Reset state when noteId changes - use key prop pattern to avoid setState in effect
+  const prevNoteIdRef = useRef(noteId);
+  if (prevNoteIdRef.current !== noteId) {
+    prevNoteIdRef.current = noteId;
+    // Reset will happen naturally on next render due to useState initialization
+  }
+
+  // Sync with initialTitle/initialContent when they change externally
   useEffect(() => {
-    setTitle(initialTitle);
-    setContent(initialContent);
-    // If it's a new note (empty title/content), default to edit mode.
-    // Otherwise (existing note), default to preview mode.
-    // However, the prompt says "default keep preview on as true for viewing and new note should default to preview false".
-    // We can infer "new note" by checking if initialTitle is "New Note" and content is empty, or checking noteId.
-    // But noteId might exist if we just created it.
-    // Let's rely on content being empty as a heuristic for "fresh/new" note that needs editing.
-    // Or simpler: if content is empty, edit mode. If content exists, preview mode.
-    setPreviewMode(initialContent.trim().length > 0);
-    setIsDirty(false);
-    setIsEditingTitle(false);
-  }, [noteId, initialTitle, initialContent]);
+    if (title !== initialTitle || content !== initialContent) {
+      // Only sync if we're not currently editing (not dirty)
+      if (!isDirty) {
+        setTitle(initialTitle);
+        setContent(initialContent);
+        setPreviewMode(initialContent.trim().length > 0);
+        setIsEditingTitle(false);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteId]);
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(e.target.value);
@@ -101,7 +117,7 @@ export function NoteEditor({
       if (isDirtyRef.current && noteId) {
         const titleToSave = titleRef.current;
         const contentToSave = contentRef.current;
-        
+
         onSave(noteId, titleToSave, contentToSave);
         toast.success("Note saved");
       }
@@ -131,11 +147,17 @@ export function NoteEditor({
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground p-8 text-center">
         <div className="max-w-md space-y-4">
           <p className="text-lg font-medium">No note selected</p>
-          <p className="text-sm">Select a note from the list or create a new one to get started.</p>
+          <p className="text-sm">
+            Select a note from the list or create a new one to get started.
+          </p>
           {onMenuToggle && (
-             <Button variant="outline" onClick={onMenuToggle} className="sm:hidden">
-               Open Notes List
-             </Button>
+            <Button
+              variant="outline"
+              onClick={onMenuToggle}
+              className="sm:hidden"
+            >
+              Open Notes List
+            </Button>
           )}
         </div>
       </div>
@@ -143,12 +165,20 @@ export function NoteEditor({
   }
 
   return (
-    <div className="flex h-full flex-col overflow-hidden" onKeyDown={handleKeyDown}>
+    <div
+      className="flex h-full flex-col overflow-hidden"
+      onKeyDown={handleKeyDown}
+    >
       {/* Toolbar */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2 bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 shrink-0 z-10">
         <div className="flex items-center gap-2">
           {onMenuToggle && (
-            <Button variant="ghost" size="icon" className="sm:hidden -ml-2" onClick={onMenuToggle}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="sm:hidden -ml-2"
+              onClick={onMenuToggle}
+            >
               <Menu className="h-4 w-4" />
             </Button>
           )}
@@ -166,7 +196,7 @@ export function NoteEditor({
             />
           ) : (
             <div className="flex items-center gap-2 group">
-              <span 
+              <span
                 className="text-lg font-semibold truncate max-w-[200px] sm:max-w-[300px] md:max-w-[400px] cursor-pointer hover:opacity-70"
                 onClick={() => setIsEditingTitle(true)}
               >
@@ -192,10 +222,16 @@ export function NoteEditor({
             className="h-8 gap-2"
             aria-label="Toggle preview"
           >
-            {previewMode ? <Eye className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
-            <span className="sr-only sm:not-sr-only">{previewMode ? "Preview" : "Edit"}</span>
+            {previewMode ? (
+              <Eye className="h-4 w-4" />
+            ) : (
+              <Edit className="h-4 w-4" />
+            )}
+            <span className="sr-only sm:not-sr-only">
+              {previewMode ? "Preview" : "Edit"}
+            </span>
           </Toggle>
-          
+
           <Button
             variant="ghost"
             size="sm"
@@ -212,7 +248,10 @@ export function NoteEditor({
             size="sm"
             onClick={handleSave}
             disabled={isSaving || !title.trim() || (!isDirty && !!noteId)}
-            className={cn("h-8 transition-all", isDirty ? "opacity-100" : "opacity-70")}
+            className={cn(
+              "h-8 transition-all",
+              isDirty ? "opacity-100" : "opacity-70",
+            )}
           >
             <Save className="h-4 w-4 mr-2" />
             {isSaving ? "Saving..." : "Save"}

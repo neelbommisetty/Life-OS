@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProjectBadge } from "@/components/projects/project-badge";
-import type { Task, Project, TaskStatus, Priority } from "@prisma/client";
+import type { Task, Project, Priority } from "@prisma/client";
 
 export type TaskWithProject = Task & { project: Project | null };
 
@@ -16,12 +16,6 @@ interface TaskCardProps {
   onEdit: (task: TaskWithProject) => void;
   onDelete: (task: TaskWithProject) => void;
 }
-
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  TODO: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-100",
-  IN_PROGRESS: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-100",
-  DONE: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-100",
-};
 
 const PRIORITY_COLORS: Record<Priority, string> = {
   LOW: "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-100",

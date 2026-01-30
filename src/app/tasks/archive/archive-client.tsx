@@ -5,21 +5,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search, Trash2 } from "lucide-react";
+import { ArrowLeft, Search } from "lucide-react";
 import { listArchivedTasks } from "@/lib/tasks/actions";
 import { type TaskWithProject } from "../task-card";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 // We might need a separate permanent delete action or reuse the soft delete (which would just update timestamp if we wanted)
 // But typically "archive" implies soft deleted.
 // For now let's just display them.

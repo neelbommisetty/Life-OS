@@ -125,7 +125,6 @@ export function ChatClient({ projectId }: { projectId?: string }) {
     handleStopStreaming,
     handleRegenerate,
   } = useChatStreaming({
-    pageSize,
     messages,
     onInvalidate: handleInvalidate,
   });

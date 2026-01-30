@@ -49,7 +49,7 @@ export function ChatEmptyState({ onSelectPrompt }: Props) {
           Welcome to AI Chat
         </h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          I'm here to help you brainstorm ideas, answer questions, learn new things,
+          I&apos;m here to help you brainstorm ideas, answer questions, learn new things,
           or just have a creative conversation. What would you like to explore?
         </p>
       </div>

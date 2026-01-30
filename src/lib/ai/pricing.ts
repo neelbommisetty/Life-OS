@@ -22,7 +22,7 @@ type ProviderPricing = Readonly<{
   effectiveAt?: string;
 }>;
 
-const readProviderPrice = (_modelKey?: string | null): ProviderPricing | undefined => {
+const readProviderPrice = (): ProviderPricing | undefined => {
   return undefined;
 };
 
@@ -36,7 +36,7 @@ const findMetadata = (modelKey?: string | null): ModelMetadata | undefined => {
 export const getModelPriceSnapshot = (params: {
   modelKey?: string | null;
 }): ModelPriceSnapshot => {
-  const providerPrice = readProviderPrice(params.modelKey ?? null);
+  const providerPrice = readProviderPrice();
   const providerId = params.modelKey?.split('.')[0] ?? null;
 
   if (providerPrice) {

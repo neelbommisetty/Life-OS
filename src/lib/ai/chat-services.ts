@@ -11,7 +11,6 @@ import {
   ModelKeyName,
   registerDefaultOpenAIModels,
   registerDefaultAnthropicModels,
-  registerDefaultGeminiModels,
   registerDefaultXAIModels,
   modelRegistry,
 } from "@/lib/ai";

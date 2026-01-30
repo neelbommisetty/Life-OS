@@ -9,11 +9,10 @@ interface ProjectDetailPageProps {
 export default async function ProjectDetailPage({ params }: ProjectDetailPageProps) {
   const { id } = await params;
 
-  try {
-    const project = await getProjectWithItems({ id });
-    return <ProjectDetailClient project={project} />;
-  } catch (error) {
+  const project = await getProjectWithItems({ id }).catch((error) => {
     console.error("Failed to load project:", error);
     notFound();
-  }
+  });
+
+  return <ProjectDetailClient project={project} />;
 }

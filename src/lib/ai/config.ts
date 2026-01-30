@@ -12,7 +12,6 @@
 import {
   setOpenAIDefaults,
   setAnthropicDefaults,
-  setGeminiDefaults,
   setXAIDefaults,
 } from "./providers/config";
 

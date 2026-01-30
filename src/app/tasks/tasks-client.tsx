@@ -39,7 +39,7 @@ import {
   updateTask,
   deleteTask,
 } from "@/lib/tasks/actions";
-import type { Task, TaskStatus, Priority, Project } from "@prisma/client";
+import type { TaskStatus, Priority } from "@prisma/client";
 import { KanbanColumn } from "./kanban-column";
 import { type TaskWithProject } from "./task-card";
 
@@ -69,28 +69,50 @@ function formatDate(date: Date | null | undefined): string {
 
 export function TasksClient({ projectId }: { projectId?: string }) {
   const [tasks, setTasks] = useState<TaskWithProject[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(createEmptyDraft());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [taskToDelete, setTaskToDelete] = useState<TaskWithProject | null>(null);
+  const [taskToDelete, setTaskToDelete] = useState<TaskWithProject | null>(
+    null,
+  );
   const [isCreating, startCreateTransition] = useTransition();
   const [isUpdating, startUpdateTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
-  const [mounted, setMounted] = useState(false);
 
   const isEdit = !!draft.id;
 
+  // Load tasks - inline to avoid setState-in-effect lint error
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    let cancelled = false;
+    
+    async function fetchTasks() {
+      try {
+        // The backend now handles auto-archiving of tasks older than 7 days
+        const result = await listTasks({
+          search: search || undefined,
+          projectId,
+        });
+        if (!cancelled) {
+          setTasks(result);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error("Failed to load tasks:", error);
+        }
+      }
+    }
 
-  // Load tasks
+    void fetchTasks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [search, projectId]);
+
+  // Exposed loadTasks for manual refresh
   const loadTasks = useCallback(async () => {
-    setIsLoading(true);
     try {
-      // The backend now handles auto-archiving of tasks older than 7 days
       const result = await listTasks({
         search: search || undefined,
         projectId,
@@ -98,14 +120,8 @@ export function TasksClient({ projectId }: { projectId?: string }) {
       setTasks(result);
     } catch (error) {
       console.error("Failed to load tasks:", error);
-    } finally {
-      setIsLoading(false);
     }
   }, [search, projectId]);
-
-  useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
 
   // Handlers
   const handleCreate = () => {
@@ -188,15 +204,13 @@ export function TasksClient({ projectId }: { projectId?: string }) {
   const handleDropTask = async (taskId: string, newStatus: TaskStatus) => {
     // Optimistic update
     setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId ? { ...t, status: newStatus } : t
-      )
+      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)),
     );
 
     try {
       await updateTask({ id: taskId, status: newStatus });
       // Reload to ensure consistency (e.g. updatedAt changes)
-      // await loadTasks(); 
+      // await loadTasks();
       // Actually, reloading might be jarring. We can stick with optimistic update if success.
     } catch (error) {
       console.error("Failed to move task:", error);
@@ -204,8 +218,6 @@ export function TasksClient({ projectId }: { projectId?: string }) {
       loadTasks();
     }
   };
-
-  if (!mounted) return null;
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -374,8 +386,8 @@ export function TasksClient({ projectId }: { projectId?: string }) {
                   {isCreating || isUpdating
                     ? "Saving..."
                     : isEdit
-                    ? "Save Changes"
-                    : "Create Task"}
+                      ? "Save Changes"
+                      : "Create Task"}
                 </Button>
               </SheetFooter>
             </form>
@@ -388,7 +400,7 @@ export function TasksClient({ projectId }: { projectId?: string }) {
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Task</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{taskToDelete?.title}"? This
+                Are you sure you want to delete &quot;{taskToDelete?.title}&quot;? This
                 action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>

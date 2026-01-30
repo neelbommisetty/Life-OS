@@ -28,7 +28,6 @@ export function MessageBubble({
   isPending,
 }: MessageBubbleProps) {
   const isUser = message.role === "USER";
-  const isAssistant = message.role === "ASSISTANT";
   const isSystem = message.role === "SYSTEM";
 
   const effectiveModelLabel = message.modelLabel ?? modelLabel ?? null;

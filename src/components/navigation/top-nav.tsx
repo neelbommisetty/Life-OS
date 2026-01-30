@@ -1,6 +1,6 @@
 "use client";
 
-import { Search, LayoutGrid } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ModeToggle } from "@/components/mode-toggle";
 
