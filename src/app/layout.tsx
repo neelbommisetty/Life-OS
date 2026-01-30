@@ -50,7 +50,9 @@ export default function RootLayout({
               <SideNav />
               <div className="flex flex-1 flex-col pl-[64px]">
                 <TopNav />
-                <main className="h-dvh overflow-hidden">{children}</main>
+                <main className="h-[calc(100dvh-4rem)] overflow-hidden">
+                  {children}
+                </main>
               </div>
             </div>
           </NeonAuthUIProvider>
