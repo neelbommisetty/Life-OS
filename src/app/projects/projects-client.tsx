@@ -56,8 +56,8 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
   };
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl">
-      <div className="flex items-center justify-between mb-8">
+    <div className="flex h-full w-full flex-col p-6">
+      <div className="flex shrink-0 items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold">Projects</h1>
           <p className="text-muted-foreground mt-1">
@@ -132,18 +132,22 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
       </div>
 
       {projects.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-muted-foreground mb-4">No projects yet</p>
-          <Button onClick={() => setIsCreateOpen(true)}>
-            <PlusIcon className="h-4 w-4 mr-2" />
-            Create your first project
-          </Button>
+        <div className="flex flex-1 items-center justify-center">
+          <div className="text-center py-12">
+            <p className="text-muted-foreground mb-4">No projects yet</p>
+            <Button onClick={() => setIsCreateOpen(true)}>
+              <PlusIcon className="h-4 w-4 mr-2" />
+              Create your first project
+            </Button>
+          </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
-          ))}
+        <div className="min-h-0 flex-1 overflow-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.map((project) => (
+              <ProjectCard key={project.id} project={project} />
+            ))}
+          </div>
         </div>
       )}
     </div>

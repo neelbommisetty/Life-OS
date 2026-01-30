@@ -20,7 +20,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  ArrowLeftIcon,
   SettingsIcon,
   Bot,
   Info,
@@ -28,6 +27,14 @@ import {
   CheckSquareIcon,
   FileTextIcon,
 } from "lucide-react";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { updateProject, type UpdateProjectInput } from "@/lib/projects";
 import type { Project, ChatThread, Task, Note } from "@prisma/client";
@@ -78,15 +85,22 @@ export function ProjectDetailClient({
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)]">
-      <div className="container mx-auto p-6 max-w-7xl flex-none">
+    <div className="flex h-full flex-col">
+      <div className="w-full p-6 flex-none">
         <div className="mb-6">
-          <Link href="/projects">
-            <Button variant="ghost" size="sm" className="mb-4">
-              <ArrowLeftIcon className="h-4 w-4 mr-2" />
-              Back to Projects
-            </Button>
-          </Link>
+          <Breadcrumb className="mb-4">
+            <BreadcrumbList>
+              <BreadcrumbItem>
+                <BreadcrumbLink asChild>
+                  <Link href="/projects">Projects</Link>
+                </BreadcrumbLink>
+              </BreadcrumbItem>
+              <BreadcrumbSeparator />
+              <BreadcrumbItem>
+                <BreadcrumbPage>{project.name}</BreadcrumbPage>
+              </BreadcrumbItem>
+            </BreadcrumbList>
+          </Breadcrumb>
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <h1 className="text-3xl font-bold">{project.name}</h1>
@@ -173,9 +187,9 @@ export function ProjectDetailClient({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 container mx-auto px-6 max-w-7xl">
-        <Tabs defaultValue="overview">
-          <TabsList variant="line">
+      <div className="flex min-h-0 w-full flex-1 flex-col px-6">
+        <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+          <TabsList variant="line" className="shrink-0">
             <TabsTrigger value="overview" className="gap-2">
               <Info className="h-4 w-4" />
               Overview
@@ -194,7 +208,7 @@ export function ProjectDetailClient({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="flex-1 overflow-auto">
+          <TabsContent value="overview" className="min-h-0 flex-1 overflow-auto">
             <div className="grid gap-6">
               <Card>
                 <CardHeader>
@@ -238,18 +252,18 @@ export function ProjectDetailClient({
 
           <TabsContent
             value="chat"
-            className="flex-1 min-h-0 border rounded-lg overflow-hidden"
+            className="min-h-0 flex-1 border rounded-lg overflow-hidden"
           >
             <ChatClient projectId={project.id} />
           </TabsContent>
 
-          <TabsContent value="tasks" className="flex-1 min-h-0 overflow-hidden">
+          <TabsContent value="tasks" className="min-h-0 flex-1 overflow-hidden">
             <TasksClient projectId={project.id} />
           </TabsContent>
 
           <TabsContent
             value="notes"
-            className="flex-1 min-h-0 border rounded-lg overflow-hidden"
+            className="min-h-0 flex-1 border rounded-lg overflow-hidden"
           >
             <NotesClient projectId={project.id} />
           </TabsContent>
