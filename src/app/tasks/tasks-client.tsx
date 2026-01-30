@@ -1,11 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState, useTransition } from "react";
-import { cn } from "@/lib/utils";
+import { DndProvider } from "react-dnd";
+import { HTML5Backend } from "react-dnd-html5-backend";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -31,8 +31,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Card, CardContent } from "@/components/ui/card";
-import { Plus, Search, Trash2, Edit, Calendar } from "lucide-react";
+import { Plus, Search, Archive } from "lucide-react";
+import Link from "next/link";
 import {
   listTasks,
   createTask,
@@ -40,31 +40,8 @@ import {
   deleteTask,
 } from "@/lib/tasks/actions";
 import type { Task, TaskStatus, Priority, Project } from "@prisma/client";
-import { ProjectBadge } from "@/components/projects/project-badge";
-
-const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  TODO: "To Do",
-  IN_PROGRESS: "In Progress",
-  DONE: "Done",
-};
-
-const PRIORITY_LABELS: Record<Priority, string> = {
-  LOW: "Low",
-  MEDIUM: "Medium",
-  HIGH: "High",
-};
-
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  TODO: "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-100",
-  IN_PROGRESS: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-100",
-  DONE: "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-100",
-};
-
-const PRIORITY_COLORS: Record<Priority, string> = {
-  LOW: "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-100",
-  MEDIUM: "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-100",
-  HIGH: "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-100",
-};
+import { KanbanColumn } from "./kanban-column";
+import { type TaskWithProject } from "./task-card";
 
 type TaskDraft = {
   id?: string;
@@ -90,22 +67,10 @@ function formatDate(date: Date | null | undefined): string {
   return new Date(date).toISOString().split("T")[0];
 }
 
-function formatDateDisplay(date: Date | null | undefined): string {
-  if (!date) return "";
-  return new Date(date).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-type TaskWithProject = Task & { project: Project | null };
-
 export function TasksClient() {
   const [tasks, setTasks] = useState<TaskWithProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<TaskStatus | "ALL">("ALL");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(createEmptyDraft());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -113,16 +78,21 @@ export function TasksClient() {
   const [isCreating, startCreateTransition] = useTransition();
   const [isUpdating, startUpdateTransition] = useTransition();
   const [isDeleting, startDeleteTransition] = useTransition();
+  const [mounted, setMounted] = useState(false);
 
   const isEdit = !!draft.id;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load tasks
   const loadTasks = useCallback(async () => {
     setIsLoading(true);
     try {
+      // The backend now handles auto-archiving of tasks older than 7 days
       const result = await listTasks({
         search: search || undefined,
-        status: statusFilter !== "ALL" ? statusFilter : undefined,
       });
       setTasks(result);
     } catch (error) {
@@ -130,7 +100,7 @@ export function TasksClient() {
     } finally {
       setIsLoading(false);
     }
-  }, [search, statusFilter]);
+  }, [search]);
 
   useEffect(() => {
     loadTasks();
@@ -213,276 +183,226 @@ export function TasksClient() {
     });
   };
 
-  const filteredTasks = tasks;
+  const handleDropTask = async (taskId: string, newStatus: TaskStatus) => {
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === taskId ? { ...t, status: newStatus } : t
+      )
+    );
+
+    try {
+      await updateTask({ id: taskId, status: newStatus });
+      // Reload to ensure consistency (e.g. updatedAt changes)
+      // await loadTasks(); 
+      // Actually, reloading might be jarring. We can stick with optimistic update if success.
+    } catch (error) {
+      console.error("Failed to move task:", error);
+      // Revert on failure
+      loadTasks();
+    }
+  };
+
+  if (!mounted) return null;
 
   return (
-    <div className="container mx-auto max-w-6xl p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your tasks and stay organized
-          </p>
+    <DndProvider backend={HTML5Backend}>
+      <div className="container mx-auto max-w-7xl p-6 space-y-6">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
+            <p className="text-muted-foreground mt-1">
+              Manage your tasks with the Kanban board
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search..."
+                className="pl-9 w-[200px]"
+              />
+            </div>
+            <Button variant="outline" asChild>
+              <Link href="/tasks/archive">
+                <Archive className="h-4 w-4 mr-2" />
+                Archive
+              </Link>
+            </Button>
+            <Button onClick={handleCreate}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Task
+            </Button>
+          </div>
         </div>
-        <Button onClick={handleCreate} className="w-full sm:w-auto">
-          <Plus className="h-4 w-4 mr-2" />
-          New Task
-        </Button>
-      </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search tasks..."
-            className="pl-9"
+        {/* Kanban Board */}
+        <div className="flex flex-col md:flex-row gap-6 overflow-x-auto pb-4">
+          <KanbanColumn
+            title="To Do"
+            status="TODO"
+            tasks={tasks.filter((t) => t.status === "TODO")}
+            onDropTask={handleDropTask}
+            onEditTask={handleEdit}
+            onDeleteTask={handleDeleteClick}
+          />
+          <KanbanColumn
+            title="In Progress"
+            status="IN_PROGRESS"
+            tasks={tasks.filter((t) => t.status === "IN_PROGRESS")}
+            onDropTask={handleDropTask}
+            onEditTask={handleEdit}
+            onDeleteTask={handleDeleteClick}
+          />
+          <KanbanColumn
+            title="Done"
+            status="DONE"
+            tasks={tasks.filter((t) => t.status === "DONE")}
+            onDropTask={handleDropTask}
+            onEditTask={handleEdit}
+            onDeleteTask={handleDeleteClick}
           />
         </div>
-        <Select
-          value={statusFilter}
-          onValueChange={(value) =>
-            setStatusFilter(value as TaskStatus | "ALL")
-          }
-        >
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Filter by status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Status</SelectItem>
-            <SelectItem value="TODO">To Do</SelectItem>
-            <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-            <SelectItem value="DONE">Done</SelectItem>
-          </SelectContent>
-        </Select>
+
+        {/* Create/Edit Sheet */}
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+          <SheetContent className="w-full sm:max-w-md">
+            <form onSubmit={handleSave} className="flex flex-col h-full">
+              <SheetHeader>
+                <SheetTitle>{isEdit ? "Edit Task" : "Create Task"}</SheetTitle>
+                <SheetDescription>
+                  {isEdit
+                    ? "Update task details below"
+                    : "Fill in the details to create a new task"}
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="flex-1 space-y-4 py-6 overflow-y-auto">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Title *</label>
+                  <Input
+                    value={draft.title}
+                    onChange={(e) =>
+                      setDraft({ ...draft, title: e.target.value })
+                    }
+                    placeholder="Task title"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Description</label>
+                  <Textarea
+                    value={draft.description}
+                    onChange={(e) =>
+                      setDraft({ ...draft, description: e.target.value })
+                    }
+                    placeholder="Task description"
+                    rows={4}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Status</label>
+                    <Select
+                      value={draft.status}
+                      onValueChange={(value) =>
+                        setDraft({ ...draft, status: value as TaskStatus })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="TODO">To Do</SelectItem>
+                        <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
+                        <SelectItem value="DONE">Done</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Priority</label>
+                    <Select
+                      value={draft.priority}
+                      onValueChange={(value) =>
+                        setDraft({ ...draft, priority: value as Priority })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="LOW">Low</SelectItem>
+                        <SelectItem value="MEDIUM">Medium</SelectItem>
+                        <SelectItem value="HIGH">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Due Date</label>
+                  <Input
+                    type="date"
+                    value={draft.dueDate}
+                    onChange={(e) =>
+                      setDraft({ ...draft, dueDate: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <SheetFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setSheetOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isCreating || isUpdating || !draft.title.trim()}
+                >
+                  {isCreating || isUpdating
+                    ? "Saving..."
+                    : isEdit
+                    ? "Save Changes"
+                    : "Create Task"}
+                </Button>
+              </SheetFooter>
+            </form>
+          </SheetContent>
+        </Sheet>
+
+        {/* Delete Dialog */}
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Task</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete "{taskToDelete?.title}"? This
+                action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isDeleting ? "Deleting..." : "Delete"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
-
-      {/* Tasks List */}
-      {isLoading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-4">
-                <div className="h-4 bg-muted rounded w-3/4 mb-2" />
-                <div className="h-3 bg-muted rounded w-1/2" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : filteredTasks.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <p className="text-muted-foreground">
-              {search || statusFilter !== "ALL"
-                ? "No tasks match your filters"
-                : "No tasks yet. Create your first task to get started!"}
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {filteredTasks.map((task) => (
-            <Card key={task.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-lg">{task.title}</h3>
-                      <Badge
-                        className={cn("text-xs", STATUS_COLORS[task.status])}
-                      >
-                        {TASK_STATUS_LABELS[task.status]}
-                      </Badge>
-                      <Badge
-                        className={cn("text-xs", PRIORITY_COLORS[task.priority])}
-                      >
-                        {PRIORITY_LABELS[task.priority]}
-                      </Badge>
-                      {task.project && (
-                        <ProjectBadge
-                          projectId={task.project.id}
-                          projectName={task.project.name}
-                        />
-                      )}
-                    </div>
-                    {task.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">
-                        {task.description}
-                      </p>
-                    )}
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      {task.dueDate && (
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>{formatDateDisplay(task.dueDate)}</span>
-                        </div>
-                      )}
-                      <span>
-                        Updated {new Date(task.updatedAt).toLocaleDateString()}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEdit(task)}
-                    >
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDeleteClick(task)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Create/Edit Sheet */}
-      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent className="w-full sm:max-w-md">
-          <form onSubmit={handleSave} className="flex flex-col h-full">
-            <SheetHeader>
-              <SheetTitle>{isEdit ? "Edit Task" : "Create Task"}</SheetTitle>
-              <SheetDescription>
-                {isEdit
-                  ? "Update task details below"
-                  : "Fill in the details to create a new task"}
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="flex-1 space-y-4 py-6 overflow-y-auto">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Title *</label>
-                <Input
-                  value={draft.title}
-                  onChange={(e) =>
-                    setDraft({ ...draft, title: e.target.value })
-                  }
-                  placeholder="Task title"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Description</label>
-                <Textarea
-                  value={draft.description}
-                  onChange={(e) =>
-                    setDraft({ ...draft, description: e.target.value })
-                  }
-                  placeholder="Task description"
-                  rows={4}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Status</label>
-                  <Select
-                    value={draft.status}
-                    onValueChange={(value) =>
-                      setDraft({ ...draft, status: value as TaskStatus })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TODO">To Do</SelectItem>
-                      <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                      <SelectItem value="DONE">Done</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Priority</label>
-                  <Select
-                    value={draft.priority}
-                    onValueChange={(value) =>
-                      setDraft({ ...draft, priority: value as Priority })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="LOW">Low</SelectItem>
-                      <SelectItem value="MEDIUM">Medium</SelectItem>
-                      <SelectItem value="HIGH">High</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Due Date</label>
-                <Input
-                  type="date"
-                  value={draft.dueDate}
-                  onChange={(e) =>
-                    setDraft({ ...draft, dueDate: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            <SheetFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSheetOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="submit"
-                disabled={isCreating || isUpdating || !draft.title.trim()}
-              >
-                {isCreating || isUpdating
-                  ? "Saving..."
-                  : isEdit
-                  ? "Save Changes"
-                  : "Create Task"}
-              </Button>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </Sheet>
-
-      {/* Delete Dialog */}
-      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Task</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete "{taskToDelete?.title}"? This
-              action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteConfirm}
-              disabled={isDeleting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeleting ? "Deleting..." : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+    </DndProvider>
   );
 }

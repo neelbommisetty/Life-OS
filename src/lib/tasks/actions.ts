@@ -88,6 +88,24 @@ export async function listTasks(input?: ListTasksInput) {
       : {}),
   };
 
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  // Auto-archive done tasks older than 7 days
+  await prisma.task.updateMany({
+    where: {
+      userId,
+      status: "DONE",
+      deletedAt: null,
+      updatedAt: {
+        lt: sevenDaysAgo,
+      },
+    },
+    data: {
+      deletedAt: now,
+    },
+  });
+
   const tasks = await prisma.task.findMany({
     where,
     orderBy: TASK_ORDER,
@@ -241,4 +259,46 @@ export async function deleteTask(input: DeleteTaskInput) {
   });
 
   return { success: true };
+}
+
+/**
+ * List archived tasks (soft-deleted)
+ */
+export async function listArchivedTasks() {
+  const userId = await getCurrentUserId();
+  
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+  // Ensure auto-archived tasks are updated before listing
+  await prisma.task.updateMany({
+    where: {
+      userId,
+      status: "DONE",
+      deletedAt: null,
+      updatedAt: {
+        lt: sevenDaysAgo,
+      },
+    },
+    data: {
+      deletedAt: now,
+    },
+  });
+
+  const tasks = await prisma.task.findMany({
+    where: {
+      userId,
+      deletedAt: {
+        not: null,
+      },
+    },
+    orderBy: {
+      deletedAt: "desc",
+    },
+    include: {
+      project: true,
+    },
+  });
+
+  return tasks;
 }
