@@ -36,10 +36,7 @@ type Props = {
 };
 
 type NotesHeaderProps = {
-  value: string | null;
-  onDelete: () => void;
   onCreate: () => void;
-  isDeleting?: boolean;
   isCreating?: boolean;
 };
 

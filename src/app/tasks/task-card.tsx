@@ -49,13 +49,13 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
 
   return (
     <div
-      ref={drag}
+      ref={drag as unknown as React.Ref<HTMLDivElement>}
       className={cn(
         "touch-none",
         isDragging ? "opacity-50" : "opacity-100"
       )}
     >
-      <Card 
+      <Card
         className={cn(
           "mb-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden border-l-4",
           task.status === "TODO" && "border-l-blue-500",
