@@ -34,7 +34,7 @@ export function initializeChatServices(): void {
   try {
     registerDefaultOpenAIModels();
     registerDefaultAnthropicModels();
-    registerDefaultGeminiModels();
+    // registerDefaultGeminiModels(); // Google models disabled
     registerDefaultXAIModels();
 
     logger.info("Registered AI models", {
@@ -42,13 +42,12 @@ export function initializeChatServices(): void {
     });
 
     // Register project_chat service route
-    // Uses failover strategy: try GPT-5-mini first, then Claude Haiku 4.5, then Gemini 2.5 Flash
+    // Uses failover strategy: try GPT-5-mini first, then Claude Haiku 4.5 (Gemini disabled)
     registerServiceRoute("project_chat", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
         ModelKeyName.OpenAIGpt5Mini,
         ModelKeyName.AnthropicClaudeHaiku45,
-        ModelKeyName.GoogleGemini25Flash,
       ],
       retry: { retries: 2, delayMs: 500 },
       logging: {},
@@ -57,12 +56,11 @@ export function initializeChatServices(): void {
     logger.info("Registered project_chat service route");
 
     // Register project_chat_summary service route
-    // Uses economy models for summarization (cheaper, faster)
+    // Uses economy models for summarization (cheaper, faster; Gemini disabled)
     registerServiceRoute("project_chat_summary", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
         ModelKeyName.OpenAIGpt5Nano,
-        ModelKeyName.GoogleGemini25Flash,
         ModelKeyName.AnthropicClaudeHaiku45,
       ],
       retry: { retries: 2, delayMs: 500 },

@@ -76,10 +76,10 @@ export function initializeProviders(): void {
     setAnthropicDefaults({ apiKey: aiConfig.anthropic.apiKey });
   }
 
-  // Initialize Gemini if API key is present
-  if (aiConfig.gemini.apiKey) {
-    setGeminiDefaults({ apiKey: aiConfig.gemini.apiKey });
-  }
+  // Gemini disabled: do not initialize even if API key is present
+  // if (aiConfig.gemini.apiKey) {
+  //   setGeminiDefaults({ apiKey: aiConfig.gemini.apiKey });
+  // }
 
   // Initialize xAI if API key is present
   if (aiConfig.xai.apiKey) {

@@ -192,20 +192,39 @@ export async function archiveThread(input: ArchiveThreadInput) {
 }
 
 /**
- * Get a thread by ID (validates ownership)
+ * Get a thread by ID (validates ownership).
+ * If the thread's modelKey is no longer in the registry (e.g. disabled provider), clears it to null so autorouting is used.
  */
 export async function getThread(threadId: string) {
   const userId = await getCurrentUserId();
 
-  const thread = await prisma.chatThread.findFirst({
+  let thread = await prisma.chatThread.findFirst({
     where: {
       id: threadId,
       userId,
+    },
+    include: {
+      project: true,
     },
   });
 
   if (!thread) {
     throw new Error("Thread not found");
+  }
+
+  const hasInvalidModel =
+    thread.modelKey && !modelRegistry.has(thread.modelKey as ModelKey);
+  if (hasInvalidModel) {
+    const previousModelKey = thread.modelKey;
+    thread = await prisma.chatThread.update({
+      where: { id: thread.id },
+      data: { modelKey: null },
+      include: { project: true },
+    });
+    logger.debug("Cleared invalid thread modelKey (not in registry)", {
+      threadId: thread.id,
+      previousModelKey,
+    });
   }
 
   return thread;
