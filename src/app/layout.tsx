@@ -5,6 +5,7 @@ import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { SideNav } from "@/components/navigation/side-nav";
 import { TopNav } from "@/components/navigation/top-nav";
 import { ThemeProvider } from "@/components/theme-provider";
+import { Toaster } from "@/components/ui/sonner";
 import "@fontsource/fira-code";
 import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -55,6 +56,7 @@ export default function RootLayout({
                 </main>
               </div>
             </div>
+            <Toaster />
           </NeonAuthUIProvider>
         </ThemeProvider>
       </body>
