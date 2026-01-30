@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import type { ChatMessage } from "@prisma/client";
 import { RotateCcwIcon, SparklesIcon } from "lucide-react";
-import { cn, formatRelativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChatMarkdown } from "./chat-markdown";
