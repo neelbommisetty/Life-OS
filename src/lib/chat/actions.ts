@@ -34,7 +34,7 @@ const THREAD_ORDER: Prisma.ChatThreadOrderByWithRelationInput[] = [
  */
 async function getUniqueThreadName(
   userId: string,
-  baseName: string
+  baseName: string,
 ): Promise<string> {
   const existingThreads = await prisma.chatThread.findMany({
     where: { userId },
@@ -247,7 +247,9 @@ export async function setThreadModel(input: SetThreadModelInput) {
 
   // Validate model key if provided
   if (parsed.modelKey) {
-    const modelMetadata = modelRegistry.getMetadata(parsed.modelKey as ModelKey);
+    const modelMetadata = modelRegistry.getMetadata(
+      parsed.modelKey as ModelKey,
+    );
 
     if (!modelMetadata || !modelMetadata.modes.includes("text")) {
       logger.warn("Invalid chat model selection", {
@@ -319,7 +321,9 @@ export async function listMessages(input: ListMessagesInput) {
   const take = limit + 1;
   const where: {
     threadId: string;
-    OR?: Array<{ createdAt: { lt: Date } } | { createdAt: Date; id: { lt: string } }>;
+    OR?: Array<
+      { createdAt: { lt: Date } } | { createdAt: Date; id: { lt: string } }
+    >;
   } = { threadId: thread.id };
 
   if (parsed.cursor) {
