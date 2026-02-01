@@ -2,6 +2,12 @@ import { authServer } from "@/lib/auth/server";
 import { RecentProjects } from "@/components/home/recent-projects";
 import { UpcomingTasks } from "@/components/home/upcoming-tasks";
 import { RecentNotes } from "@/components/home/recent-notes";
+import { Suspense } from "react";
+import {
+  RecentProjectsSkeleton,
+  UpcomingTasksSkeleton,
+  RecentNotesSkeleton
+} from "@/components/home/home-skeletons";
 
 export default async function Page() {
   const { data: session } = await authServer.getSession();
@@ -40,11 +46,17 @@ export default async function Page() {
           </div>
         </header>
 
-        <RecentProjects />
+        <Suspense fallback={<RecentProjectsSkeleton />}>
+          <RecentProjects />
+        </Suspense>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <UpcomingTasks />
-          <RecentNotes />
+          <Suspense fallback={<UpcomingTasksSkeleton />}>
+            <UpcomingTasks />
+          </Suspense>
+          <Suspense fallback={<RecentNotesSkeleton />}>
+            <RecentNotes />
+          </Suspense>
         </div>
       </div>
     </div>

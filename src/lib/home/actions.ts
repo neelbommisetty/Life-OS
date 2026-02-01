@@ -3,18 +3,19 @@
 import { prisma } from "@/lib/db";
 import { authServer } from "@/lib/auth/server";
 import { addDays } from "date-fns";
+import { cache } from "react";
 
-async function getCurrentUserId(): Promise<string> {
+const getCurrentUserId = cache(async (): Promise<string> => {
   const { data: session } = await authServer.getSession();
   if (!session?.user?.id) {
     throw new Error("Unauthorized");
   }
   return session.user.id;
-}
+});
 
 export async function getRecentProjects() {
   const userId = await getCurrentUserId();
-  
+
   return prisma.project.findMany({
     where: {
       userId,
