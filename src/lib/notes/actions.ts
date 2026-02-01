@@ -17,6 +17,8 @@ import {
   type GetNoteByIdInput,
 } from "./validations";
 
+import { cache } from "react";
+
 const logger = createLogger("notes:actions");
 
 const NOTE_ORDER: Prisma.NoteOrderByWithRelationInput[] = [
@@ -26,7 +28,7 @@ const NOTE_ORDER: Prisma.NoteOrderByWithRelationInput[] = [
 /**
  * Get the current authenticated user ID
  */
-async function getCurrentUserId(): Promise<string> {
+const getCurrentUserId = cache(async (): Promise<string> => {
   const { data: session } = await authServer.getSession();
 
   if (!session?.user?.id) {
@@ -34,7 +36,7 @@ async function getCurrentUserId(): Promise<string> {
   }
 
   return session.user.id;
-}
+});
 
 /**
  * List notes for the current user

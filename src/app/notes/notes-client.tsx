@@ -31,13 +31,19 @@ import { FileText } from "lucide-react";
 
 type NoteWithProject = Note & { project: Project | null };
 
-export function NotesClient({ projectId }: { projectId?: string }) {
+export function NotesClient({
+  projectId,
+  initialNotes = []
+}: {
+  projectId?: string;
+  initialNotes?: NoteWithProject[];
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const noteIdParam = searchParams.get("noteId");
 
-  const [notes, setNotes] = useState<NoteWithProject[]>([]);
+  const [notes, setNotes] = useState<NoteWithProject[]>(initialNotes);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [noteToDelete, setNoteToDelete] = useState<string | null>(null);
@@ -48,18 +54,10 @@ export function NotesClient({ projectId }: { projectId?: string }) {
 
   const [isPending, startTransition] = useTransition();
 
-  // Load notes
+  // Sync with initialNotes when server state changes (e.g. on navigation)
   useEffect(() => {
-    async function loadNotes() {
-      try {
-        const result = await listNotes({ projectId });
-        setNotes(result);
-      } catch (error) {
-        console.error("Failed to load notes:", error);
-      }
-    }
-    loadNotes();
-  }, [projectId]);
+    setNotes(initialNotes);
+  }, [initialNotes]);
 
   // Sync URL with selection
   const setNoteIdInUrl = useCallback(
