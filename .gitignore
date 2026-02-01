@@ -45,3 +45,9 @@ next-env.d.ts
 /.cursor/worktrees/*
 
 /src/generated/prisma
+
+# agent and skills data
+.agent/
+.agents/
+.cursor/skills/
+.gemini/
