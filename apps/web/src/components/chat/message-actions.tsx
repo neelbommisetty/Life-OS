@@ -36,7 +36,7 @@ export function MessageActions({
         getMessageCopyText(messageContent)
       );
       toast.success("Copied to clipboard");
-    } catch (error) {
+    } catch {
       toast.error("Failed to copy");
     }
   }, [messageContent]);

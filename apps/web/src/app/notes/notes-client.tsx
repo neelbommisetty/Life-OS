@@ -19,12 +19,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  listNotes,
-  createNote,
-  updateNote,
-  deleteNote,
-} from "@/lib/notes/actions";
+import { createNote, updateNote, deleteNote } from "@/lib/notes/actions";
 import type { Note, Project } from "@prisma/client";
 import { NoteSelector, NoteEditor } from "@/components/notes";
 import { FileText } from "lucide-react";

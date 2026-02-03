@@ -1,5 +1,3 @@
-import { Skeleton } from "@/components/ui/skeleton";
-
 export function NotesSkeleton() {
   return (
     <div className="grid h-full grid-cols-[minmax(240px,300px)_1fr] overflow-hidden">

@@ -42,6 +42,7 @@ import {
 import type { TaskStatus, Priority } from "@prisma/client";
 import { KanbanColumn } from "./kanban-column";
 import { type TaskWithProject } from "./task-card";
+import { selectDisplayedTasks } from "./tasks-utils";
 
 type TaskDraft = {
   id?: string;
@@ -88,12 +89,11 @@ export function TasksClient({
 
   const isEdit = !!draft.id;
 
-  // Sync with initialTasks when server state changes (e.g. on navigation)
-  useEffect(() => {
-    if (!search) {
-      setTasks(initialTasks);
-    }
-  }, [initialTasks, search]);
+  const displayedTasks = selectDisplayedTasks({
+    search,
+    initialTasks,
+    fetchedTasks: tasks,
+  });
 
   // Load tasks only when searching or if projectId changes
   useEffect(() => {
@@ -272,7 +272,7 @@ export function TasksClient({
           <KanbanColumn
             title="To Do"
             status="TODO"
-            tasks={tasks.filter((t) => t.status === "TODO")}
+            tasks={displayedTasks.filter((t) => t.status === "TODO")}
             onDropTask={handleDropTask}
             onEditTask={handleEdit}
             onDeleteTask={handleDeleteClick}
@@ -280,7 +280,7 @@ export function TasksClient({
           <KanbanColumn
             title="In Progress"
             status="IN_PROGRESS"
-            tasks={tasks.filter((t) => t.status === "IN_PROGRESS")}
+            tasks={displayedTasks.filter((t) => t.status === "IN_PROGRESS")}
             onDropTask={handleDropTask}
             onEditTask={handleEdit}
             onDeleteTask={handleDeleteClick}
@@ -288,7 +288,7 @@ export function TasksClient({
           <KanbanColumn
             title="Done"
             status="DONE"
-            tasks={tasks.filter((t) => t.status === "DONE")}
+            tasks={displayedTasks.filter((t) => t.status === "DONE")}
             onDropTask={handleDropTask}
             onEditTask={handleEdit}
             onDeleteTask={handleDeleteClick}
