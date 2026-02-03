@@ -12,6 +12,8 @@ type MessageBubbleProps = {
   message: ChatMessage;
   onRegenerate?: (messageId: string) => void;
   canRegenerate?: boolean;
+  onSaveAsNote?: (messageId: string) => void;
+  isSavingNote?: boolean;
   modelLabel?: string;
   modelProvider?: string | null;
   messageStatus?: "sending" | "delivered" | "failed";
@@ -22,6 +24,8 @@ export function MessageBubble({
   message,
   onRegenerate,
   canRegenerate,
+  onSaveAsNote,
+  isSavingNote,
   modelLabel,
   modelProvider,
   messageStatus,
@@ -96,6 +100,8 @@ export function MessageBubble({
     }
   }, [message.createdAt]);
 
+  const isSavedNote = Boolean(message.savedNoteId);
+
   if (isSystem) {
     return (
       <div className="flex justify-center my-2">
@@ -169,6 +175,9 @@ export function MessageBubble({
           onRegenerate={onRegenerate}
           canRegenerate={canRegenerate}
           isPending={isPending}
+          onSaveAsNote={onSaveAsNote}
+          isSavingNote={isSavingNote}
+          isSavedNote={isSavedNote}
         />
       </div>
     </div>

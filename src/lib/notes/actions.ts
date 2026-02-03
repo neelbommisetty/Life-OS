@@ -10,12 +10,15 @@ import {
   updateNoteSchema,
   deleteNoteSchema,
   getNoteByIdSchema,
+  saveMessageAsNoteSchema,
   type ListNotesInput,
   type CreateNoteInput,
   type UpdateNoteInput,
   type DeleteNoteInput,
   type GetNoteByIdInput,
+  type SaveMessageAsNoteInput,
 } from "./validations";
+import { buildNoteFromMessage } from "./note-save";
 
 import { cache } from "react";
 
@@ -157,6 +160,80 @@ export async function createNote(input?: CreateNoteInput) {
 }
 
 /**
+ * Save a chat message as a note (assistant messages only)
+ */
+export async function saveMessageAsNote(input: SaveMessageAsNoteInput) {
+  const start = Date.now();
+  const userId = await getCurrentUserId();
+  const parsed = saveMessageAsNoteSchema.parse(input);
+
+  logger.debug("Saving message as note", {
+    userId,
+    messageId: parsed.messageId,
+  });
+
+  const result = await prisma.$transaction(async (tx) => {
+    const message = await tx.chatMessage.findFirst({
+      where: { id: parsed.messageId, thread: { userId } },
+      include: { thread: { select: { projectId: true } } },
+    });
+
+    if (!message) {
+      throw new Error("Message not found");
+    }
+
+    if (message.role !== "ASSISTANT") {
+      throw new Error("Only assistant messages can be saved as notes");
+    }
+
+    const existingNote = await tx.note.findFirst({
+      where: {
+        userId,
+        deletedAt: null,
+        sourceMessageId: message.id,
+      },
+    });
+
+    if (existingNote) {
+      if (message.savedNoteId !== existingNote.id) {
+        await tx.chatMessage.update({
+          where: { id: message.id },
+          data: { savedNoteId: existingNote.id },
+        });
+      }
+
+      return { note: existingNote, alreadySaved: true };
+    }
+
+    const note = await tx.note.create({
+      data: buildNoteFromMessage({
+        userId,
+        sourceMessageId: message.id,
+        content: message.content,
+        projectId: message.thread.projectId ?? null,
+      }),
+    });
+
+    await tx.chatMessage.update({
+      where: { id: message.id },
+      data: { savedNoteId: note.id },
+    });
+
+    return { note, alreadySaved: false };
+  });
+
+  logger.info("Message saved as note", {
+    userId,
+    messageId: parsed.messageId,
+    noteId: result.note.id,
+    alreadySaved: result.alreadySaved,
+    durationMs: Date.now() - start,
+  });
+
+  return result;
+}
+
+/**
  * Update a note (validates ownership)
  */
 export async function updateNote(input: UpdateNoteInput) {
@@ -177,6 +254,9 @@ export async function updateNote(input: UpdateNoteInput) {
       id: parsed.id,
       userId,
       deletedAt: null,
+    },
+    select: {
+      id: true,
     },
   });
 
@@ -226,6 +306,10 @@ export async function deleteNote(input: DeleteNoteInput) {
       userId,
       deletedAt: null,
     },
+    select: {
+      id: true,
+      sourceMessageId: true,
+    },
   });
 
   if (!existingNote) {
@@ -236,12 +320,24 @@ export async function deleteNote(input: DeleteNoteInput) {
     throw new Error("Note not found");
   }
 
-  // Soft delete by setting deletedAt
-  const note = await prisma.note.update({
-    where: { id: parsed.id },
-    data: {
-      deletedAt: new Date(),
-    },
+  const note = await prisma.$transaction(async (tx) => {
+    const updated = await tx.note.update({
+      where: { id: parsed.id },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    await tx.chatMessage.updateMany({
+      where: {
+        savedNoteId: existingNote.id,
+      },
+      data: {
+        savedNoteId: null,
+      },
+    });
+
+    return updated;
   });
 
   logger.info("Note deleted successfully", {
