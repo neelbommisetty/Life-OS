@@ -1,266 +1,94 @@
-# iOS Companion App (Capture + Inbox) — Design Plan (v0 → v2)
-
-Date: 2026-02-03  
-Project: Life-OS  
-Scope: iOS companion focused on input flow + (later) notifications
-
-## 1) Summary
-
-Build a native iOS companion app with:
-- **One editable “canvas”** that supports typing + voice dictation
-- A **Submit → Inbox** flow where each submission becomes a **Note** in Life-OS
-- An **Inbox list** showing prior submissions from iOS
-- Per-inbox-item actions to:
-  1) Extract **tasks** from the inbox note (AI) → user approves → tasks created
-  2) Extract **knowledge notes** from the inbox note (AI) → user approves → notes created
-  3) Offer “Mark processed” as part of the approval flow
-- Once processed, the underlying inbox note is **soft-deleted after 30 days** using the same “auto-archive during list fetch” approach used for Tasks
-
-Notifications are explicitly **v1/v2**, not v0.
-
-## 2) Goals / Non-Goals
-
-### Goals
-- Fast capture with minimal friction (“open → speak/type → submit”).
-- Robust drafting UX (don’t lose text on failures).
-- Inbox is “project-adjacent”: capture first, categorize later.
-- AI extraction with user approval and idempotent outcomes.
-- Simple retention: processed inbox notes auto-archive after 30 days.
-
-### Non-Goals (v0)
-- Push notifications (APNs).
-- Background processing or background uploads.
-- Full “Projects/Tasks/Notes” management UI in iOS (beyond inbox processing).
-
-## 3) User stories
-
-### Capture
-- I can type text into a single canvas.
-- I can tap a mic icon and speak; transcribed text is appended to the **end** of the canvas.
-- I can edit any part of the canvas at any time.
-- I can submit the canvas, clearing it only when the submission succeeds.
-
-### Inbox
-- I can see past inbox items that I entered from iOS.
-- I can open an inbox item and review it.
-- I can run “Extract tasks” and “Extract notes”.
-- I can approve proposals (individual + approve all).
-- During approval I can optionally mark the inbox item processed.
-
-### Retention
-- Once an inbox item is processed, it will be archived (soft-deleted) after 30 days.
-
-## 4) iOS app UX spec (v0)
-
-### Screen A — Canvas
-- Full-screen editable text canvas (`TextEditor`).
-- Mic icon:
-  - Requests Speech + Microphone permissions as needed.
-  - Voice transcription appends to the **end** of the canvas (never inserts at cursor).
-  - If permission denied, show inline explanation + link to Settings.
-- Submit button:
-  - Creates an inbox note (server) and clears canvas on success.
-  - On failure, keep canvas text and show retry.
-
-**Append rule**
-- “Always append at end” for voice transcription.
-
-### Screen B — Inbox list
-- List of inbox items (default: open/unprocessed).
-- Each row shows title, preview snippet, created time, processed badge if applicable.
-- Tap → Inbox detail.
-
-### Screen C — Inbox detail (v0)
-- Shows note title + full content.
-- Editing allowed only while “pre-extraction” (v0 has no extraction yet; v1 will enforce locking).
-
-## 5) Backend data model (Prisma)
-
-Current core models: `Project`, `Task`, `Note`, `Chat*`, `AiCall`.
-
-### Add: InboxItem (project-adjacent)
-
-Purpose: track “this Note came from iOS inbox” + processing lifecycle while keeping the content in `Note`.
-
-Proposed fields:
-- `id: String @id @default(cuid())`
-- `userId: String`
-- `noteId: String @unique`
-- `source: String` (start with `"IOS"`)
-- `lockedAt: DateTime?` (set once extraction begins; prevents edits)
-- `processedAt: DateTime?`
-- `createdAt: DateTime @default(now())`
-- `updatedAt: DateTime @updatedAt`
-
-Relations:
-- `InboxItem.note -> Note` (1:1)
-- `Note.inboxItem -> InboxItem?`
-
-### Add: Proposal tables (v1)
-
-These make approvals idempotent and auditable.
-
-`InboxProposedTask`:
-- `id`, `inboxItemId`
-- fields mirroring `Task`: `title`, `description?`, `dueDate?`, `priority?`
-- `suggestedProjectId?`, `finalProjectId?`
-- `approvedAt?`, `rejectedAt?`
-- `createdTaskId?` (set once created; prevents duplicates)
-- timestamps
-
-`InboxProposedNote`:
-- `id`, `inboxItemId`
-- fields mirroring `Note`: `title`, `content`
-- `suggestedProjectId?`, `finalProjectId?`
-- `approvedAt?`, `rejectedAt?`
-- `createdNoteId?`
-- timestamps
-
-### Extend: AiCallType (v1)
-
-Add:
-- `INBOX_EXTRACT_TASKS`
-- `INBOX_EXTRACT_NOTES`
-
-## 6) Auth for iOS (MVP)
-
-You requested “Full Neon Auth login”.
-
-Constraint: the current web app uses Neon Auth with Next.js session/cookies; a native iOS app generally needs a token-based API auth mechanism for reliable `URLSession` requests.
-
-Decision:
-- iOS performs Neon Auth login via `ASWebAuthenticationSession` to the existing `/auth/*` flow.
-- After login, iOS mints a **Companion API token** (revocable) and uses `Authorization: Bearer <token>` for subsequent API calls.
-
-Add model:
-- `CompanionToken`:
-  - `id`, `userId`, `tokenHash`, `deviceName?`, `lastUsedAt?`, `revokedAt?`, timestamps
-
-Add web handoff flow:
-- `GET /auth/companion` (web):
-  - Requires Neon Auth session.
-  - Mints token and deep-links back to iOS (`lifeos://auth?token=...`), or displays a QR for scanning.
-
-API auth rule:
-- Accept Neon Auth cookie session (web) OR companion bearer token (iOS).
-
-## 7) API surface (Next.js App Router)
-
-Add `src/app/api/inbox/**` routes.
-
-### v0 routes
-
-`POST /api/inbox/items`
-- Body: `{ content: string }`
-- Server derives title from first non-empty line:
-  - `title = firstLine.trim().slice(0, 500)`
-  - `content = full canvas` (enforce note max length; reject > 100k or truncate with a marker)
-- Creates `Note` + `InboxItem`.
-
-`GET /api/inbox/items?status=open|processed|all&cursor&limit`
-- Returns list for the authenticated user.
-
-`GET /api/inbox/items/:id`
-
-`PATCH /api/inbox/items/:id`
-- Allowed only if `InboxItem.lockedAt IS NULL` AND `processedAt IS NULL`.
-- Updates the note content + re-derives the title from first non-empty line.
-
-### v1 routes
-
-`POST /api/inbox/items/:id/extract/tasks`
-- Sets `lockedAt` if null.
-- Runs extractor; writes `InboxProposedTask[]`.
-
-`POST /api/inbox/items/:id/extract/notes`
-- Sets `lockedAt` if null.
-- Runs extractor; writes `InboxProposedNote[]`.
-
-`POST /api/inbox/items/:id/approve`
-- Body includes:
-  - `approveTaskIds: string[]`
-  - `approveNoteIds: string[]`
-  - `projectOverrides?: Record<string, string | null>`
-  - `markProcessed?: boolean`
-- Creates Tasks/Notes for newly-approved proposals only (idempotent via `createdTaskId/createdNoteId`).
-- If `markProcessed`, sets `processedAt = now`.
-
-## 8) AI extraction services (v1)
-
-Add new server-side services registered in the existing AI registry (not user-configurable UI):
-- `extractTasksFromInboxNote(noteContent, userProjects, userContext?)`
-- `extractNotesFromInboxNote(noteContent, userProjects, userContext?)`
-
-Model selection:
-- “Cheapest + failover fallback” internally.
-- Configurable later by you (admin/dev), not by end users.
-
-Output schemas:
-- Tasks: `{ title, description?, dueDate?, priority?, suggestedProjectId? }[]`
-- Notes: `{ title, content, suggestedProjectId? }[]`
-
-## 9) Processing state machine
-
-States for an InboxItem:
-- `OPEN`: `processedAt = null`
-- `LOCKED`: `lockedAt != null` (no editing)
-- `PROCESSED`: `processedAt != null`
-
-Rules:
-- Editing is allowed only while OPEN and not LOCKED (i.e., before first extraction).
-- Extraction sets LOCKED.
-- Approval can optionally set PROCESSED (“Mark processed” option in approval flow).
-
-## 10) Archiving (Task-style auto-archive)
-
-Requirement: “use the same logic as tasks for archiving notes as well”.
-
-Implement opportunistic auto-archive on list fetch paths (no cron):
-- In `listNotes(...)` and in the inbox list API handler:
-  - `now = new Date()`
-  - `thirtyDaysAgo = now - 30 days`
-  - `updateMany` to set `Note.deletedAt = now` for notes where:
-    - `userId` matches
-    - `deletedAt IS NULL`
-    - linked `inboxItem.processedAt < thirtyDaysAgo`
-
-This makes processed inbox notes disappear from default lists naturally, since existing note queries already filter `deletedAt: null`.
-
-## 11) iOS + Web processing UI (v1)
-
-You want “Either” (iOS + web can process).
-
-Inbox detail shows:
-- Source note content (read-only after lock)
-- Buttons: Extract tasks, Extract notes
-- Proposal sections with checkboxes + “Approve all”
-- Approve action includes “Mark processed” option
-
-## 12) Milestones
-
-### v0 — Capture + Inbox (no extraction)
-- iOS: Canvas + Inbox list + detail
-- Backend: create/list/update inbox notes with locking rule stubbed
-
-### v1 — Extraction + Approval + Processed
-- Backend: proposal tables, extraction services, approval endpoint
-- UI (iOS + web): extract + review + approve + mark processed
-
-### v2 — Notifications
-- Start with local notifications (daily inbox reminder / stale item nudge).
-- Consider APNs later if needed.
-
-## 13) Tests / acceptance
-
-Backend (Bun):
-- Inbox create/list/update permissions (401 unauth)
-- Update disallowed after locked or processed
-- Extraction writes proposals and sets `lockedAt` once
-- Approval idempotency (no duplicate tasks/notes on re-approve)
-- Auto-archive sets `deletedAt` for eligible processed inbox notes (during list)
-
-Manual:
-- Voice transcription appends at end and does not clobber edits
-- Submit clears canvas only on success
-- Inbox list reflects new submission
-- Post-extraction: editing disabled
+# iOS Companion Inbox - Monorepo/API Design
+
+Date: 2026-02-03
+Owner: Life-OS
+
+## Summary
+
+Set up a Bun workspaces monorepo with three apps: `apps/web` (Next.js UI + web integration), `apps/ios` (iOS client), and `apps/api` (standalone API service). The API is the single source of truth for data access and business logic so both web and iOS use the same endpoints. Neon Auth (Better Auth) is the unified identity provider across web and mobile.
+
+## Goals
+
+- Provide a shared “Companion Inbox” backend for both web and iOS.
+- Centralize authorization, data access, and business rules in one API.
+- Keep web focused on UI and iOS focused on client UX.
+- Ensure stable contracts and predictable evolution for mobile.
+
+## Non-Goals
+
+- Building advanced realtime delivery or push notification infrastructure in this phase.
+- Splitting the database or maintaining multiple Prisma schemas.
+
+## Architecture
+
+- **Monorepo layout** (Bun workspaces):
+  - `apps/web`: Next.js app, UI-only concerns, server actions call the API.
+  - `apps/ios`: iOS client app.
+  - `apps/api`: standalone HTTP API (Hono/Express/Fastify).
+  - `packages/shared`: Zod schemas and DTOs shared by web, API, and iOS.
+- **Data ownership**: Prisma and database access live only in `apps/api`.
+- **Web integration**: Next.js server components/actions call the API over HTTP.
+- **iOS integration**: iOS calls the same API endpoints over HTTPS.
+
+## Auth & Security (Neon Auth)
+
+- **Single identity provider**: Neon Auth (Better Auth) for both web and iOS.
+- **API gate**: All API requests require a valid session token.
+- **Web**:
+  - Auth flow uses secure, httpOnly cookies.
+  - Next.js server reads the session and forwards a short‑lived token to the API.
+  - Client JS never sees tokens.
+- **iOS**:
+  - Auth flow produces the same token type.
+  - Store tokens in Keychain and send as `Authorization: Bearer <token>`.
+- **Concerns & mitigations**:
+  - CSRF: enforce SameSite or CSRF tokens for mutations.
+  - Token leakage: avoid exposing tokens to browser JS.
+  - Refresh: iOS handles refresh; web refreshes server‑side.
+  - CORS: allow only known origins; mobile allowlist separate.
+  - Authorization: enforce in API only (centralized policy).
+
+## Data Flow & API Design
+
+- **Primary endpoints**:
+  - `GET /inbox` (list with pagination)
+  - `GET /inbox/:id` (thread view)
+  - `POST /inbox` (create item)
+  - `POST /inbox/:id/messages` (reply)
+  - `PATCH /inbox/:id` (status: read/unread/archived)
+- **Schema**:
+  - `InboxItem`, `Message`, optional `Participant/InboxMembership` for multi‑user.
+  - API filters by authenticated user/org.
+- **Pagination**:
+  - Cursor + limit, return `nextCursor`.
+- **Contracts**:
+  - Zod schemas in `packages/shared` to prevent drift.
+  - API validates requests and responses against shared schemas.
+- **Errors**:
+  - Standard `{ code, message }` shape with shared mapping.
+
+## Testing & Operations
+
+- **Testing**:
+  - API unit tests with Bun (`apps/api`) for auth, pagination, and mutations.
+  - Contract tests using shared schemas.
+  - Web tests focus on integration (server actions to API).
+  - iOS uses schema-based mocks for view models.
+- **Operations**:
+  - `apps/api` owns `DATABASE_URL` and Neon Auth secrets.
+  - `apps/web` only stores API base URL + public auth config.
+  - API deploys independently; backward‑compatible changes prioritized.
+- **Rollout**:
+  - Ship API endpoints first, migrate web to use them, then enable iOS.
+  - Add basic logging and error tracking; rate limit API endpoints.
+
+## Migration Notes
+
+- No separate migrations for web APIs or server actions.
+- Migrations only occur when the Prisma schema changes, and they are run by `apps/api`.
+
+## Open Questions
+
+- Exact API framework selection (Hono vs Express vs Fastify).
+- Whether to add realtime updates (websocket or SSE) in a later phase.
+- Push notification strategy for mobile.
