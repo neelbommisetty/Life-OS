@@ -49,6 +49,28 @@ Add an `apps/api` Hono service in the monorepo and restructure shared data acces
 
 `packages/db` loads the root `.env` via `dotenv/config` in `prisma.config.ts` so migrations and Prisma generate always see `DATABASE_URL` regardless of cwd. Web only consumes `NEXT_PUBLIC_*`.
 
+## Environment Variable Migration Plan
+
+Current inventory (from `.env`):
+
+| Variable | New Location | Consumed By | Notes |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Root `.env` | `packages/db`, `apps/api` | Required for Prisma generate/migrations and API runtime. |
+| `OPENAI_API_KEY` | Root `.env` or `apps/api/.env` | `packages/ai` via `apps/api` | Keep server-only; never expose to web. |
+| `ANTHROPIC_API_KEY` | Root `.env` or `apps/api/.env` | `packages/ai` via `apps/api` | Keep server-only; never expose to web. |
+| `GOOGLE_AI_API_KEY` | Root `.env` or `apps/api/.env` | `packages/ai` via `apps/api` | Keep server-only; never expose to web. |
+| `XAI_API_KEY` | Root `.env` or `apps/api/.env` | `packages/ai` via `apps/api` | Keep server-only; never expose to web. |
+| `NEON_AUTH_BASE_URL` | Root `.env` and optional `apps/web/.env.local` | `apps/web` and `apps/api` | If Neon Auth UI needs client access, mirror as `NEXT_PUBLIC_NEON_AUTH_BASE_URL`. |
+| `VERCEL_OIDC_TOKEN` | Deployment env only | `apps/api` (if used) | Do not store locally; managed by Vercel. |
+
+Migration steps:
+
+1. Create or update root `.env.example` with the full inventory and annotate which app uses each variable.
+2. Move AI keys to API-only scope (root `.env` or `apps/api/.env`) and remove from any web-facing env files.
+3. Add `NEXT_PUBLIC_API_BASE_URL` to `apps/web/.env.local` and document it in `.env.example`.
+4. Keep `NEON_AUTH_BASE_URL` in root; only add `NEXT_PUBLIC_NEON_AUTH_BASE_URL` if client-side Neon Auth requires it.
+5. Verify `packages/db/prisma.config.ts` loads root `.env` so CLI commands work from any cwd.
+
 ## AI Layer
 
 - **`packages/ai`** holds model registry, providers, schemas, and tracking middleware.
