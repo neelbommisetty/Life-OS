@@ -67,8 +67,14 @@ function formatDate(date: Date | null | undefined): string {
   return new Date(date).toISOString().split("T")[0];
 }
 
-export function TasksClient({ projectId }: { projectId?: string }) {
-  const [tasks, setTasks] = useState<TaskWithProject[]>([]);
+export function TasksClient({
+  projectId,
+  initialTasks = []
+}: {
+  projectId?: string;
+  initialTasks?: TaskWithProject[];
+}) {
+  const [tasks, setTasks] = useState<TaskWithProject[]>(initialTasks);
   const [search, setSearch] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState<TaskDraft>(createEmptyDraft());
@@ -82,13 +88,21 @@ export function TasksClient({ projectId }: { projectId?: string }) {
 
   const isEdit = !!draft.id;
 
-  // Load tasks - inline to avoid setState-in-effect lint error
+  // Sync with initialTasks when server state changes (e.g. on navigation)
   useEffect(() => {
+    if (!search) {
+      setTasks(initialTasks);
+    }
+  }, [initialTasks, search]);
+
+  // Load tasks only when searching or if projectId changes
+  useEffect(() => {
+    if (!search && initialTasks.length > 0 && !projectId) return;
+
     let cancelled = false;
-    
+
     async function fetchTasks() {
       try {
-        // The backend now handles auto-archiving of tasks older than 7 days
         const result = await listTasks({
           search: search || undefined,
           projectId,
@@ -108,7 +122,7 @@ export function TasksClient({ projectId }: { projectId?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [search, projectId]);
+  }, [search, projectId, initialTasks.length]);
 
   // Exposed loadTasks for manual refresh
   const loadTasks = useCallback(async () => {

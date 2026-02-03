@@ -22,10 +22,12 @@ const TASK_ORDER: Prisma.TaskOrderByWithRelationInput[] = [
   { updatedAt: "desc" },
 ];
 
+import { cache } from "react";
+
 /**
  * Get the current authenticated user ID
  */
-async function getCurrentUserId(): Promise<string> {
+const getCurrentUserId = cache(async (): Promise<string> => {
   const { data: session } = await authServer.getSession();
 
   if (!session?.user?.id) {
@@ -33,7 +35,7 @@ async function getCurrentUserId(): Promise<string> {
   }
 
   return session.user.id;
-}
+});
 
 /**
  * Coerce date string to Date or return undefined
