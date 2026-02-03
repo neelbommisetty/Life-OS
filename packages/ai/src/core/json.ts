@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
-import { createLogger } from '@/lib/logger';
+import { createLogger } from "../logger";
 
 import type { BaseModel, ModelCallInput } from './core';
 

@@ -1,4 +1,4 @@
-import type { BaseModel, ModelCapabilities } from '@/lib/ai/core';
+import type { BaseModel, ModelCapabilities } from "../core";
 
 /**
  * Enumeration of third-party providers that can supply large language models.

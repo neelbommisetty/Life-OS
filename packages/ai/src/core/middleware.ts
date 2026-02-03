@@ -1,4 +1,4 @@
-import { createLogger, type Logger } from '@/lib/logger';
+import { createLogger, type Logger } from "../logger";
 
 import type { BaseModel } from './core';
 

@@ -1,5 +1,5 @@
 import type { AiCallType, AiCallStatus } from '@prisma/client';
-import type { ModelUsage, ModelCallTelemetry } from '@/lib/ai/core';
+import type { ModelUsage, ModelCallTelemetry } from "../core";
 
 /**
  * Context required to track an AI call.

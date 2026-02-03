@@ -1,10 +1,10 @@
 import "server-only";
 
-import { modelRegistry } from "@/lib/ai/providers/registry";
+import { modelRegistry } from "@life-os/ai/providers/registry";
 import { PricingCatalog } from "./pricing-catalog";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 // Initialize AI providers and chat services
-import "@/lib/ai/init";
+import "@life-os/ai/init";
 
 export const dynamic = "force-static";
 

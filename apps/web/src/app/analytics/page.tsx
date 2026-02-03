@@ -5,7 +5,7 @@ import {
   getRecentAiCalls,
   type UsageSummary,
   type RecentAiCall,
-} from "@/lib/ai/tracking";
+} from "@life-os/ai/tracking";
 import {
   Card,
   CardContent,

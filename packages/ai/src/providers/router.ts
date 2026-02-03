@@ -8,9 +8,9 @@ import type {
   ModelStreamResult,
   ModelCallAttempt,
   ModelCallTelemetry,
-} from "@/lib/ai/core";
-import { applyMiddleware, withLogging, type RetryOptions } from "@/lib/ai/core";
-import { createLogger, setLogLevel, type LogLevel } from "@/lib/logger";
+} from "../core";
+import { applyMiddleware, withLogging, type RetryOptions } from "../core";
+import { createLogger, setLogLevel, type LogLevel } from "../logger";
 
 import { modelRegistry, type ModelRegistry } from "./registry";
 import { CostTier, type ModelKey, type ModelMetadata } from "./types";

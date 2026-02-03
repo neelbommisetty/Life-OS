@@ -1,5 +1,5 @@
 // Logger exports
-export * from '../logger';
+export * from './logger';
 
 // Core AI abstractions
 export * from './core';

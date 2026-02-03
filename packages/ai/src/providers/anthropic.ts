@@ -15,7 +15,7 @@ import type {
   ModelStreamChunk,
   ModelStreamResult,
   ModelUsage,
-} from '@/lib/ai/core';
+} from "../core";
 
 import {
   CostTier,

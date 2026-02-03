@@ -1,5 +1,5 @@
-import type { BaseModel } from '@/lib/ai/core';
-import { createLogger } from '@/lib/logger';
+import type { BaseModel } from "../core";
+import { createLogger } from "../logger";
 
 import type {
   ModelDefinition,

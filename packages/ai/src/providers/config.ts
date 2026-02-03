@@ -1,7 +1,7 @@
 import Anthropic, { type ClientOptions as AnthropicClientOptions } from '@anthropic-ai/sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import OpenAI, { type ClientOptions as OpenAIClientOptions, type ClientOptions as XAIClientOptions } from 'openai';
-import { createLogger } from '@/lib/logger';
+import { createLogger } from "../logger";
 
 export type OpenAIDefaults = Readonly<{
   apiKey?: string;

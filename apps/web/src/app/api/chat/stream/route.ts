@@ -15,16 +15,16 @@ import {
   type StreamEvent,
 } from "@/lib/chat-utils";
 import { createLogger } from "@/lib/logger";
-import { modelRegistry, getModelFor } from "@/lib/ai";
-import type { ModelKey, ModelStreamResult } from "@/lib/ai";
+import { modelRegistry, getModelFor } from "@life-os/ai";
+import type { ModelKey, ModelStreamResult } from "@life-os/ai";
 import {
   wrapWithTracking,
   createChatTrackingContext,
   createSummaryTrackingContext,
   createTitleGenTrackingContext,
-} from "@/lib/ai/tracking";
+} from "@life-os/ai/tracking";
 // Initialize AI providers and chat services
-import "@/lib/ai/init";
+import "@life-os/ai/init";
 
 const logger = createLogger("api:chat:stream");
 

@@ -3,10 +3,10 @@
 import { prisma } from "@/lib/db";
 import { authServer } from "@/lib/auth/server";
 import { createLogger } from "@/lib/logger";
-import { modelRegistry } from "@/lib/ai";
-import type { ModelKey } from "@/lib/ai/providers/types";
+import { modelRegistry } from "@life-os/ai";
+import type { ModelKey } from "@life-os/ai";
 // Initialize AI providers and chat services
-import "@/lib/ai/init";
+import "@life-os/ai/init";
 import type { Prisma } from "@prisma/client";
 import {
   listThreadsSchema,

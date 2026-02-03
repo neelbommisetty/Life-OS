@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/db";
+import { prisma } from "@life-os/db";
 import type { AiCallType, AiCallStatus, Prisma } from "@prisma/client";
 
 /**

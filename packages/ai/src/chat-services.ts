@@ -5,16 +5,13 @@
  */
 
 import "server-only";
-import {
-  registerServiceRoute,
-  ServiceRouteStrategy,
-  ModelKeyName,
-  registerDefaultOpenAIModels,
-  registerDefaultAnthropicModels,
-  registerDefaultXAIModels,
-  modelRegistry,
-} from "@/lib/ai";
-import { createLogger } from "@/lib/logger";
+import { registerServiceRoute, ServiceRouteStrategy } from "./providers/router";
+import { ModelKeyName } from "./providers/types";
+import { registerDefaultOpenAIModels } from "./providers/openai";
+import { registerDefaultAnthropicModels } from "./providers/anthropic";
+import { registerDefaultXAIModels } from "./providers/xai";
+import { modelRegistry } from "./providers/registry";
+import { createLogger } from "./logger";
 
 const logger = createLogger("ai:chat-services");
 

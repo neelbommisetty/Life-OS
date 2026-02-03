@@ -3,7 +3,7 @@ import type {
   ModelCallInput,
   ModelStreamChunk,
   ModelStreamResult,
-} from '@/lib/ai/core';
+} from "../core";
 import { recordAiCall } from './recorder';
 import { estimateTokens } from './cost';
 import type { TrackingContext, TrackingResult, TrackingOptions } from './types';

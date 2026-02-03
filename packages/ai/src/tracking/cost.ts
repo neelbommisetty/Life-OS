@@ -1,5 +1,5 @@
-import type { ModelUsage } from '@/lib/ai/core';
-import type { ModelPriceSnapshot } from '@/lib/ai/pricing';
+import type { ModelUsage } from "../core";
+import type { ModelPriceSnapshot } from "../pricing";
 
 /**
  * Result of calculating the cost for an AI call.
