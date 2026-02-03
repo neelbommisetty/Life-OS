@@ -2,8 +2,6 @@
   "name": "web",
   "private": true,
   "scripts": {
-    "predev": "bun --filter=../../packages/db prisma:generate",
-    "prebuild": "bun --filter=../../packages/db prisma:generate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
