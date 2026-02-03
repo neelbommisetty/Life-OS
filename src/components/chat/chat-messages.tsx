@@ -29,6 +29,8 @@ type Props = {
   messagesContainerRef: RefObject<HTMLDivElement | null>;
   onScroll: (e: React.UIEvent<HTMLDivElement>) => void;
   onRegenerate: (messageId: string) => void;
+  onSaveAsNote: (messageId: string) => void;
+  savingNoteById: Record<string, boolean>;
   onStopStreaming: () => void;
   onSelectPrompt: (prompt: string) => void;
 };
@@ -52,6 +54,8 @@ export function ChatMessages({
   messagesContainerRef,
   onScroll,
   onRegenerate,
+  onSaveAsNote,
+  savingNoteById,
   onStopStreaming,
   onSelectPrompt,
 }: Props) {
@@ -113,6 +117,8 @@ export function ChatMessages({
           <MessageBubble
             message={message}
             onRegenerate={onRegenerate}
+            onSaveAsNote={onSaveAsNote}
+            isSavingNote={!!savingNoteById[message.id]}
             canRegenerate={
               message.role === "ASSISTANT" &&
               message.id === lastAssistantMessageId &&
@@ -142,6 +148,7 @@ export function ChatMessages({
                 modelProvider: null,
                 tokenCount: null,
                 tokenCountSource: null,
+                savedNoteId: null,
               }}
               messageStatus={optimisticStatus ?? "sending"}
               isPending={isPending}

@@ -2,7 +2,12 @@
 
 import { useMemo } from "react";
 import type { ChatMessage } from "@prisma/client";
-import { RotateCcwIcon, SparklesIcon } from "lucide-react";
+import {
+  CheckIcon,
+  FileTextIcon,
+  RotateCcwIcon,
+  SparklesIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +17,8 @@ type MessageBubbleProps = {
   message: ChatMessage;
   onRegenerate?: (messageId: string) => void;
   canRegenerate?: boolean;
+  onSaveAsNote?: (messageId: string) => void;
+  isSavingNote?: boolean;
   modelLabel?: string;
   modelProvider?: string | null;
   messageStatus?: "sending" | "delivered" | "failed";
@@ -22,6 +29,8 @@ export function MessageBubble({
   message,
   onRegenerate,
   canRegenerate,
+  onSaveAsNote,
+  isSavingNote,
   modelLabel,
   modelProvider,
   messageStatus,
@@ -96,6 +105,8 @@ export function MessageBubble({
     }
   }, [message.createdAt]);
 
+  const isSavedNote = Boolean(message.savedNoteId);
+
   if (isSystem) {
     return (
       <div className="flex justify-center my-2">
@@ -163,6 +174,25 @@ export function MessageBubble({
         <Badge variant="secondary" className="text-[10px] px-2 py-0.5">
           {modelLabelText}
         </Badge>
+        {isSavedNote ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
+            <CheckIcon className="h-3 w-3" />
+            Saved as note
+          </span>
+        ) : onSaveAsNote ? (
+          <Button
+            type="button"
+            onClick={() => onSaveAsNote(message.id)}
+            disabled={isSavingNote || isPending}
+            variant="ghost"
+            size="xs"
+            className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium"
+            title="Save as note"
+          >
+            <FileTextIcon className="h-3 w-3" />
+            Save as note
+          </Button>
+        ) : null}
         {onRegenerate && (
           <Button
             type="button"

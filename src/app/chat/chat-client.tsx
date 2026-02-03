@@ -24,8 +24,10 @@ import {
   listMessages,
   listModels,
 } from "@/lib/chat/actions";
+import { saveMessageAsNote } from "@/lib/notes/actions";
 import type { ChatThread, ChatMessage, Project } from "@prisma/client";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { toast } from "sonner";
 
 type ChatThreadWithProject = ChatThread & { project: Project | null };
 
@@ -53,6 +55,9 @@ export function ChatClient({ projectId }: { projectId?: string }) {
   const [isUpdatingModel, startModelTransition] = useTransition();
   const [modelError, setModelError] = useState<string | null>(null);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [savingNoteById, setSavingNoteById] = useState<
+    Record<string, boolean>
+  >({});
   const pageSize = 30;
 
   // Derived state
@@ -321,6 +326,36 @@ export function ChatClient({ projectId }: { projectId?: string }) {
     [effectiveThreadId, handleRegenerate, isPending],
   );
 
+  const handleSaveAsNote = useCallback(
+    async (messageId: string) => {
+      if (savingNoteById[messageId]) return;
+      setSavingNoteById((prev) => ({ ...prev, [messageId]: true }));
+      try {
+        const result = await saveMessageAsNote({ messageId });
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === messageId
+              ? { ...message, savedNoteId: result.note.id }
+              : message,
+          ),
+        );
+        if (!result.alreadySaved) {
+          toast.success("Note saved");
+        }
+      } catch (error) {
+        console.error("Failed to save note:", error);
+        toast.error("Failed to save note");
+      } finally {
+        setSavingNoteById((prev) => {
+          const next = { ...prev };
+          delete next[messageId];
+          return next;
+        });
+      }
+    },
+    [savingNoteById],
+  );
+
   return (
     <>
       {/* Desktop Grid Layout */}
@@ -371,6 +406,8 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           onRegenerate={handleRegenerateClick}
           onStopStreaming={handleStopStreaming}
           onSelectPrompt={(prompt) => handleSubmit(undefined, prompt)}
+          onSaveAsNote={handleSaveAsNote}
+          savingNoteById={savingNoteById}
         />
 
         {/* Chat Column - Row 3: Input (fixed) */}
@@ -421,6 +458,8 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           onRegenerate={handleRegenerateClick}
           onStopStreaming={handleStopStreaming}
           onSelectPrompt={(prompt) => handleSubmit(undefined, prompt)}
+          onSaveAsNote={handleSaveAsNote}
+          savingNoteById={savingNoteById}
         />
 
         {/* Row 3: Input (fixed) */}
