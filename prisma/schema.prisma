@@ -95,8 +95,12 @@ model ChatMessage {
   tokenCount       Int?
   tokenCountSource String?
   createdAt        DateTime   @default(now())
+  savedNoteId      String?
+  savedNote        Note?      @relation("MessageSavedNote", fields: [savedNoteId], references: [id], onDelete: SetNull)
+  sourceNotes      Note[]     @relation("MessageSourceNote")
 
   @@index([threadId, createdAt])
+  @@index([savedNoteId])
 }
 
 model AiCall {
@@ -174,17 +178,21 @@ model Task {
 }
 
 model Note {
-  id        String    @id @default(cuid())
-  userId    String    // From Neon Auth
-  title     String
-  content   String    // Markdown content
-  deletedAt DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  projectId String?
-  project   Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  id              String       @id @default(cuid())
+  userId          String       // From Neon Auth
+  title           String
+  content         String       // Markdown content
+  deletedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  projectId       String?
+  project         Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  sourceMessageId String?
+  sourceMessage   ChatMessage? @relation("MessageSourceNote", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  savedMessages   ChatMessage[] @relation("MessageSavedNote")
 
   @@index([userId])
   @@index([userId, deletedAt])
   @@index([projectId])
+  @@index([sourceMessageId])
 }

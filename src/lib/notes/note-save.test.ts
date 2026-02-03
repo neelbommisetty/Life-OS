@@ -29,4 +29,16 @@ describe("buildNoteFromMessage", () => {
 
     expect(result.projectId).toBe(null);
   });
+
+  test("clamps long content titles", () => {
+    const long = "A".repeat(600);
+    const result = buildNoteFromMessage({
+      userId: "user_1",
+      sourceMessageId: "msg_1",
+      content: long,
+      projectId: null,
+    });
+
+    expect(result.title.length).toBe(500);
+  });
 });

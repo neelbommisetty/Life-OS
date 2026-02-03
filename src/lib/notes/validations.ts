@@ -23,8 +23,13 @@ export const getNoteByIdSchema = z.object({
   id: z.string().cuid(),
 });
 
+export const saveMessageAsNoteSchema = z.object({
+  messageId: z.string().cuid(),
+});
+
 export type ListNotesInput = z.infer<typeof listNotesSchema>;
 export type CreateNoteInput = z.infer<typeof createNoteSchema>;
 export type UpdateNoteInput = z.infer<typeof updateNoteSchema>;
 export type DeleteNoteInput = z.infer<typeof deleteNoteSchema>;
 export type GetNoteByIdInput = z.infer<typeof getNoteByIdSchema>;
+export type SaveMessageAsNoteInput = z.infer<typeof saveMessageAsNoteSchema>;
