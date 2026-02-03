@@ -257,7 +257,6 @@ export async function updateNote(input: UpdateNoteInput) {
     },
     select: {
       id: true,
-      sourceMessageId: true,
     },
   });
 
@@ -329,17 +328,14 @@ export async function deleteNote(input: DeleteNoteInput) {
       },
     });
 
-    if (existingNote.sourceMessageId) {
-      await tx.chatMessage.updateMany({
-        where: {
-          id: existingNote.sourceMessageId,
-          savedNoteId: existingNote.id,
-        },
-        data: {
-          savedNoteId: null,
-        },
-      });
-    }
+    await tx.chatMessage.updateMany({
+      where: {
+        savedNoteId: existingNote.id,
+      },
+      data: {
+        savedNoteId: null,
+      },
+    });
 
     return updated;
   });
