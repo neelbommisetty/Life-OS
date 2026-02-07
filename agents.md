@@ -13,9 +13,10 @@
 ## Commands in a monorepo
 
 - Prefer running scripts from the repo root via `package.json`:
-  - Web: `bun dev` / `bun run dev:web`, `bun run build`, `bun run lint`, `bun run start`
+  - Web: `bun dev` / `bun run dev:web` (or `bun run dev:all` for web+api), `bun run build`, `bun run start`
   - API: `bun run dev:api`
-  - Tests: `bun run test:web`, `bun run test:api` (and `bun --filter=./packages/* test` as needed)
+  - Lint: `bun run lint` (all configured workspaces), `bun run lint:web` (web only)
+  - Tests: `bun run test` (all configured workspaces), `bun run test:web`, `bun run test:api` (and `bun --filter=./packages/* test` as needed)
   - Prisma (DB package): `bun run prisma:generate`, `bun run prisma:migrate`, `bun run prisma:deploy`
 - When you need to run a workspace-local script directly, use Bun filters:
   - Example: `bun --filter=./apps/web dev`
