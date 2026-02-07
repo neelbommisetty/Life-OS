@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import { handle } from "hono/vercel";
 import { authRoute } from "./routes/auth.js";
 import { statusRoute } from "./routes/status.js";
 
@@ -14,4 +13,4 @@ app.get("/", (c) =>
 app.route("/", authRoute);
 app.route("/", statusRoute);
 
-export default handle(app);
+export default app;
