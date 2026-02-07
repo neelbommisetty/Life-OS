@@ -63,7 +63,7 @@ Required updates for feature work:
 | Notes | Notes selection/editing | `/notes` | Select/create/delete note, URL sync via `noteId`, grouped notes by project |
 | Notes | Editor behavior | `/notes` | Markdown preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S |
 | Chat | Thread management UI | `/chat` and project-scoped chat tab | Create/archive/select thread, URL sync via `threadId`, grouped + searchable list |
-| Chat | Message history and pagination | `/chat` | Initial load, scroll-up pagination with cursor, loading states |
+| Chat | Message history and pagination | `/chat` | Initial load, thread switch auto-scrolls to latest message, scroll-up pagination with cursor, loading states, delayed-render content keeps latest message in view after thread switch |
 | Chat | Streaming chat UX | `/chat` via `/api/chat/stream` | Optimistic user message, live streamed assistant content, stop streaming, error badge |
 | Chat | Model selection UX | `/chat` | Model list loads, change persists, invalid selection error shown |
 | Chat | Assistant message actions | `/chat` | Copy, regenerate latest assistant message only, save-as-note status transitions |
@@ -89,3 +89,5 @@ Run this set before release and after large refactors:
   - `apps/web/src/lib/**/*.test.ts`
   - `apps/web/src/components/chat/message-actions.test.ts`
   - `apps/web/src/app/tasks/tasks-utils.test.ts`
+- Web e2e tests:
+  - `apps/web/tests/e2e/*.e2e.ts`
