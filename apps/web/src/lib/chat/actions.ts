@@ -1,13 +1,7 @@
 "use server";
 
-import { prisma } from "@/lib/db";
-import { authServer } from "@/lib/auth/server";
-import { createLogger } from "@/lib/logger";
-import { modelRegistry } from "@life-os/ai";
-import type { ModelKey } from "@life-os/ai";
-// Initialize AI providers and chat services
-import "@life-os/ai/init";
-import type { Prisma } from "@prisma/client";
+import { apiFetchJson } from "@/lib/api/fetch";
+import type { ChatMessage, ChatThread, Project } from "@prisma/client";
 import {
   listThreadsSchema,
   createThreadSchema,
@@ -21,363 +15,176 @@ import {
   type ListMessagesInput,
 } from "./validations";
 
-const logger = createLogger("chat:actions");
+type ProjectResponse = Omit<Project, "archivedAt" | "createdAt" | "updatedAt"> & {
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
-const DEFAULT_THREAD_NAME = "New thread";
-const THREAD_ORDER: Prisma.ChatThreadOrderByWithRelationInput[] = [
-  { lastChattedAt: "desc" },
-  { createdAt: "desc" },
-];
+type ChatThreadResponse = Omit<
+  ChatThread,
+  "summaryUpTo" | "lastChattedAt" | "archivedAt" | "createdAt" | "updatedAt"
+> & {
+  summaryUpTo: string | null;
+  lastChattedAt: string;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  project: ProjectResponse | null;
+};
 
-/**
- * Get a unique thread name for the user (handles duplicates like "New thread (1)")
- */
-async function getUniqueThreadName(
-  userId: string,
-  baseName: string,
-): Promise<string> {
-  const existingThreads = await prisma.chatThread.findMany({
-    where: { userId },
-    select: { name: true },
-  });
+type ChatMessageResponse = Omit<ChatMessage, "createdAt"> & {
+  createdAt: string;
+};
 
-  const existingNames = new Set(existingThreads.map((t) => t.name));
+type ListMessagesResponse = {
+  threadId: string;
+  messages: ChatMessageResponse[];
+  nextCursor: {
+    id: string;
+    createdAt: string;
+  } | null;
+};
 
-  if (!existingNames.has(baseName)) {
-    return baseName;
+type ModelOptionResponse = {
+  key: string;
+  label: string;
+  provider: string;
+  costTier: string | null;
+  description: string | null;
+  supportsStreaming: boolean;
+};
+
+function parseDate(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid date received from API");
   }
-
-  let suffix = 1;
-  while (existingNames.has(`${baseName} (${suffix})`)) {
-    suffix += 1;
-  }
-
-  return `${baseName} (${suffix})`;
+  return parsed;
 }
 
-/**
- * Get the current authenticated user ID
- */
-async function getCurrentUserId(): Promise<string> {
-  const { data: session } = await authServer.getSession();
-
-  if (!session?.user?.id) {
-    throw new Error("Unauthorized: Please sign in to continue");
-  }
-
-  return session.user.id;
-}
-
-/**
- * List threads for the current user
- */
-export async function listThreads(input?: ListThreadsInput) {
-  const start = Date.now();
-  const userId = await getCurrentUserId();
-  const parsed = listThreadsSchema.parse(input ?? {});
-
-  logger.debug("Listing chat threads", { userId });
-
-  const includeArchived = parsed.includeArchived ?? false;
-
-  let threads = await prisma.chatThread.findMany({
-    where: {
-      userId,
-      ...(parsed.projectId ? { projectId: parsed.projectId } : {}),
-      ...(includeArchived ? {} : { archivedAt: null }),
-    },
-    orderBy: THREAD_ORDER,
-    include: {
-      project: true,
-    },
-  });
-
-  // Auto-create a default thread if none exist
-  if (!includeArchived && threads.length === 0) {
-    const name = await getUniqueThreadName(userId, DEFAULT_THREAD_NAME);
-    const created = await prisma.chatThread.create({
-      data: {
-        userId,
-        name,
-        lastChattedAt: new Date(),
-      },
-      include: {
-        project: true,
-      },
-    });
-    threads = [created];
-  }
-
-  logger.info("Chat threads listed", {
-    userId,
-    count: threads.length,
-    durationMs: Date.now() - start,
-  });
-
-  return threads;
-}
-
-/**
- * Create a new thread for the current user
- */
-export async function createThread(input?: CreateThreadInput) {
-  const start = Date.now();
-  const userId = await getCurrentUserId();
-  const parsed = createThreadSchema.parse(input ?? {});
-
-  logger.debug("Creating chat thread", { userId });
-
-  const baseName = parsed.name?.trim() || DEFAULT_THREAD_NAME;
-  const name = await getUniqueThreadName(userId, baseName);
-
-  const thread = await prisma.chatThread.create({
-    data: {
-      userId,
-      name,
-      lastChattedAt: new Date(),
-      projectId: parsed.projectId,
-    },
-    include: {
-      project: true,
-    },
-  });
-
-  logger.info("Chat thread created", {
-    threadId: thread.id,
-    durationMs: Date.now() - start,
-  });
-
-  return thread;
-}
-
-/**
- * Archive a thread
- */
-export async function archiveThread(input: ArchiveThreadInput) {
-  const start = Date.now();
-  const userId = await getCurrentUserId();
-  const parsed = archiveThreadSchema.parse(input);
-
-  logger.debug("Archiving chat thread", {
-    userId,
-    threadId: parsed.threadId,
-  });
-
-  const thread = await prisma.chatThread.findFirst({
-    where: {
-      id: parsed.threadId,
-      userId,
-    },
-  });
-
-  if (!thread) {
-    throw new Error("Thread not found");
-  }
-
-  const archivedThread = await prisma.chatThread.update({
-    where: { id: parsed.threadId },
-    data: {
-      archivedAt: new Date(),
-    },
-    include: {
-      project: true,
-    },
-  });
-
-  logger.info("Chat thread archived", {
-    threadId: archivedThread.id,
-    durationMs: Date.now() - start,
-  });
-
-  return archivedThread;
-}
-
-/**
- * Get a thread by ID (validates ownership).
- * If the thread's modelKey is no longer in the registry (e.g. disabled provider), clears it to null so autorouting is used.
- */
-export async function getThread(threadId: string) {
-  const userId = await getCurrentUserId();
-
-  let thread = await prisma.chatThread.findFirst({
-    where: {
-      id: threadId,
-      userId,
-    },
-    include: {
-      project: true,
-    },
-  });
-
-  if (!thread) {
-    throw new Error("Thread not found");
-  }
-
-  const hasInvalidModel =
-    thread.modelKey && !modelRegistry.has(thread.modelKey as ModelKey);
-  if (hasInvalidModel) {
-    const previousModelKey = thread.modelKey;
-    thread = await prisma.chatThread.update({
-      where: { id: thread.id },
-      data: { modelKey: null },
-      include: { project: true },
-    });
-    logger.debug("Cleared invalid thread modelKey (not in registry)", {
-      threadId: thread.id,
-      previousModelKey,
-    });
-  }
-
-  return thread;
-}
-
-/**
- * Set the model for a thread
- */
-export async function setThreadModel(input: SetThreadModelInput) {
-  const start = Date.now();
-  const userId = await getCurrentUserId();
-  const parsed = setThreadModelSchema.parse(input);
-
-  logger.debug("Setting chat thread model", {
-    userId,
-    threadId: parsed.threadId,
-    modelKey: parsed.modelKey,
-  });
-
-  // Validate model key if provided
-  if (parsed.modelKey) {
-    const modelMetadata = modelRegistry.getMetadata(
-      parsed.modelKey as ModelKey,
-    );
-
-    if (!modelMetadata || !modelMetadata.modes.includes("text")) {
-      logger.warn("Invalid chat model selection", {
-        userId,
-        modelKey: parsed.modelKey,
-      });
-      throw new Error("Selected model is not available");
-    }
-  }
-
-  // Verify thread ownership
-  const thread = await prisma.chatThread.findFirst({
-    where: {
-      id: parsed.threadId,
-      userId,
-    },
-  });
-
-  if (!thread) {
-    throw new Error("Thread not found");
-  }
-
-  const updatedThread = await prisma.chatThread.update({
-    where: { id: thread.id },
-    data: {
-      modelKey: parsed.modelKey,
-    },
-    include: {
-      project: true,
-    },
-  });
-
-  logger.info("Chat thread model updated", {
-    threadId: updatedThread.id,
-    modelKey: updatedThread.modelKey,
-    durationMs: Date.now() - start,
-  });
-
-  return updatedThread;
-}
-
-/**
- * List messages for a thread with pagination
- */
-export async function listMessages(input: ListMessagesInput) {
-  const start = Date.now();
-  const userId = await getCurrentUserId();
-  const parsed = listMessagesSchema.parse(input);
-
-  logger.debug("Listing chat messages", {
-    userId,
-    threadId: parsed.threadId,
-    hasCursor: !!parsed.cursor,
-  });
-
-  // Verify thread ownership
-  const thread = await prisma.chatThread.findFirst({
-    where: {
-      id: parsed.threadId,
-      userId,
-    },
-  });
-
-  if (!thread) {
-    throw new Error("Thread not found");
-  }
-
-  const limit = parsed.limit ?? 30;
-  const take = limit + 1;
-  const where: {
-    threadId: string;
-    OR?: Array<
-      { createdAt: { lt: Date } } | { createdAt: Date; id: { lt: string } }
-    >;
-  } = { threadId: thread.id };
-
-  if (parsed.cursor) {
-    where.OR = [
-      { createdAt: { lt: parsed.cursor.createdAt } },
-      { createdAt: parsed.cursor.createdAt, id: { lt: parsed.cursor.id } },
-    ];
-  }
-
-  const messages = await prisma.chatMessage.findMany({
-    where,
-    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    take,
-  });
-
-  const hasMore = messages.length > limit;
-  const page = hasMore ? messages.slice(0, limit) : messages;
-  const nextCursor = hasMore
-    ? {
-        id: page[page.length - 1].id,
-        createdAt: page[page.length - 1].createdAt,
-      }
-    : null;
-
-  logger.info("Chat messages listed", {
-    threadId: thread.id,
-    messageCount: page.length,
-    durationMs: Date.now() - start,
-  });
-
+function hydrateProject(project: ProjectResponse): Project {
   return {
-    threadId: thread.id,
-    messages: page.reverse(),
-    nextCursor,
+    ...project,
+    archivedAt: project.archivedAt ? parseDate(project.archivedAt) : null,
+    createdAt: parseDate(project.createdAt),
+    updatedAt: parseDate(project.updatedAt),
   };
 }
 
-/**
- * List available AI models for chat
- */
-export async function listModels() {
-  const models = modelRegistry
-    .listMetadata()
-    .filter((model) => model.modes.includes("text"))
-    .map((model) => ({
-      key: model.key,
-      label: model.label,
-      provider: model.providerId,
-      costTier: model.costTier ?? null,
-      description: model.description ?? null,
-      supportsStreaming: model.supportsStreaming ?? false,
-    }));
+function hydrateThread(thread: ChatThreadResponse): ChatThread & { project: Project | null } {
+  return {
+    ...thread,
+    summaryUpTo: thread.summaryUpTo ? parseDate(thread.summaryUpTo) : null,
+    lastChattedAt: parseDate(thread.lastChattedAt),
+    archivedAt: thread.archivedAt ? parseDate(thread.archivedAt) : null,
+    createdAt: parseDate(thread.createdAt),
+    updatedAt: parseDate(thread.updatedAt),
+    project: thread.project ? hydrateProject(thread.project) : null,
+  };
+}
 
-  return models;
+function hydrateMessage(message: ChatMessageResponse): ChatMessage {
+  return {
+    ...message,
+    createdAt: parseDate(message.createdAt),
+  };
+}
+
+export async function listThreads(input?: ListThreadsInput) {
+  const parsed = listThreadsSchema.parse(input ?? {});
+  const params = new URLSearchParams();
+
+  if (parsed.includeArchived) {
+    params.set("includeArchived", "true");
+  }
+  if (parsed.projectId) {
+    params.set("projectId", parsed.projectId);
+  }
+
+  const path = params.size ? `/api/chat/threads?${params.toString()}` : "/api/chat/threads";
+  const threads = await apiFetchJson<ChatThreadResponse[]>(path);
+
+  return threads.map(hydrateThread);
+}
+
+export async function createThread(input?: CreateThreadInput) {
+  const parsed = createThreadSchema.parse(input ?? {});
+  const thread = await apiFetchJson<ChatThreadResponse>("/api/chat/threads", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(parsed),
+  });
+
+  return hydrateThread(thread);
+}
+
+export async function archiveThread(input: ArchiveThreadInput) {
+  const parsed = archiveThreadSchema.parse(input);
+  const thread = await apiFetchJson<ChatThreadResponse>(
+    `/api/chat/threads/${parsed.threadId}/archive`,
+    {
+      method: "POST",
+    },
+  );
+
+  return hydrateThread(thread);
+}
+
+export async function getThread(threadId: string) {
+  const thread = await apiFetchJson<ChatThreadResponse>(`/api/chat/threads/${threadId}`);
+  return hydrateThread(thread);
+}
+
+export async function setThreadModel(input: SetThreadModelInput) {
+  const parsed = setThreadModelSchema.parse(input);
+  const thread = await apiFetchJson<ChatThreadResponse>(
+    `/api/chat/threads/${parsed.threadId}/model`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ modelKey: parsed.modelKey }),
+    },
+  );
+
+  return hydrateThread(thread);
+}
+
+export async function listMessages(input: ListMessagesInput) {
+  const parsed = listMessagesSchema.parse(input);
+  const params = new URLSearchParams();
+
+  if (parsed.limit !== undefined) {
+    params.set("limit", String(parsed.limit));
+  }
+  if (parsed.cursor) {
+    params.set("cursorId", parsed.cursor.id);
+    params.set("cursorCreatedAt", parsed.cursor.createdAt.toISOString());
+  }
+
+  const path = params.size
+    ? `/api/chat/threads/${parsed.threadId}/messages?${params.toString()}`
+    : `/api/chat/threads/${parsed.threadId}/messages`;
+  const page = await apiFetchJson<ListMessagesResponse>(path);
+
+  return {
+    threadId: page.threadId,
+    messages: page.messages.map(hydrateMessage),
+    nextCursor: page.nextCursor
+      ? {
+          id: page.nextCursor.id,
+          createdAt: parseDate(page.nextCursor.createdAt),
+        }
+      : null,
+  };
+}
+
+export async function listModels() {
+  return apiFetchJson<ModelOptionResponse[]>("/api/chat/models");
 }
 
 export type ModelOption = Awaited<ReturnType<typeof listModels>>[number];
