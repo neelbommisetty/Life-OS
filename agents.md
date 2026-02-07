@@ -65,9 +65,14 @@
 ## PR workflow
 
 - Before creating a PR, sync your branch with the latest `develop`.
+- Always rebase when syncing with `develop` (never merge).
 - Recommended flow:
   - `git fetch origin`
   - `git pull --rebase origin develop`
+- Never use merge-based sync for feature branches:
+  - Do not run `git merge develop`.
+  - Do not run `git pull` without `--rebase`.
+- Keep history linear and squash local/WIP commits before pushing PR updates.
 - If a PR is already open, re-sync with `develop` before pushing new commits.
 
 ## Framework and language
