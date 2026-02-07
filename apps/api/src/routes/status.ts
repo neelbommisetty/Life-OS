@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import {
   getAIServicesStatus as getAIServicesStatusFromPackage,
   type AIServicesStatus,
-} from "@life-os/ai";
+} from "@life-os/ai/services";
 
 type StatusRouteDependencies = {
   hasDatabaseUrl?: () => boolean;

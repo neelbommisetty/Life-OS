@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { initializeAIServices } from "@life-os/ai";
+import { initializeAIServices } from "@life-os/ai/services";
 import { authRoute } from "./routes/auth.js";
 import { statusRoute } from "./routes/status.js";
 

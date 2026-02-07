@@ -5,6 +5,11 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./services": {
+      "types": "./src/services.ts",
+      "import": "./dist/services.js",
+      "default": "./dist/services.js"
+    },
     "./init": "./src/init.ts",
     "./providers": "./src/providers/index.ts",
     "./providers/*": "./src/providers/*.ts",
@@ -12,6 +17,7 @@
     "./tracking/*": "./src/tracking/*.ts"
   },
   "scripts": {
+    "build": "bun build src/services.ts --target=node --format=esm --outdir dist",
     "test": "bun test",
     "lint": "tsc --noEmit -p tsconfig.lint.json"
   },
