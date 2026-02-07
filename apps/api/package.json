@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run src/server.ts",
+    "dev": "bun --hot src/server.ts",
     "test": "bun test",
     "lint": "tsc --noEmit -p tsconfig.lint.json"
   },

@@ -3,17 +3,29 @@ import { app } from "./app";
 import { requestJson, withEnv } from "./test/harness";
 
 describe("api app integration", () => {
-  test("mounts health route", async () => {
-    const { response, body } = await requestJson(app, "/health");
+  test("mounts root route", async () => {
+    const response = await app.request("/");
+    const body = await response.json();
+
     expect(response.status).toBe(200);
-    expect(body).toEqual({ status: "ok" });
+    expect(body).toEqual({
+      message: "Life-OS API is awake and mildly over-caffeinated.",
+    });
   });
 
-  test("mounts ready route", async () => {
+  test("mounts status route", async () => {
     await withEnv({ DATABASE_URL: undefined }, async () => {
-      const { response, body } = await requestJson(app, "/ready");
+      const { response, body } = await requestJson(app, "/status");
       expect(response.status).toBe(503);
-      expect(body).toEqual({ status: "not_ready" });
+      expect(body).toEqual({ status: "not_ready", db: "not_configured" });
+    });
+  });
+
+  test("mounts /api/status route", async () => {
+    await withEnv({ DATABASE_URL: undefined }, async () => {
+      const { response, body } = await requestJson(app, "/api/status");
+      expect(response.status).toBe(503);
+      expect(body).toEqual({ status: "not_ready", db: "not_configured" });
     });
   });
 
