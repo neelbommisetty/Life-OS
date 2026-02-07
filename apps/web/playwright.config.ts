@@ -27,7 +27,7 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: `API_BASE_URL=${apiBaseURL} bun run build && API_BASE_URL=${apiBaseURL} bun run start -- --port ${port}`,
+      command: `ENABLE_E2E_ROUTES=1 API_BASE_URL=${apiBaseURL} bun run build && ENABLE_E2E_ROUTES=1 API_BASE_URL=${apiBaseURL} bun run start -- --port ${port}`,
       url: baseURL,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,

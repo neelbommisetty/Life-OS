@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useLayoutEffect } from "react";
+import { useCallback, useRef, useLayoutEffect } from "react";
 
 type UseChatScrollParams = {
   threadId: string | null;
@@ -26,18 +26,48 @@ export function useChatScroll({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const hasAutoScrolledRef = useRef(false);
   const shouldAutoScrollRef = useRef(true);
+  const forceScrollToBottomRef = useRef(true);
   const previousScrollHeightRef = useRef<number | null>(null);
   const previousScrollTopRef = useRef(0);
   const lastThreadIdRef = useRef<string | null>(null);
+  const threadSwitchScrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const threadSwitchScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  const scrollToBottom = useCallback((container: HTMLDivElement) => {
+    container.scrollTop = container.scrollHeight;
+  }, []);
+
+  const clearThreadSwitchScrollLock = useCallback(() => {
+    if (threadSwitchScrollIntervalRef.current) {
+      clearInterval(threadSwitchScrollIntervalRef.current);
+      threadSwitchScrollIntervalRef.current = null;
+    }
+    if (threadSwitchScrollTimeoutRef.current) {
+      clearTimeout(threadSwitchScrollTimeoutRef.current);
+      threadSwitchScrollTimeoutRef.current = null;
+    }
+  }, []);
 
   // Reset scroll state when thread changes
   useLayoutEffect(() => {
+    clearThreadSwitchScrollLock();
     hasAutoScrolledRef.current = false;
     shouldAutoScrollRef.current = true;
+    forceScrollToBottomRef.current = true;
     previousScrollHeightRef.current = null;
     previousScrollTopRef.current = 0;
     lastThreadIdRef.current = null;
-  }, [threadId]);
+  }, [threadId, clearThreadSwitchScrollLock]);
+
+  useLayoutEffect(() => {
+    return () => {
+      clearThreadSwitchScrollLock();
+    };
+  }, [clearThreadSwitchScrollLock]);
 
   // Scroll to bottom on thread change
   useLayoutEffect(() => {
@@ -47,10 +77,28 @@ export function useChatScroll({
 
     if (lastThreadIdRef.current !== threadId) {
       lastThreadIdRef.current = threadId;
-      container.scrollTop = container.scrollHeight;
+      scrollToBottom(container);
       hasAutoScrolledRef.current = true;
+
+      threadSwitchScrollIntervalRef.current = setInterval(() => {
+        const currentContainer = messagesContainerRef.current;
+        if (!currentContainer || !forceScrollToBottomRef.current) return;
+        scrollToBottom(currentContainer);
+      }, 50);
+
+      threadSwitchScrollTimeoutRef.current = setTimeout(() => {
+        clearThreadSwitchScrollLock();
+        forceScrollToBottomRef.current = false;
+      }, 900);
     }
-  }, [threadId, isLoading, isFetchingNextPage, messagesLength]);
+  }, [
+    threadId,
+    isLoading,
+    isFetchingNextPage,
+    messagesLength,
+    clearThreadSwitchScrollLock,
+    scrollToBottom,
+  ]);
 
   // Handle scroll events for infinite scroll and auto-scroll detection
   const handleScroll = () => {
@@ -81,14 +129,17 @@ export function useChatScroll({
 
     // Initial scroll to bottom
     if (!hasAutoScrolledRef.current && !isLoading) {
-      container.scrollTop = container.scrollHeight;
+      scrollToBottom(container);
       hasAutoScrolledRef.current = true;
       return;
     }
 
     // Auto-scroll if user was at the bottom
-    if (shouldAutoScrollRef.current && !isFetchingNextPage) {
-      container.scrollTop = container.scrollHeight;
+    if (
+      (forceScrollToBottomRef.current || shouldAutoScrollRef.current) &&
+      !isFetchingNextPage
+    ) {
+      scrollToBottom(container);
     }
   }, [
     messagesLength,
@@ -96,6 +147,7 @@ export function useChatScroll({
     isFetchingNextPage,
     isPending,
     streamingContent,
+    scrollToBottom,
   ]);
 
   // Preserve scroll position after loading older messages
