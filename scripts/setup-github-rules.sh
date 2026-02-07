@@ -35,7 +35,7 @@ protect_branch() {
   "required_pull_request_reviews": {
     "dismiss_stale_reviews": true,
     "require_code_owner_reviews": false,
-    "required_approving_review_count": 1
+    "required_approving_review_count": 0
   },
   "required_linear_history": true,
   "allow_force_pushes": false,
@@ -73,5 +73,5 @@ fi
 
 echo "Default branch set to develop."
 echo "Branch protections:"
-echo "  develop (${develop_status}) => PR required + unit-tests"
-echo "  main (${main_status}) => PR required + unit-tests + e2e-tests"
+echo "  develop (${develop_status}) => PR required + unit-tests (no approval required)"
+echo "  main (${main_status}) => PR required + unit-tests + e2e-tests (no approval required)"
