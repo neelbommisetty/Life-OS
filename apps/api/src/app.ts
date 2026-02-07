@@ -12,3 +12,7 @@ app.get("/", (c) =>
 
 app.route("/", authRoute);
 app.route("/", statusRoute);
+
+export default function handler(request: Request) {
+  return app.fetch(request);
+}
