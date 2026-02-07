@@ -16,6 +16,8 @@
     "lint": "bun run --filter=./apps/web --filter=./apps/api --filter=./packages/ai --filter=./packages/db lint",
     "test": "bun run --filter=./apps/web --filter=./apps/api --filter=./packages/ai --filter=./packages/db test",
     "test:web": "bun --filter=./apps/web test",
+    "test:web:e2e": "bun --filter=./apps/web test:e2e",
+    "test:web:e2e:headed": "bun --filter=./apps/web test:e2e:headed",
     "test:api": "bun --filter=./apps/api test",
     "prisma:generate": "bun --filter=./packages/db prisma:generate",
     "prisma:migrate": "bun --filter=./packages/db prisma:migrate",

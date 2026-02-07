@@ -6,6 +6,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "bun test",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:install": "playwright install chromium",
     "prisma:generate": "bun --filter=../../packages/db prisma:generate",
     "prisma:migrate": "bun --filter=../../packages/db prisma:migrate",
     "prisma:deploy": "bun --filter=../../packages/db prisma:deploy"
@@ -39,6 +44,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/typography": "^0.5.19",
     "@testing-library/react": "^16.0.0",
