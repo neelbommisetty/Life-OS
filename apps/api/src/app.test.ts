@@ -80,4 +80,54 @@ describe("api app integration", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test("returns populated chat model list for authenticated requests", async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async (input) => {
+      const requestUrl =
+        typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+
+      if (requestUrl.endsWith("/get-session")) {
+        return new Response(
+          JSON.stringify({
+            data: {
+              session: {
+                user: { id: "user_123" },
+              },
+            },
+          }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }
+
+      return new Response(JSON.stringify({ error: "not_found" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    try {
+      await withEnv(
+        { NEON_AUTH_BASE_URL: "https://auth.example.com/neondb/auth" },
+        async () => {
+          const { response, body } = await requestJson(app, "/api/chat/models");
+
+          expect(response.status).toBe(200);
+          expect(Array.isArray(body)).toBe(true);
+          expect(body.length).toBeGreaterThan(0);
+
+          const first = body[0] as Record<string, unknown>;
+          expect(typeof first.key).toBe("string");
+          expect(typeof first.label).toBe("string");
+          expect(typeof first.provider).toBe("string");
+        },
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
