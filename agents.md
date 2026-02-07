@@ -50,6 +50,26 @@
 - shadcn/ui commands should run from `apps/web` (where `components.json` lives):
   - `cd apps/web && bunx shadcn@latest add <component>`
 
+## Commit message standard
+
+- Format: `<type>(<scope>[,<scope>...]): <one-line description>`
+- `scope` must use monorepo scopes and can include multiple comma-separated scopes.
+- Body is required and must include execution details.
+- Use the repo setup command once per clone to enable hook + template:
+  - `bun run commit:setup`
+- Allowed `type` values:
+  - `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+- Allowed `scope` values:
+  - `apps/web`, `apps/api`, `apps/ios`, `packages/db`, `packages/ai`, `repo`, `docs`, `tooling`, `monorepo`
+
+## PR workflow
+
+- Before creating a PR, sync your branch with the latest `develop`.
+- Recommended flow:
+  - `git fetch origin`
+  - `git pull --rebase origin develop`
+- If a PR is already open, re-sync with `develop` before pushing new commits.
+
 ## Framework and language
 
 - `apps/web` uses Next.js 16 App Router with TypeScript only. Keep server actions/server components preferred where possible.

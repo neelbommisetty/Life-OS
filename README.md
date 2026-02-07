@@ -136,3 +136,19 @@ Notes are just notes. A simple note-taking system for capturing thoughts, ideas,
 ## Future Expansion
 
 The interactions between these modules and their expanded functionality will be documented and implemented as the project evolves. Each module is designed to work independently while also integrating seamlessly with the others to create a cohesive productivity experience.
+
+## Commit Standard
+
+This repo enforces commit messages in the format:
+
+`<type>(<scope>[,<scope>...]): <one-line description>`
+
+with a required body section for execution details.
+
+Setup once per clone:
+
+```bash
+bun run commit:setup
+```
+
+See `/docs/commit-standard.md` for allowed types/scopes and examples.

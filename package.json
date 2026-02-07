@@ -22,9 +22,13 @@
     "prisma:generate": "bun --filter=./packages/db prisma:generate",
     "prisma:migrate": "bun --filter=./packages/db prisma:migrate",
     "prisma:deploy": "bun --filter=./packages/db prisma:deploy",
-    "lint:web": "bun --filter=./apps/web lint"
+    "lint:web": "bun --filter=./apps/web lint",
+    "commit:setup": "bash ./scripts/setup-git-hooks.sh",
+    "commit:lint:last": "commitlint --from=HEAD~1 --to=HEAD"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.4.1",
+    "@commitlint/config-conventional": "^20.4.1",
     "@types/bun": "^1.3.8"
   }
 }
