@@ -73,6 +73,15 @@ export function NotesClient({
     return notes.find((n) => n.id === noteIdParam) ?? null;
   }, [notes, noteIdParam]);
 
+  // On the main notes page, keep a note selected when notes exist.
+  useEffect(() => {
+    if (pathname !== "/notes") return;
+    if (isCreatingNew) return;
+    if (notes.length === 0) return;
+    if (activeNote) return;
+    setNoteIdInUrl(notes[0].id);
+  }, [pathname, isCreatingNew, notes, activeNote, setNoteIdInUrl]);
+
   // Derive isCreatingNew from noteIdParam to avoid setState in effect
   const effectiveIsCreatingNew = useMemo(
     () => isCreatingNew && !noteIdParam,
