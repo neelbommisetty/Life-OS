@@ -1,11 +1,8 @@
-import { redirect } from "next/navigation";
-import { authServer } from "@/lib/auth/server";
 import {
-  getUsageSummary,
-  getRecentAiCalls,
+  getAnalyticsDashboard,
   type UsageSummary,
   type RecentAiCall,
-} from "@life-os/ai/tracking";
+} from "@/lib/analytics/actions";
 import {
   Card,
   CardContent,
@@ -328,18 +325,10 @@ function RecentActivity({ calls }: { calls: RecentAiCall[] }) {
 }
 
 export default async function AnalyticsPage() {
-  // Authenticate user
-  const { data: session } = await authServer.getSession();
-  if (!session?.user?.id) {
-    redirect("/auth/signin");
-  }
-  const userId = session.user.id;
-
-  // Fetch analytics data
-  const [summary, recentCalls] = await Promise.all([
-    getUsageSummary(userId, 30),
-    getRecentAiCalls(userId, 10),
-  ]);
+  const { summary, recentCalls } = await getAnalyticsDashboard({
+    days: 30,
+    limit: 10,
+  });
 
   return (
     <div className="container mx-auto max-w-6xl space-y-8 px-4 py-8">

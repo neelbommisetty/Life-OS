@@ -1,13 +1,8 @@
-import { redirect } from "next/navigation";
-import { authServer } from "@/lib/auth/server";
 import { ChatClient } from "./chat-client";
+import { requireApiSessionUser } from "@/lib/api/session";
 
 export default async function ChatPage() {
-  const { data: session } = await authServer.getSession();
-
-  if (!session?.user) {
-    redirect("/auth/sign-in");
-  }
+  await requireApiSessionUser();
 
   return <ChatClient />;
 }

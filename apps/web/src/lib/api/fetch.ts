@@ -1,11 +1,14 @@
 import "server-only";
+import { headers as nextHeaders } from "next/headers";
+import { redirect } from "next/navigation";
 import { buildApiUrl } from "./base-url";
-import { getApiBearerToken } from "./auth-token";
 
 type ApiErrorPayload = {
   message?: string;
   error?: string;
 };
+
+const LOGIN_PATH = "/auth/sign-in";
 
 async function readApiErrorMessage(response: Response) {
   const payload = (await response.json().catch(() => null)) as
@@ -24,15 +27,31 @@ async function readApiErrorMessage(response: Response) {
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
-  const token = await getApiBearerToken();
   const headers = new Headers(init.headers);
-  headers.set("authorization", `Bearer ${token}`);
 
-  return fetch(buildApiUrl(path), {
+  if (!headers.has("cookie")) {
+    try {
+      const requestHeaders = await nextHeaders();
+      const cookieHeader = requestHeaders.get("cookie");
+      if (cookieHeader) {
+        headers.set("cookie", cookieHeader);
+      }
+    } catch {
+      // If headers() is unavailable in this execution context, continue without cookies.
+    }
+  }
+
+  const response = await fetch(buildApiUrl(path), {
     ...init,
     headers,
     cache: init.cache ?? "no-store",
   });
+
+  if (response.status === 401) {
+    redirect(LOGIN_PATH);
+  }
+
+  return response;
 }
 
 export async function apiFetchJson<T>(path: string, init: RequestInit = {}) {

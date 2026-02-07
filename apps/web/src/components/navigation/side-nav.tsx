@@ -12,7 +12,7 @@ import {
   MessageSquare,
   BarChart3,
 } from "lucide-react";
-import { UserButton } from "@neondatabase/auth/react";
+import { AuthUserMenu } from "./auth-user-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -71,7 +71,7 @@ export function SideNav() {
         {/* Bottom Actions */}
         <div className="mt-auto flex flex-col items-center gap-6">
           <div className="flex h-10 w-10 items-center justify-center">
-            <UserButton size="icon" />
+            <AuthUserMenu />
           </div>
         </div>
       </aside>

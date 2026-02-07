@@ -20,11 +20,18 @@ import {
   type ChatDb,
   type ChatModelRegistry,
 } from "./service.js";
+import { streamChat, type ChatStreamDb } from "./stream-service.js";
 
 type ChatRouteDependencies = {
   getDb?: () => Promise<ChatDb>;
   getUserId?: (request: Request) => Promise<string>;
   modelRegistry?: ChatModelRegistry;
+  streamChat?: (params: {
+    request: Request;
+    userId: string;
+    db: ChatStreamDb;
+    modelRegistry: ChatModelRegistry;
+  }) => Promise<Response>;
 };
 
 function parseCursor(url: URL) {
@@ -55,6 +62,7 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
   const getDb = dependencies.getDb ?? (() => getDbClient<ChatDb>());
   const getUserId = dependencies.getUserId ?? resolveUserIdFromRequest;
   const modelRegistry = dependencies.modelRegistry ?? globalModelRegistry;
+  const streamChatHandler = dependencies.streamChat ?? streamChat;
 
   const listThreadsHandler = async (request: Request) => {
     const url = new URL(request.url);
@@ -131,6 +139,16 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
   };
 
   const listModelsHandler = async () => listModels(modelRegistry);
+
+  const streamHandler = async (request: Request) => {
+    const [db, userId] = await Promise.all([getDb(), getUserId(request)]);
+    return streamChatHandler({
+      request,
+      userId,
+      db: db as unknown as ChatStreamDb,
+      modelRegistry,
+    });
+  };
 
   chatRoute.get("/chat/threads", async (c) => {
     try {
@@ -247,6 +265,22 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
   chatRoute.get("/api/chat/models", async (c) => {
     try {
       return c.json(await listModelsHandler());
+    } catch (error) {
+      return handleRouteError(c, error);
+    }
+  });
+
+  chatRoute.post("/chat/stream", async (c) => {
+    try {
+      return await streamHandler(c.req.raw);
+    } catch (error) {
+      return handleRouteError(c, error);
+    }
+  });
+
+  chatRoute.post("/api/chat/stream", async (c) => {
+    try {
+      return await streamHandler(c.req.raw);
     } catch (error) {
       return handleRouteError(c, error);
     }

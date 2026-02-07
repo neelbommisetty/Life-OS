@@ -34,9 +34,27 @@ export const listMessagesSchema = z.object({
   limit: z.number().int().min(1).max(100).optional(),
 });
 
+export const streamMessageSchema = z
+  .object({
+    threadId: z.string().cuid().optional(),
+    content: z
+      .string()
+      .min(1, "Message cannot be empty")
+      .max(10000)
+      .refine((value) => value.trim().length > 0, {
+        message: "Message cannot be only whitespace",
+      })
+      .optional(),
+    regenerateFromMessageId: z.string().cuid().optional(),
+  })
+  .refine((data) => data.content || data.regenerateFromMessageId, {
+    message: "Content or regenerateFromMessageId is required",
+  });
+
 export type ListThreadsInput = z.infer<typeof listThreadsSchema>;
 export type CreateThreadInput = z.infer<typeof createThreadSchema>;
 export type ArchiveThreadInput = z.infer<typeof archiveThreadSchema>;
 export type GetThreadInput = z.infer<typeof getThreadSchema>;
 export type SetThreadModelInput = z.infer<typeof setThreadModelSchema>;
 export type ListMessagesInput = z.infer<typeof listMessagesSchema>;
+export type StreamMessageInput = z.infer<typeof streamMessageSchema>;

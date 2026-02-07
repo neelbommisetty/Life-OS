@@ -1,8 +1,8 @@
-import { authServer } from "@/lib/auth/server";
 import { RecentProjects } from "@/components/home/recent-projects";
 import { UpcomingTasks } from "@/components/home/upcoming-tasks";
 import { RecentNotes } from "@/components/home/recent-notes";
 import { Suspense } from "react";
+import { requireApiSessionUser } from "@/lib/api/session";
 import {
   RecentProjectsSkeleton,
   UpcomingTasksSkeleton,
@@ -10,9 +10,8 @@ import {
 } from "@/components/home/home-skeletons";
 
 export default async function Page() {
-  const { data: session } = await authServer.getSession();
-  if (!session?.user?.id) return null; // Should ideally redirect
-  const fullUserName = session?.user?.name || "there";
+  const sessionUser = await requireApiSessionUser();
+  const fullUserName = sessionUser.name || "there";
   const firstName = fullUserName.split(" ")[0];
 
   const now = new Date();

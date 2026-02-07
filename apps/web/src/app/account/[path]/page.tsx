@@ -1,18 +1,30 @@
-import { AccountView } from '@neondatabase/auth/react';
-import { accountViewPaths } from '@neondatabase/auth/react/ui/server';
+import { notFound } from "next/navigation";
+import { requireApiSessionUser } from "@/lib/api/session";
+import { AccountClient } from "./account-client";
+
+const ACCOUNT_PATHS = ["profile", "security"] as const;
+
+type AccountPath = (typeof ACCOUNT_PATHS)[number];
 
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return Object.values(accountViewPaths).map((path) => ({ path }));
+  return ACCOUNT_PATHS.map((path) => ({ path }));
 }
 
-export default async function AccountPage({ params }: { params: Promise<{ path: string }> }) {
+export default async function AccountPage({
+  params,
+}: {
+  params: Promise<{ path: string }>;
+}) {
   const { path } = await params;
+  const typedPath = path as AccountPath;
 
-  return (
-    <main className="container p-4 md:p-6">
-      <AccountView path={path} />
-    </main>
-  );
+  if (!ACCOUNT_PATHS.includes(typedPath)) {
+    notFound();
+  }
+
+  const user = await requireApiSessionUser();
+
+  return <AccountClient path={typedPath} user={user} />;
 }

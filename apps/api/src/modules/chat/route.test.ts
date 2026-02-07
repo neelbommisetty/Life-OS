@@ -236,4 +236,43 @@ describe("chatRoute", () => {
       },
     ]);
   });
+
+  test("POST /api/chat/stream delegates to API stream handler", async () => {
+    let capturedUserId: string | null = null;
+    let capturedBody: unknown;
+
+    const app = createTestApp(
+      createChatRoute({
+        getUserId: async () => USER_ID,
+        modelRegistry: createModelRegistry(),
+        getDb: async () => ({
+          chatThread: {
+            findMany: async () => [],
+            create: async () => ({ id: THREAD_ID }),
+            findFirst: async () => ({ id: THREAD_ID }),
+            update: async () => ({ id: THREAD_ID }),
+          },
+          chatMessage: {
+            findMany: async () => [],
+          },
+        }),
+        streamChat: async ({ request, userId }) => {
+          capturedUserId = userId;
+          capturedBody = await request.json().catch(() => null);
+          return Response.json({ ok: true });
+        },
+      }),
+    );
+
+    const { response, body } = await requestJson(app, "/api/chat/stream", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ threadId: THREAD_ID, content: "hello" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ ok: true });
+    expect(capturedUserId).toBe(USER_ID);
+    expect(capturedBody).toEqual({ threadId: THREAD_ID, content: "hello" });
+  });
 });

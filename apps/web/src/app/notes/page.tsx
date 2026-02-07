@@ -1,16 +1,11 @@
-import { redirect } from "next/navigation";
-import { authServer } from "@/lib/auth/server";
 import { NotesClient } from "./notes-client";
 import { listNotes } from "@/lib/notes/actions";
 import { Suspense } from "react";
 import { NotesSkeleton } from "./notes-skeleton";
+import { requireApiSessionUser } from "@/lib/api/session";
 
 export default async function NotesPage() {
-  const { data: session } = await authServer.getSession();
-
-  if (!session?.user) {
-    redirect("/auth/sign-in");
-  }
+  await requireApiSessionUser();
 
   // Pre-fetch notes on the server
   const notes = await listNotes();

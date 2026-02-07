@@ -1,5 +1,3 @@
-import { authClient } from "@/lib/auth/client";
-import { NeonAuthUIProvider } from "@neondatabase/auth/react";
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { SideNav } from "@/components/navigation/side-nav";
@@ -42,22 +40,16 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <NeonAuthUIProvider
-            authClient={authClient}
-            redirectTo="/"
-            emailOTP={false}
-          >
-            <div className="flex min-h-screen bg-background">
-              <SideNav />
-              <div className="flex flex-1 flex-col pl-[64px]">
-                <TopNav />
-                <main className="h-[calc(100dvh-4rem)] overflow-hidden">
-                  {children}
-                </main>
-              </div>
+          <div className="flex min-h-screen bg-background">
+            <SideNav />
+            <div className="flex flex-1 flex-col pl-[64px]">
+              <TopNav />
+              <main className="h-[calc(100dvh-4rem)] overflow-hidden">
+                {children}
+              </main>
             </div>
-            <Toaster />
-          </NeonAuthUIProvider>
+          </div>
+          <Toaster />
         </ThemeProvider>
       </body>
     </html>

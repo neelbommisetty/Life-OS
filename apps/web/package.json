@@ -13,7 +13,6 @@
   "dependencies": {
     "@fontsource/fira-code": "^5.2.7",
     "@life-os/ai": "workspace:*",
-    "@neondatabase/auth": "^0.1.0-beta.21",
     "@prisma/adapter-neon": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "class-variance-authority": "^0.7.1",
