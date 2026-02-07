@@ -54,6 +54,27 @@ describe("statusRoute", () => {
     expect(body).toEqual({ status: "not_ready", db: "not_ready" });
   });
 
+  test("GET /status includes reason when STATUS_DEBUG=true and database check throws", async () => {
+    await withEnv({ STATUS_DEBUG: "true" }, async () => {
+      const app = createTestApp(
+        createStatusRoute({
+          hasDatabaseUrl: () => true,
+          checkDatabaseReady: async () => {
+            throw new Error("connection failed");
+          },
+        }),
+      );
+      const { response, body } = await requestJson(app, "/status");
+
+      expect(response.status).toBe(503);
+      expect(body).toEqual({
+        status: "not_ready",
+        db: "not_ready",
+        reason: "connection failed",
+      });
+    });
+  });
+
   test("GET /api/status returns ready when database is reachable", async () => {
     const app = createTestApp(
       createStatusRoute({
