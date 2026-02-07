@@ -42,7 +42,7 @@ Required updates for feature work:
 | Chat | Default thread creation behavior | `GET /chat/threads`, `POST /chat/stream` (+ `/api/*`) | Creates default thread when listing and none exists; stream creates thread when needed |
 | Chat | Thread detail/model assignment | `GET /chat/threads/:threadId`, `POST /chat/threads/:threadId/model` (+ `/api/*`) | Invalid model rejected; valid model persists; invalid stored model is reset |
 | Chat | Messages pagination | `GET /chat/threads/:threadId/messages`, `/api/...` | Cursor contract (`cursorId` + `cursorCreatedAt`), `limit` bounds, ordering/nextCursor |
-| Chat | List text models | `GET /chat/models`, `/api/chat/models` | Returns only text-capable models with metadata fields |
+| Chat | List text models | `GET /chat/models`, `/api/chat/models` | Returns only text-capable models with metadata fields; authenticated app integration keeps list non-empty |
 | Chat | Streaming + regenerate flow | `POST /chat/stream`, `/api/chat/stream` | SSE events (`chunk`, `message_saved`, `done`, `error`), persistence, regenerate constraints |
 | Analytics | Usage dashboard | `GET /analytics/dashboard`, `/api/analytics/dashboard` | Default `days=30`, `limit=10`; bounds and validation errors; summary + recent calls payload |
 | Errors | Error mapping and JSON parsing | all routes | Invalid JSON -> 400, validation -> 400, not found -> 404, auth -> 401 |

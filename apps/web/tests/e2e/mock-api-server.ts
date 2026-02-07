@@ -19,7 +19,23 @@ type MockNote = {
   project: MockProject | null;
 };
 
+type MockChatThread = {
+  id: string;
+  userId: string;
+  name: string;
+  modelKey: string | null;
+  summary: string | null;
+  summaryUpTo: string | null;
+  lastChattedAt: string;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  projectId: string | null;
+  project: MockProject | null;
+};
+
 const now = new Date();
+const chatThreadId = "ckz1q2w3e4r5t6y7u8i9o0p1f";
 
 function iso(date: Date) {
   return date.toISOString();
@@ -51,6 +67,21 @@ const mockNotes: MockNote[] = [
     project: null,
   },
 ];
+
+const mockChatThread: MockChatThread = {
+  id: chatThreadId,
+  userId: "user-e2e",
+  name: "New thread",
+  modelKey: null,
+  summary: null,
+  summaryUpTo: null,
+  lastChattedAt: iso(now),
+  archivedAt: null,
+  createdAt: iso(now),
+  updatedAt: iso(now),
+  projectId: null,
+  project: null,
+};
 
 function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -174,6 +205,61 @@ const server = Bun.serve({
 
           mockNotes.unshift(created);
           return jsonResponse(created, 201);
+        });
+    }
+
+    if (pathname === "/api/chat/models" && method === "GET") {
+      return jsonResponse([
+        {
+          key: "openai.gpt-5-mini",
+          label: "OpenAI GPT-5 Mini",
+          provider: "openai",
+          costTier: "economy",
+          description: "Fast model for everyday chat.",
+          supportsStreaming: true,
+        },
+        {
+          key: "anthropic.claude-haiku-4-5",
+          label: "Anthropic Claude Haiku 4.5",
+          provider: "anthropic",
+          costTier: "economy",
+          description: "Lightweight Claude option.",
+          supportsStreaming: true,
+        },
+      ]);
+    }
+
+    if (pathname === "/api/chat/threads" && method === "GET") {
+      return jsonResponse([mockChatThread]);
+    }
+
+    if (
+      pathname === `/api/chat/threads/${chatThreadId}/messages` &&
+      method === "GET"
+    ) {
+      return jsonResponse({
+        threadId: chatThreadId,
+        messages: [],
+        nextCursor: null,
+      });
+    }
+
+    if (
+      pathname === `/api/chat/threads/${chatThreadId}/model` &&
+      method === "POST"
+    ) {
+      return request
+        .json()
+        .catch(() => ({}))
+        .then((payload) => {
+          const modelKey =
+            payload && typeof payload === "object" && "modelKey" in payload
+              ? (payload as { modelKey?: string | null }).modelKey ?? null
+              : null;
+
+          mockChatThread.modelKey = modelKey;
+          mockChatThread.updatedAt = iso(new Date());
+          return jsonResponse(mockChatThread);
         });
     }
 
