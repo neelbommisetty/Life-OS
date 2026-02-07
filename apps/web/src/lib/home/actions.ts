@@ -1,73 +1,71 @@
 "use server";
 
-import { prisma } from "@/lib/db";
-import { authServer } from "@/lib/auth/server";
-import { addDays } from "date-fns";
-import { cache } from "react";
+import { apiFetchJson } from "@/lib/api/fetch";
 
-const getCurrentUserId = cache(async (): Promise<string> => {
-  const { data: session } = await authServer.getSession();
-  if (!session?.user?.id) {
-    throw new Error("Unauthorized");
+type RecentProjectResponse = {
+  id: string;
+  name: string;
+  description: string | null;
+  updatedAt: string;
+  _count: {
+    tasks: number;
+  };
+};
+
+type UpcomingTaskResponse = {
+  id: string;
+  title: string;
+  dueDate: string | null;
+  priority: "LOW" | "MEDIUM" | "HIGH";
+  project: {
+    name: string;
+  } | null;
+};
+
+type RecentNoteResponse = {
+  id: string;
+  title: string;
+  content: string | null;
+  updatedAt: string;
+};
+
+function parseDate(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error("Invalid date received from API");
   }
-  return session.user.id;
-});
+  return parsed;
+}
 
 export async function getRecentProjects() {
-  const userId = await getCurrentUserId();
+  const projects = await apiFetchJson<RecentProjectResponse[]>(
+    "/api/home/recent-projects",
+  );
 
-  return prisma.project.findMany({
-    where: {
-      userId,
-      archivedAt: null,
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 3,
-    include: {
-      _count: {
-        select: { tasks: { where: { status: "TODO" } } }
-      }
-    }
-  });
+  return projects.map((project) => ({
+    ...project,
+    updatedAt: parseDate(project.updatedAt),
+  }));
 }
 
 export async function getUpcomingTasks() {
-  const userId = await getCurrentUserId();
-  const now = new Date();
-  const nextWeek = addDays(now, 7);
+  const tasks = await apiFetchJson<UpcomingTaskResponse[]>(
+    "/api/home/upcoming-tasks",
+  );
 
-  return prisma.task.findMany({
-    where: {
-      userId,
-      status: { not: "DONE" },
-      deletedAt: null,
-      OR: [
-        { dueDate: { lte: nextWeek, gte: new Date(now.setHours(0, 0, 0, 0)) } },
-        { dueDate: null }
-      ]
-    },
-    orderBy: [
-      { dueDate: "asc" },
-      { updatedAt: "desc" }
-    ],
-    take: 4,
-    include: {
-      project: {
-        select: { name: true }
-      }
-    }
-  });
+  return tasks.map((task) => ({
+    ...task,
+    dueDate: task.dueDate ? parseDate(task.dueDate) : null,
+  }));
 }
 
 export async function getRecentNotes() {
-  const userId = await getCurrentUserId();
+  const notes = await apiFetchJson<RecentNoteResponse[]>(
+    "/api/home/recent-notes",
+  );
 
-  return prisma.note.findMany({
-    where: {
-      userId,
-      deletedAt: null,
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 3,
-  });
+  return notes.map((note) => ({
+    ...note,
+    updatedAt: parseDate(note.updatedAt),
+  }));
 }

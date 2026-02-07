@@ -5,9 +5,16 @@ export default neonAuthMiddleware({
   loginUrl: "/auth/sign-in",
 });
 
+const PROTECTED_MATCHERS = [
+  "/",
+  "/analytics/:path*",
+  "/chat/:path*",
+  "/notes/:path*",
+  "/projects/:path*",
+  "/tasks/:path*",
+  "/account/:path*",
+];
+
 export const config = {
-  matcher: [
-    // Protected routes requiring authentication
-    "/",
-  ],
+  matcher: PROTECTED_MATCHERS,
 };

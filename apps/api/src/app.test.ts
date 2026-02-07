@@ -53,4 +53,31 @@ describe("api app integration", () => {
       });
     });
   });
+
+  test("protects business routes when auth is missing", async () => {
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+
+    try {
+      await withEnv(
+        { NEON_AUTH_BASE_URL: "https://auth.example.com/neondb/auth" },
+        async () => {
+          const { response, body } = await requestJson(app, "/api/chat/models");
+
+          expect(response.status).toBe(401);
+          expect(body).toEqual({
+            error: "unauthorized",
+            message: "Unauthorized",
+          });
+        },
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

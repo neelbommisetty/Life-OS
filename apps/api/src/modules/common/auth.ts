@@ -1,4 +1,14 @@
+import {
+  createRemoteJWKSet,
+  customFetch,
+  errors as joseErrors,
+  jwtVerify,
+  type JWTPayload,
+} from "jose";
 import { ApiError, unauthorizedError } from "./errors.js";
+
+const requestUserIdCache = new WeakMap<Request, Promise<string>>();
+const jwksByBaseUrl = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 function getAuthBaseUrlFromEnv() {
   const baseUrl = process.env.NEON_AUTH_BASE_URL?.replace(/\/+$/, "");
@@ -12,29 +22,156 @@ function getAuthBaseUrlFromEnv() {
   return baseUrl;
 }
 
+function getJwtIssuerFromEnv() {
+  const issuer = process.env.NEON_AUTH_JWT_ISSUER?.trim();
+  return issuer ? issuer : undefined;
+}
+
+function getJwtAudienceFromEnv() {
+  const audience = process.env.NEON_AUTH_JWT_AUDIENCE?.trim();
+  if (!audience) {
+    return undefined;
+  }
+
+  const values = audience
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (values.length <= 1) {
+    return values[0];
+  }
+
+  return values;
+}
+
 function buildSessionUrl(getAuthBaseUrl: () => string) {
   return `${getAuthBaseUrl()}/get-session`;
+}
+
+function buildJwksUrl(baseUrl: string) {
+  return `${baseUrl}/jwt`;
+}
+
+function parseBearerToken(authorizationHeader: string | null) {
+  if (!authorizationHeader) {
+    return null;
+  }
+
+  const match = authorizationHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    throw unauthorizedError("Invalid authorization header");
+  }
+
+  const token = match[1]?.trim();
+  if (!token) {
+    throw unauthorizedError("Invalid authorization header");
+  }
+
+  return token;
+}
+
+function resolveUserIdFromJwtPayload(
+  payload: JWTPayload & {
+    user_id?: unknown;
+    userId?: unknown;
+    uid?: unknown;
+    user?: { id?: unknown };
+  },
+) {
+  const candidates = [
+    payload.sub,
+    payload.user_id,
+    payload.userId,
+    payload.uid,
+    payload.user?.id,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function getCachedJwks(baseUrl: string, fetchFn: typeof fetch) {
+  const isDefaultFetch = fetchFn === fetch;
+  if (isDefaultFetch) {
+    const existing = jwksByBaseUrl.get(baseUrl);
+    if (existing) {
+      return existing;
+    }
+  }
+
+  const jwks = createRemoteJWKSet(new URL(buildJwksUrl(baseUrl)), {
+    [customFetch]: fetchFn,
+  });
+
+  if (isDefaultFetch) {
+    jwksByBaseUrl.set(baseUrl, jwks);
+  }
+
+  return jwks;
 }
 
 type ResolveUserIdDependencies = {
   fetchFn?: typeof fetch;
   getAuthBaseUrl?: () => string;
+  getJwtIssuer?: () => string | undefined;
+  getJwtAudience?: () => string | string[] | undefined;
 };
 
-export async function resolveUserIdFromRequest(
-  request: Request,
-  dependencies: ResolveUserIdDependencies = {},
+async function resolveUserIdFromBearerToken(
+  token: string,
+  dependencies: Required<ResolveUserIdDependencies>,
 ) {
-  const fetchFn = dependencies.fetchFn ?? fetch;
-  const getAuthBaseUrl = dependencies.getAuthBaseUrl ?? getAuthBaseUrlFromEnv;
-  const sessionUrl = buildSessionUrl(getAuthBaseUrl);
+  const baseUrl = dependencies.getAuthBaseUrl();
+  const jwks = getCachedJwks(baseUrl, dependencies.fetchFn);
+  const issuer = dependencies.getJwtIssuer();
+  const audience = dependencies.getJwtAudience();
 
+  try {
+    const { payload } = await jwtVerify(token, jwks, {
+      issuer,
+      audience,
+    });
+
+    const userId = resolveUserIdFromJwtPayload(payload);
+    if (!userId) {
+      throw unauthorizedError("Unauthorized");
+    }
+
+    return userId;
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+
+    if (error instanceof joseErrors.JOSEError) {
+      throw unauthorizedError("Invalid or expired token");
+    }
+
+    throw new ApiError(
+      500,
+      "auth_resolution_error",
+      error instanceof Error ? error.message : "Failed to verify bearer token",
+    );
+  }
+}
+
+async function resolveUserIdFromSession(
+  request: Request,
+  dependencies: Required<ResolveUserIdDependencies>,
+) {
+  const sessionUrl = buildSessionUrl(dependencies.getAuthBaseUrl);
   const headers = new Headers(request.headers);
   headers.delete("host");
 
   let response: Response;
   try {
-    response = await fetchFn(sessionUrl, {
+    response = await dependencies.fetchFn(sessionUrl, {
       method: "GET",
       headers,
       redirect: "manual",
@@ -83,4 +220,48 @@ export async function resolveUserIdFromRequest(
   }
 
   return userId;
+}
+
+async function resolveUserIdFromRequestUncached(
+  request: Request,
+  dependencies: Required<ResolveUserIdDependencies>,
+) {
+  const token = parseBearerToken(request.headers.get("authorization"));
+
+  if (token) {
+    return resolveUserIdFromBearerToken(token, dependencies);
+  }
+
+  return resolveUserIdFromSession(request, dependencies);
+}
+
+export async function resolveUserIdFromRequest(
+  request: Request,
+  dependencies: ResolveUserIdDependencies = {},
+) {
+  const resolvedDependencies: Required<ResolveUserIdDependencies> = {
+    fetchFn: dependencies.fetchFn ?? fetch,
+    getAuthBaseUrl: dependencies.getAuthBaseUrl ?? getAuthBaseUrlFromEnv,
+    getJwtIssuer: dependencies.getJwtIssuer ?? getJwtIssuerFromEnv,
+    getJwtAudience: dependencies.getJwtAudience ?? getJwtAudienceFromEnv,
+  };
+
+  const hasCustomDependencies =
+    dependencies.fetchFn !== undefined ||
+    dependencies.getAuthBaseUrl !== undefined ||
+    dependencies.getJwtIssuer !== undefined ||
+    dependencies.getJwtAudience !== undefined;
+
+  if (hasCustomDependencies) {
+    return resolveUserIdFromRequestUncached(request, resolvedDependencies);
+  }
+
+  const cached = requestUserIdCache.get(request);
+  if (cached) {
+    return cached;
+  }
+
+  const resolution = resolveUserIdFromRequestUncached(request, resolvedDependencies);
+  requestUserIdCache.set(request, resolution);
+  return resolution;
 }

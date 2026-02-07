@@ -1,22 +1,9 @@
 import type { NextRequest } from "next/server";
+import { getApiBaseUrl } from "@/lib/api/base-url";
 
 type RouteParams = {
   path: string[];
 };
-
-function getApiBaseUrl() {
-  const configuredBaseUrl = process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  if (configuredBaseUrl) {
-    return configuredBaseUrl.replace(/\/+$/, "");
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    return "http://localhost:3001";
-  }
-
-  throw new Error("API_BASE_URL or NEXT_PUBLIC_API_BASE_URL must be set");
-}
 
 function buildTargetUrl(path: string[], search: string) {
   const apiBaseUrl = getApiBaseUrl();
