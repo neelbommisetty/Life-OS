@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun run src/server.ts",
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "tsc --noEmit -p tsconfig.lint.json"
   },
   "dependencies": {
     "hono": "^4.6.0",

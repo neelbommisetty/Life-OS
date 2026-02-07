@@ -12,7 +12,8 @@
     "./tracking/*": "./src/tracking/*.ts"
   },
   "scripts": {
-    "test": "bun test"
+    "test": "bun test",
+    "lint": "tsc --noEmit -p tsconfig.lint.json"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

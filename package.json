@@ -2,7 +2,10 @@
   "name": "life-os",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "bun run --filter=./apps/web --filter=./apps/api dev",
     "dev:all": "bun run --filter=./apps/web --filter=./apps/api dev",
@@ -10,11 +13,16 @@
     "dev:api": "bun --filter=./apps/api dev",
     "build": "bun --filter=./apps/web build",
     "start": "bun --filter=./apps/web start",
-    "lint": "bun --filter=./apps/web lint",
+    "lint": "bun run --filter=./apps/web --filter=./apps/api --filter=./packages/ai --filter=./packages/db lint",
+    "test": "bun run --filter=./apps/web --filter=./apps/api --filter=./packages/ai --filter=./packages/db test",
     "test:web": "bun --filter=./apps/web test",
     "test:api": "bun --filter=./apps/api test",
     "prisma:generate": "bun --filter=./packages/db prisma:generate",
     "prisma:migrate": "bun --filter=./packages/db prisma:migrate",
-    "prisma:deploy": "bun --filter=./packages/db prisma:deploy"
+    "prisma:deploy": "bun --filter=./packages/db prisma:deploy",
+    "lint:web": "bun --filter=./apps/web lint"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.8"
   }
 }

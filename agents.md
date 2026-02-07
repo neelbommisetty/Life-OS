@@ -67,6 +67,7 @@
 ## Testing and quality
 
 - **Testing**: Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Run tests with `bun test` or `bun run test`. No external test frameworks (Vitest, Jest, etc.).
+- **API test requirement**: Whenever adding a new API route/endpoint in `apps/api`, add or update unit tests in the same change immediately (do not defer).
 - Type-first: leverage TypeScript and Prisma's generated types. Avoid `any`. Use Prisma's type inference for database models.
 - Keep components small and reusable; lift shared logic into hooks/utilities.
 - Prefer ESLint/TypeScript fixes over disabling rules; if disabling, justify inline.
