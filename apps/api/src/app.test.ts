@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { app } from "./app";
-import { requestJson, withEnv } from "./test/harness";
+import { app } from "./app.js";
+import { requestJson, withEnv } from "./test/harness.js";
 
 describe("api app integration", () => {
   test("mounts root route", async () => {

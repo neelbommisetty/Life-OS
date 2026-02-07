@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createStatusRoute } from "./status";
-import { createTestApp, requestJson, withEnv } from "../test/harness";
+import { createStatusRoute } from "./status.js";
+import { createTestApp, requestJson, withEnv } from "../test/harness.js";
 
 describe("statusRoute", () => {
   test("GET /status returns not_ready when DATABASE_URL is missing (default behavior)", async () => {

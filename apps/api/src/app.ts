@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { authRoute } from "./routes/auth";
-import { statusRoute } from "./routes/status";
+import { authRoute } from "./routes/auth.js";
+import { statusRoute } from "./routes/status.js";
 
 export const app = new Hono();
 

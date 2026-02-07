@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createAuthRoute } from "./auth";
-import { createTestApp, requestJson } from "../test/harness";
+import { createAuthRoute } from "./auth.js";
+import { createTestApp, requestJson } from "../test/harness.js";
 
 describe("authRoute", () => {
   test("proxies GET requests to the Neon Auth base URL", async () => {
