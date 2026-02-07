@@ -10,6 +10,29 @@
   - `packages/ai`: Shared AI routing/providers/utilities (`@life-os/ai`).
 - Prefer sharing code via `packages/*` (workspace deps) rather than importing across `apps/*`.
 
+## GitHub workflow rules (required)
+
+- Default branch is `develop` (not `main`).
+- Never push directly to `main` or `develop`.
+- All changes must go through pull requests.
+- Required checks:
+  - PRs into `develop` must pass `unit-tests`.
+  - PRs into `main` must pass `unit-tests` and `e2e-tests`.
+- Vercel deploy policy:
+  - Only deploy from `main`.
+  - Do not deploy branch previews (including `develop`).
+
+## Worktree-first git workflow
+
+- Prefer one worktree per active branch to avoid branch switching in a single directory.
+- Create feature branches from `develop`.
+- Keep branch naming predictable (`codex/<task>`, `feat/<task>`, `fix/<task>`).
+- Typical flow:
+  - `git fetch origin`
+  - `git worktree add ../wt-<branch> -b <branch> origin/develop`
+  - Work, commit on `<branch>`, open PR to `develop`.
+  - Promote via PR from `develop` to `main` for release.
+
 ## Commands in a monorepo
 
 - Prefer running scripts from the repo root via `package.json`:
