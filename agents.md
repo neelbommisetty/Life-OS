@@ -56,6 +56,10 @@
   - Deploy migrations (prod): `bun run prisma:deploy` (or `bun --filter=./packages/db prisma:deploy`)
 - **Neon Integration**: Use Neon's serverless adapter (`@prisma/adapter-neon`) for edge/serverless deployments. Connection strings are managed via environment variables.
 - **Neon Auth**: Use Neon Auth (`@neondatabase/auth`). Provision Neon Auth via Neon MCP tools or manually set up the `neon_auth` schema. Web auth configuration is in `apps/web/src/lib/auth/server.ts` and `apps/web/src/lib/auth/client.ts`.
+- **Vercel API deployment guardrails**:
+  - In `apps/api`, use explicit `.js` extensions for relative ESM imports (example: `./routes/status.js`) so Node runtime resolution works in Vercel.
+  - Keep Prisma runtime in `packages/db` and import it as `@life-os/db` from API code; do not duplicate Prisma client init in `apps/api`.
+  - Any `packages/*` workspace module imported by an app at runtime must export a runtime-loadable JS entry (not only TS source files like `src/*.ts`), with `package.json` `main`/`exports` configured for Node/Vercel resolution.
 
 ## State and data fetching
 
