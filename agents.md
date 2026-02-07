@@ -1,34 +1,65 @@
+## Monorepo (Bun workspaces)
+
+- This repo is a Bun workspace monorepo (`workspaces: ["apps/*", "packages/*"]`).
+- Apps:
+  - `apps/web`: Next.js 16 App Router (React 19) web app.
+  - `apps/api`: Bun + Hono API service.
+  - `apps/ios`: Native iOS app (Swift / Xcode) — separate conventions from the TS codebase.
+- Packages:
+  - `packages/db`: Prisma + Neon (Postgres) schema/migrations + shared DB client (`@life-os/db`).
+  - `packages/ai`: Shared AI routing/providers/utilities (`@life-os/ai`).
+- Prefer sharing code via `packages/*` (workspace deps) rather than importing across `apps/*`.
+
+## Commands in a monorepo
+
+- Prefer running scripts from the repo root via `package.json`:
+  - Web: `bun dev` / `bun run dev:web`, `bun run build`, `bun run lint`, `bun run start`
+  - API: `bun run dev:api`
+  - Tests: `bun run test:web`, `bun run test:api` (and `bun --filter=./packages/* test` as needed)
+  - Prisma (DB package): `bun run prisma:generate`, `bun run prisma:migrate`, `bun run prisma:deploy`
+- When you need to run a workspace-local script directly, use Bun filters:
+  - Example: `bun --filter=./apps/web dev`
+  - Example: `bun --filter=./packages/db prisma:migrate`
+- When adding dependencies, add them to the correct workspace (app/package), not the repo root:
+  - Example: `bun add <dep> --filter=./apps/web`
+  - Example: `bun add <dep> --filter=./packages/ai`
+- shadcn/ui commands should run from `apps/web` (where `components.json` lives):
+  - `cd apps/web && bunx shadcn@latest add <component>`
+
 ## Framework and language
 
-- Next.js 16 App Router with TypeScript only. Keep server actions/server components preferred where possible.
-- React 19 with React Compiler enabled (via `babel-plugin-react-compiler`).
+- `apps/web` uses Next.js 16 App Router with TypeScript only. Keep server actions/server components preferred where possible.
+- `apps/web` uses React 19 with React Compiler enabled (via `babel-plugin-react-compiler`).
 - Use Bun for install/dev scripts; match package.json scripts (avoid npm/yarn commands).
-- Keep minimal polyfills; no Node-only APIs in the client.
+- Keep minimal polyfills; no Node-only APIs in `apps/web` client components.
 
 ## Styling and UI
 
-- **shadcn/ui**: Use shadcn/ui components from `@/components/ui` for all UI components. Components are configured with Radix Maia style, RSC support, and CSS variables. Add new components via `bunx shadcn@latest add <component>`.
-- Tailwind CSS 4 is primary styling; prefer utility classes. Co-locate component-specific styles via className.
+- Applies to `apps/web`.
+- **shadcn/ui**: Use shadcn/ui components from `apps/web/src/components/ui` (imported as `@/components/ui`). Components are configured with Radix Maia style, RSC support, and CSS variables. Add new components via `cd apps/web && bunx shadcn@latest add <component>`.
+- Tailwind CSS 4 is primary styling; prefer utility classes; co-locate component-specific styles via `className`.
 - **Icons**: Use `lucide-react` for all icons (configured in shadcn setup).
-- Use the `cn()` utility from `@/lib/utils` for conditional className merging.
+- Use the `cn()` utility from `apps/web/src/lib/utils` (imported as `@/lib/utils`) for conditional className merging.
 - Prefer CSS transitions for animations; add animation libraries only when complex animations are required.
 
 ## Data and API layer
 
-- **Prisma + Neon**: Use Prisma ORM with Neon (PostgreSQL) for database operations. The Prisma client is automatically generated before `dev` and `build` commands via `prisma generate`.
-- **Database Access**: Import Prisma client from `@/lib/db` for database queries. Use server components and server actions for database operations.
-- **Prisma Schema**: Define all database models in `prisma/schema.prisma`. Keep models organized and use proper relationships.
-- **Prisma Generate**: Always run `prisma generate` after schema changes. This is automatically handled in `dev` and `build` scripts, but run manually if needed: `bunx prisma generate`.
-- **Migrations**: Use Prisma migrations for schema changes:
-  - Create migration: `bunx prisma migrate dev --name <migration_name>`
-  - Apply migrations: `bunx prisma migrate deploy` (production)
-  - Reset database (dev only): `bunx prisma migrate reset`
+- **Prisma + Neon**: Use Prisma ORM with Neon (PostgreSQL) for database operations.
+- **DB package**: The Prisma schema and migrations live in `packages/db/prisma/schema.prisma` and `packages/db/prisma/migrations`.
+- **Database Access**:
+  - Shared (preferred for non-Next code): import Prisma client from `@life-os/db`.
+  - Web app (`apps/web`): server code typically imports `prisma` from `@/lib/db` (`apps/web/src/lib/db.ts`), which is the app-local Prisma client wrapper.
+- **Prisma Generate / Migrations**: Run Prisma via the DB workspace (prefer root scripts):
+  - Generate: `bun run prisma:generate` (or `bun --filter=./packages/db prisma:generate`)
+  - Create/apply dev migration: `bun run prisma:migrate` (or `bun --filter=./packages/db prisma:migrate`)
+  - Deploy migrations (prod): `bun run prisma:deploy` (or `bun --filter=./packages/db prisma:deploy`)
 - **Neon Integration**: Use Neon's serverless adapter (`@prisma/adapter-neon`) for edge/serverless deployments. Connection strings are managed via environment variables.
-- **Neon Auth**: Use Neon Auth (Better Auth) for authentication. Provision Neon Auth via Neon MCP tools or manually set up the `neon_auth` schema. Auth configuration is in `@/lib/auth.ts` and `@/lib/auth-server.ts`.
+- **Neon Auth**: Use Neon Auth (`@neondatabase/auth`). Provision Neon Auth via Neon MCP tools or manually set up the `neon_auth` schema. Web auth configuration is in `apps/web/src/lib/auth/server.ts` and `apps/web/src/lib/auth/client.ts`.
 
 ## State and data fetching
 
-- Default to server components. Use client components only for interactivity.
+- Applies to `apps/web`.
+- Default to server components; use client components only for interactivity.
 - For server data, use Prisma client directly in server components and server actions. Import from `@/lib/db`.
 - For client-side data fetching, use server actions or API routes that wrap Prisma queries. Avoid exposing Prisma client to client components.
 - Use React Server Components for initial data loading; use client components with server actions for mutations.
@@ -48,5 +79,5 @@
 
 ## Misc
 
-- Environment variables: document in `.env.example` and access via Next.js env conventions.
+- Environment variables: document in `.env.example`. Keep app-local `.env` files under the relevant workspace (ex: `apps/web/.env`) in sync as needed.
 - Keep accessibility in mind: aria labels for inputs/interactive elements; keyboard support for dialogs/menus.
