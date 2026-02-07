@@ -1,8 +1,13 @@
 import { Hono } from "hono";
+import {
+  getAIServicesStatus as getAIServicesStatusFromPackage,
+  type AIServicesStatus,
+} from "@life-os/ai";
 
 type StatusRouteDependencies = {
   hasDatabaseUrl?: () => boolean;
   checkDatabaseReady?: () => Promise<boolean>;
+  getAIServicesStatus?: () => AIServicesStatus;
 };
 
 async function checkDatabaseReadyWithPrisma() {
@@ -22,16 +27,23 @@ export function createStatusRoute(dependencies: StatusRouteDependencies = {}) {
   const statusRoute = new Hono();
   const hasDatabaseUrl = dependencies.hasDatabaseUrl ?? (() => Boolean(process.env.DATABASE_URL));
   const checkDatabaseReady = dependencies.checkDatabaseReady ?? checkDatabaseReadyWithPrisma;
+  const getAIServicesStatus =
+    dependencies.getAIServicesStatus ?? getAIServicesStatusFromPackage;
 
   const getStatus = async () => {
+    const ai = getAIServicesStatus();
+
     if (!hasDatabaseUrl()) {
-      return { code: 503 as const, body: { status: "not_ready", db: "not_configured" } };
+      return {
+        code: 503 as const,
+        body: { status: "not_ready", db: "not_configured", ai },
+      };
     }
 
     try {
       const isReady = await checkDatabaseReady();
       if (isReady) {
-        return { code: 200 as const, body: { status: "ready", db: "ready" } };
+        return { code: 200 as const, body: { status: "ready", db: "ready", ai } };
       }
     } catch (error) {
       const message = getErrorMessage(error);
@@ -40,14 +52,14 @@ export function createStatusRoute(dependencies: StatusRouteDependencies = {}) {
       if (process.env.STATUS_DEBUG === "true") {
         return {
           code: 503 as const,
-          body: { status: "not_ready", db: "not_ready", reason: message },
+          body: { status: "not_ready", db: "not_ready", reason: message, ai },
         };
       }
 
-      return { code: 503 as const, body: { status: "not_ready", db: "not_ready" } };
+      return { code: 503 as const, body: { status: "not_ready", db: "not_ready", ai } };
     }
 
-    return { code: 503 as const, body: { status: "not_ready", db: "not_ready" } };
+    return { code: 503 as const, body: { status: "not_ready", db: "not_ready", ai } };
   };
 
   statusRoute.get("/status", async (c) => {

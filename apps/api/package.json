@@ -8,6 +8,7 @@
     "lint": "tsc --noEmit -p tsconfig.lint.json"
   },
   "dependencies": {
+    "@life-os/ai": "workspace:*",
     "hono": "^4.6.0",
     "@life-os/db": "workspace:*"
   },

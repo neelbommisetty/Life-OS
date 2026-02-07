@@ -4,7 +4,6 @@
  * Registers AI model routes for project chat functionality.
  */
 
-import "server-only";
 import { registerServiceRoute, ServiceRouteStrategy } from "./providers/router";
 import { ModelKeyName } from "./providers/types";
 import { registerDefaultOpenAIModels } from "./providers/openai";

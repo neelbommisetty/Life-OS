@@ -1,7 +1,6 @@
 import "server-only";
 
-import { initializeProviders } from "./config";
-import { initializeChatServices } from "./chat-services";
+import { initializeAIServices } from "./services";
 
 /**
  * Server-side AI provider initialization.
@@ -10,6 +9,4 @@ import { initializeChatServices } from "./chat-services";
  * use AI functionality to ensure providers and service routes are registered.
  */
 
-initializeProviders();
-initializeChatServices();
-
+initializeAIServices();

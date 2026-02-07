@@ -1,6 +1,9 @@
 // Logger exports
 export * from './logger';
 
+// AI services lifecycle
+export * from './services';
+
 // Core AI abstractions
 export * from './core';
 

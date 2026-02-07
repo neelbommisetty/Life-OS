@@ -17,7 +17,14 @@ describe("api app integration", () => {
     await withEnv({ DATABASE_URL: undefined }, async () => {
       const { response, body } = await requestJson(app, "/status");
       expect(response.status).toBe(503);
-      expect(body).toEqual({ status: "not_ready", db: "not_configured" });
+      expect(body.status).toBe("not_ready");
+      expect(body.db).toBe("not_configured");
+      expect(typeof body.ai.status).toBe("string");
+      expect(typeof body.ai.initialized).toBe("boolean");
+      expect(typeof body.ai.providers.openai).toBe("string");
+      expect(typeof body.ai.providers.anthropic).toBe("string");
+      expect(typeof body.ai.providers.gemini).toBe("string");
+      expect(typeof body.ai.providers.xai).toBe("string");
     });
   });
 
@@ -25,7 +32,14 @@ describe("api app integration", () => {
     await withEnv({ DATABASE_URL: undefined }, async () => {
       const { response, body } = await requestJson(app, "/api/status");
       expect(response.status).toBe(503);
-      expect(body).toEqual({ status: "not_ready", db: "not_configured" });
+      expect(body.status).toBe("not_ready");
+      expect(body.db).toBe("not_configured");
+      expect(typeof body.ai.status).toBe("string");
+      expect(typeof body.ai.initialized).toBe("boolean");
+      expect(typeof body.ai.providers.openai).toBe("string");
+      expect(typeof body.ai.providers.anthropic).toBe("string");
+      expect(typeof body.ai.providers.gemini).toBe("string");
+      expect(typeof body.ai.providers.xai).toBe("string");
     });
   });
 
