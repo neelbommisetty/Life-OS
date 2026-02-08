@@ -22,7 +22,7 @@ Required updates for feature work:
 | Platform | Request correlation logging | all API routes via app middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
 | Platform | Service readiness status | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason |
 | Auth | Neon Auth proxy passthrough | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/headers/body/query; forwards upstream status/headers; base URL missing error |
-| Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior |
+| Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior, non-GET session lookup strips body headers, timeout and self-proxy misconfiguration fail-fast behavior |
 | Auth | Protected route gate | all non-public routes | Unauthorized when session/JWT missing/invalid; success with valid session/JWT |
 | Home | Dashboard cards data | `GET /home/recent-projects`, `/home/upcoming-tasks`, `/home/recent-notes` (+ `/api/*`) | Correct limits/order/filtering and auth isolation |
 | Projects | List/search/archive filtering | `GET /projects`, `GET /api/projects` | Search by name/description, includeArchived toggle, default non-archived |
