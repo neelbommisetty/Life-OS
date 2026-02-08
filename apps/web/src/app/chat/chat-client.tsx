@@ -25,6 +25,7 @@ import {
   listModels,
 } from "@/lib/chat/actions";
 import { saveMessageAsNote } from "@/lib/notes/actions";
+import { toastApiError } from "@/lib/api/error-toast";
 import type { ChatThread, ChatMessage, Project } from "@prisma/client";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -104,14 +105,14 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setNextCursor(result.nextCursor);
         setHasNextPage(!!result.nextCursor);
       } catch (error) {
-        console.error("Failed to refresh messages:", error);
+        toastApiError(error, "Failed to refresh messages");
       }
       // Refetch threads (for lastChattedAt updates)
       try {
         const threadResult = await listThreads({ projectId });
         setThreads(threadResult);
       } catch (error) {
-        console.error("Failed to refresh threads:", error);
+        toastApiError(error, "Failed to refresh threads");
       }
     },
     [pageSize, projectId],
@@ -154,7 +155,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setNextCursor(result.nextCursor);
         setHasNextPage(!!result.nextCursor);
       } catch (error) {
-        console.error("Failed to fetch more messages:", error);
+        toastApiError(error, "Failed to fetch more messages");
       } finally {
         setIsFetchingNextPage(false);
       }
@@ -189,7 +190,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setThreads(threadsResult);
         setModels(modelsResult);
       } catch (error) {
-        console.error("Failed to load initial data:", error);
+        toastApiError(error, "Failed to load initial chat data");
       } finally {
         setIsLoadingThreads(false);
         setIsLoadingModels(false);
@@ -216,7 +217,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setNextCursor(result.nextCursor);
         setHasNextPage(!!result.nextCursor);
       } catch (error) {
-        console.error("Failed to load messages:", error);
+        toastApiError(error, "Failed to load messages");
       } finally {
         setIsLoadingMessages(false);
       }
@@ -274,7 +275,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setThreads((prev) => [thread, ...prev]);
         setThreadIdInUrl(thread.id);
       } catch (error) {
-        console.error("Failed to create thread:", error);
+        toastApiError(error, "Failed to create thread");
       }
     });
   };
@@ -287,7 +288,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setThreads((prev) => prev.filter((t) => t.id !== effectiveThreadId));
         setThreadIdInUrl(null, true);
       } catch (error) {
-        console.error("Failed to archive thread:", error);
+        toastApiError(error, "Failed to archive thread");
       }
     });
   };
@@ -311,9 +312,8 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           prev.map((t) => (t.id === updated.id ? updated : t)),
         );
       } catch (error) {
-        setModelError(
-          error instanceof Error ? error.message : "Failed to update model",
-        );
+        const message = toastApiError(error, "Failed to update model");
+        setModelError(message);
       }
     });
   };
@@ -343,8 +343,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           toast.success("Note saved");
         }
       } catch (error) {
-        console.error("Failed to save note:", error);
-        toast.error("Failed to save note");
+        toastApiError(error, "Failed to save note");
       } finally {
         setSavingNoteById((prev) => {
           const next = { ...prev };
