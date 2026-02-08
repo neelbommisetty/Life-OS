@@ -12,7 +12,7 @@ import {
   MessageSquare,
   BarChart3,
 } from "lucide-react";
-import { AuthUserMenu } from "./auth-user-menu";
+import { AuthUserMenu, type SessionUser } from "./auth-user-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -29,7 +29,11 @@ const navItems = [
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
 ];
 
-export function SideNav() {
+type SideNavProps = {
+  sessionUser: SessionUser | null;
+};
+
+export function SideNav({ sessionUser }: SideNavProps) {
   const pathname = usePathname();
 
   return (
@@ -71,7 +75,7 @@ export function SideNav() {
         {/* Bottom Actions */}
         <div className="mt-auto flex flex-col items-center gap-6">
           <div className="flex h-10 w-10 items-center justify-center">
-            <AuthUserMenu />
+            <AuthUserMenu user={sessionUser} />
           </div>
         </div>
       </aside>
