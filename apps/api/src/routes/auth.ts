@@ -25,6 +25,33 @@ function buildProxyUrl(
   return `${baseUrl}${normalizedPath}${url.search}`;
 }
 
+function isAuthUpstreamPath(pathname: string, authBasePath: string) {
+  return pathname === authBasePath || pathname.startsWith(`${authBasePath}/`);
+}
+
+function rewriteUpstreamRedirectLocation(
+  location: string | null,
+  getAuthBaseUrl: () => string,
+) {
+  if (!location) {
+    return null;
+  }
+
+  const authBaseUrl = new URL(getAuthBaseUrl());
+  const normalizedAuthBasePath = authBaseUrl.pathname.replace(/\/+$/, "");
+  const resolvedLocation = new URL(location, authBaseUrl);
+
+  if (
+    resolvedLocation.origin !== authBaseUrl.origin ||
+    !isAuthUpstreamPath(resolvedLocation.pathname, normalizedAuthBasePath)
+  ) {
+    return location;
+  }
+
+  const pathSuffix = resolvedLocation.pathname.slice(normalizedAuthBasePath.length);
+  return `${AUTH_PROXY_PREFIX}${pathSuffix}${resolvedLocation.search}${resolvedLocation.hash}`;
+}
+
 type AuthRouteDependencies = {
   fetchFn?: typeof fetch;
   getAuthBaseUrl?: () => string;
@@ -55,9 +82,19 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
       redirect: "manual",
     });
 
+    const responseHeaders = new Headers(upstreamResponse.headers);
+    const rewrittenLocation = rewriteUpstreamRedirectLocation(
+      responseHeaders.get("location"),
+      getAuthBaseUrl,
+    );
+
+    if (rewrittenLocation) {
+      responseHeaders.set("location", rewrittenLocation);
+    }
+
     return new Response(upstreamResponse.body, {
       status: upstreamResponse.status,
-      headers: upstreamResponse.headers,
+      headers: responseHeaders,
     });
   }
 

@@ -94,4 +94,30 @@ describe("authRoute", () => {
       message: "missing base url",
     });
   });
+
+  test("rewrites upstream auth redirects to proxy-relative location", async () => {
+    const app = createTestApp(
+      createAuthRoute({
+        getAuthBaseUrl: () => "https://auth.example.com/neondb/auth",
+        fetchFn: async () =>
+          new Response(null, {
+            status: 307,
+            headers: {
+              location:
+                "https://auth.example.com/neondb/auth/sign-in?callbackURL=%2Fchat",
+            },
+          }),
+      }),
+    );
+
+    const response = await app.request("/api/auth/sign-out", {
+      method: "POST",
+      redirect: "manual",
+    });
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "/api/auth/sign-in?callbackURL=%2Fchat",
+    );
+  });
 });
