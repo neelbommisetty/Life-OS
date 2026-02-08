@@ -15,6 +15,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { toastApiError } from "@/lib/api/error-toast";
 import { toast } from "sonner";
 
 type NoteEditorProps = {
@@ -25,7 +26,7 @@ type NoteEditorProps = {
     id: string | undefined,
     title: string,
     content: string,
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   onDelete: (id: string) => void;
   isSaving: boolean;
   isDeleting: boolean;
@@ -94,15 +95,23 @@ export function NoteEditor({
 
     if (!currentTitle.trim()) return;
 
-    await onSave(noteId || undefined, currentTitle, currentContent);
+    try {
+      const didSave = await onSave(noteId || undefined, currentTitle, currentContent);
 
-    // Only clear dirty flag if content hasn't changed during save
-    if (
-      titleRef.current === currentTitle &&
-      contentRef.current === currentContent
-    ) {
-      setIsDirty(false);
-      toast.success("Note saved");
+      if (!didSave) {
+        return;
+      }
+
+      // Only clear dirty flag if content hasn't changed during save
+      if (
+        titleRef.current === currentTitle &&
+        contentRef.current === currentContent
+      ) {
+        setIsDirty(false);
+        toast.success("Note saved");
+      }
+    } catch (error) {
+      toastApiError(error, "Failed to save note");
     }
   }, [noteId, onSave]);
 
@@ -118,8 +127,15 @@ export function NoteEditor({
         const titleToSave = titleRef.current;
         const contentToSave = contentRef.current;
 
-        onSave(noteId, titleToSave, contentToSave);
-        toast.success("Note saved");
+        void onSave(noteId, titleToSave, contentToSave)
+          .then((didSave) => {
+            if (didSave) {
+              toast.success("Note saved");
+            }
+          })
+          .catch((error) => {
+            toastApiError(error, "Failed to save note");
+          });
       }
     };
   }, [noteId, onSave]);

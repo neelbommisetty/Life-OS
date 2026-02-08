@@ -4,6 +4,7 @@ import { SideNav } from "@/components/navigation/side-nav";
 import { TopNav } from "@/components/navigation/top-nav";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { UnhandledErrorToaster } from "@/components/providers/unhandled-error-toaster";
 import { getApiSessionUser } from "@/lib/api/session";
 import "@fontsource/fira-code";
 import "./globals.css";
@@ -52,6 +53,7 @@ export default async function RootLayout({
               </main>
             </div>
           </div>
+          <UnhandledErrorToaster />
           <Toaster />
         </ThemeProvider>
       </body>

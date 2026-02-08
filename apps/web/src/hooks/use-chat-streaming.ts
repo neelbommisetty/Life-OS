@@ -2,6 +2,8 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { parseSSEChunk, handleStreamError } from "@/lib/chat-utils";
+import { toastApiError } from "@/lib/api/error-toast";
+import { readApiErrorMessageFromResponse } from "@/lib/api/error-message";
 import type { ChatMessage } from "@prisma/client";
 
 type UseChatStreamingParams = {
@@ -101,7 +103,11 @@ export function useChatStreaming({
         });
 
         if (!response.ok) {
-          throw new Error(`Stream request failed: ${response.status}`);
+          const message = await readApiErrorMessageFromResponse(
+            response,
+            `Stream request failed with status ${response.status}`,
+          );
+          throw new Error(message);
         }
 
         const reader = response.body?.getReader();
@@ -130,7 +136,9 @@ export function useChatStreaming({
               if (event.type === "chunk" && event.text) {
                 setStreamingContent((prev) => prev + event.text);
               } else if (event.type === "error") {
-                setStreamError(event.error || "Stream error occurred");
+                const message = event.error || "Stream error occurred";
+                setStreamError(message);
+                toastApiError(message, "Stream error occurred");
               } else if (event.type === "message_saved" && event.messageId) {
                 // Mark stream as finished, but keep the streamed bubble visible until the DB-backed message arrives
                 setIsStreaming(false);
@@ -173,6 +181,7 @@ export function useChatStreaming({
           const errorMessage = handleStreamError(error);
           setStreamError(errorMessage);
           setOptimisticStatus(content ? "failed" : null);
+          toastApiError(error, errorMessage);
         }
 
         setIsStreaming(false);

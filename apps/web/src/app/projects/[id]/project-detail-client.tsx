@@ -37,6 +37,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { updateProject, type UpdateProjectInput } from "@/lib/projects";
+import { toastApiError } from "@/lib/api/error-toast";
 import type { Project, ChatThread, Task, Note } from "@prisma/client";
 import { TasksClient } from "@/app/tasks/tasks-client";
 import { NotesClient } from "@/app/notes/notes-client";
@@ -75,10 +76,7 @@ export function ProjectDetailClient({
       setIsEditOpen(false);
       router.refresh();
     } catch (error) {
-      console.error("Failed to update project:", error);
-      alert(
-        error instanceof Error ? error.message : "Failed to update project",
-      );
+      toastApiError(error, "Failed to update project");
     } finally {
       setIsEditing(false);
     }

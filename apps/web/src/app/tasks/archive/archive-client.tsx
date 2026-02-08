@@ -9,6 +9,7 @@ import { ArrowLeft, Search } from "lucide-react";
 import { listArchivedTasks } from "@/lib/tasks/actions";
 import { type TaskWithProject } from "../task-card";
 import { cn } from "@/lib/utils";
+import { toastApiError } from "@/lib/api/error-toast";
 import Link from "next/link";
 // We might need a separate permanent delete action or reuse the soft delete (which would just update timestamp if we wanted)
 // But typically "archive" implies soft deleted.
@@ -26,7 +27,7 @@ export function ArchiveClient() {
       const archivedResult = await listArchivedTasks();
       setArchivedTasks(archivedResult);
     } catch (error) {
-      console.error("Failed to load archived tasks:", error);
+      toastApiError(error, "Failed to load archived tasks");
     } finally {
       setIsLoading(false);
     }

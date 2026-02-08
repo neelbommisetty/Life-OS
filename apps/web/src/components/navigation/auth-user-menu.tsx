@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { CircleUserRound, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  toastApiError,
+  toastApiResponseError,
+} from "@/lib/api/error-toast";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -53,13 +57,21 @@ export function AuthUserMenu({ user }: { user: SessionUser | null }) {
   const handleSignOut = async () => {
     setSigningOut(true);
     try {
-      await fetch("/api/auth/sign-out", {
+      const response = await fetch("/api/auth/sign-out", {
         method: "POST",
         credentials: "include",
       });
-    } finally {
+
+      if (!response.ok) {
+        await toastApiResponseError(response, "Failed to sign out");
+        return;
+      }
+
       router.replace("/auth/sign-in");
       router.refresh();
+    } catch (error) {
+      toastApiError(error, "Failed to sign out");
+    } finally {
       setSigningOut(false);
     }
   };
