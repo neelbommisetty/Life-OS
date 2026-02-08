@@ -65,6 +65,21 @@ type AuthRouteDependencies = {
   getAuthBaseUrl?: () => string;
 };
 
+async function buildProxyBody(request: Request, headers: Headers) {
+  if (request.method === "GET" || request.method === "HEAD") {
+    return undefined;
+  }
+
+  const body = await request.arrayBuffer();
+  if (body.byteLength === 0) {
+    headers.delete("content-type");
+    headers.delete("content-length");
+    return undefined;
+  }
+
+  return body;
+}
+
 export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
   const authRoute = new Hono();
   const fetchFn = dependencies.fetchFn ?? fetch;
@@ -82,13 +97,12 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
       headers.delete(name);
     }
 
+    const body = await buildProxyBody(request, headers);
+
     const upstreamResponse = await fetchFn(targetUrl, {
       method: request.method,
       headers,
-      body:
-        request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : request.body,
+      body,
       redirect: "manual",
     });
 
