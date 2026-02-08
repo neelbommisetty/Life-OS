@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { createNote, updateNote, deleteNote } from "@/lib/notes/actions";
+import { toastApiError } from "@/lib/api/error-toast";
 import type { Note, Project } from "@prisma/client";
 import { NoteSelector, NoteEditor } from "@/components/notes";
 import { FileText } from "lucide-react";
@@ -89,19 +90,7 @@ export function NotesClient({
   );
 
   // Handlers
-  const handleNoteSelect = async (noteId: string) => {
-    // Check if the current note editor handles auto-saving on unmount/change?
-    // Actually, NoteEditor handles auto-save internally on mount/unmount and changes,
-    // but React unmounts components before mounting new ones usually, or updates props.
-    // If we switch notes, NoteEditor will receive new props.
-    // We need to ensure the *previous* note saves if dirty.
-    // NoteEditor has logic `useEffect` dependent on `noteId` that resets state.
-    // We should probably expose a "forceSave" ref or method, OR move the dirty state up.
-    // However, a simpler way is: NoteEditor's `useEffect` for `noteId` change triggers a reset.
-    // We can add a cleanup function to the *previous* effect or just trust the auto-save logic
-    // BUT `useEffect` cleanup runs *after* the new render usually starts or before the effect re-runs.
-    // Let's modify NoteEditor to handle "save on unmount/change".
-
+  const handleNoteSelect = (noteId: string) => {
     setNoteIdInUrl(noteId);
     setIsMobileDrawerOpen(false);
     setIsCreatingNew(false);
@@ -120,42 +109,39 @@ export function NotesClient({
         setNoteIdInUrl(created.id);
         setIsMobileDrawerOpen(false);
       } catch (error) {
-        console.error("Failed to create note:", error);
+        toastApiError(error, "Failed to create note");
       }
     });
   };
 
-  const handleSave = async (
-    id: string | undefined,
-    title: string,
-    content: string,
-  ) => {
-    startTransition(async () => {
-      try {
-        if (id) {
-          // Update existing
-          const updated = await updateNote({ id, title, content });
-          setNotes((prev) =>
-            prev.map((n) => (n.id === id ? { ...n, ...updated } : n)),
-          );
-        } else {
-          // Create new
-          const created = await createNote({ title, content, projectId });
-          // We need to fetch the full note to get the project relation if we want to be consistent,
-          // but createNote usually returns just the note.
-          // However, listNotes returns NoteWithProject.
-          // For now, let's assume no project on creation or refetch.
-          // Or just cast it since project is optional.
-          const newNote: NoteWithProject = { ...created, project: null };
-          setNotes((prev) => [newNote, ...prev]);
-          setNoteIdInUrl(created.id);
-          setIsCreatingNew(false);
-        }
-      } catch (error) {
-        console.error("Failed to save note:", error);
-      }
-    });
-  };
+  const handleSave = useCallback(
+    (id: string | undefined, title: string, content: string): Promise<boolean> =>
+      new Promise((resolve) => {
+        startTransition(() => {
+          void (async () => {
+            try {
+              if (id) {
+                const updated = await updateNote({ id, title, content });
+                setNotes((prev) =>
+                  prev.map((n) => (n.id === id ? { ...n, ...updated } : n)),
+                );
+              } else {
+                const created = await createNote({ title, content, projectId });
+                const newNote: NoteWithProject = { ...created, project: null };
+                setNotes((prev) => [newNote, ...prev]);
+                setNoteIdInUrl(created.id);
+                setIsCreatingNew(false);
+              }
+              resolve(true);
+            } catch (error) {
+              toastApiError(error, "Failed to save note");
+              resolve(false);
+            }
+          })();
+        });
+      }),
+    [projectId, setNoteIdInUrl],
+  );
 
   const handleDeleteClick = (id: string) => {
     setNoteToDelete(id);
@@ -174,7 +160,7 @@ export function NotesClient({
         setDeleteDialogOpen(false);
         setNoteToDelete(null);
       } catch (error) {
-        console.error("Failed to delete note:", error);
+        toastApiError(error, "Failed to delete note");
       }
     });
   };

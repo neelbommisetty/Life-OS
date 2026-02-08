@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  toastApiError,
+  toastApiResponseError,
+} from "@/lib/api/error-toast";
 import { cn } from "@/lib/utils";
 
 type SessionUser = {
@@ -22,23 +26,6 @@ type AccountClientProps = {
   path: AccountPath;
   user: SessionUser;
 };
-
-type AuthErrorPayload = {
-  message?: string;
-  error?: string;
-};
-
-function readErrorMessage(payload: AuthErrorPayload | null, fallback: string) {
-  if (payload?.message && payload.message.trim().length > 0) {
-    return payload.message;
-  }
-
-  if (payload?.error && payload.error.trim().length > 0) {
-    return payload.error;
-  }
-
-  return fallback;
-}
 
 export function AccountClient({ path, user }: AccountClientProps) {
   const router = useRouter();
@@ -66,15 +53,18 @@ export function AccountClient({ path, user }: AccountClientProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | AuthErrorPayload
-          | null;
-        setError(readErrorMessage(payload, "Failed to update profile"));
+        const message = await toastApiResponseError(
+          response,
+          "Failed to update profile",
+        );
+        setError(message);
         return;
       }
 
       setSuccess("Profile updated");
       router.refresh();
+    } catch (error) {
+      setError(toastApiError(error, "Failed to update profile"));
     } finally {
       setLoading(false);
     }
@@ -110,15 +100,18 @@ export function AccountClient({ path, user }: AccountClientProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | AuthErrorPayload
-          | null;
-        setError(readErrorMessage(payload, "Failed to change password"));
+        const message = await toastApiResponseError(
+          response,
+          "Failed to change password",
+        );
+        setError(message);
         return;
       }
 
       setSuccess("Password updated");
       (event.currentTarget as HTMLFormElement).reset();
+    } catch (error) {
+      setError(toastApiError(error, "Failed to change password"));
     } finally {
       setLoading(false);
     }
@@ -130,12 +123,21 @@ export function AccountClient({ path, user }: AccountClientProps) {
     setSuccess(null);
 
     try {
-      await fetch("/api/auth/sign-out", {
+      const response = await fetch("/api/auth/sign-out", {
         method: "POST",
         credentials: "include",
       });
+
+      if (!response.ok) {
+        const message = await toastApiResponseError(response, "Failed to sign out");
+        setError(message);
+        return;
+      }
+
       router.replace("/auth/sign-in");
       router.refresh();
+    } catch (error) {
+      setError(toastApiError(error, "Failed to sign out"));
     } finally {
       setLoading(false);
     }

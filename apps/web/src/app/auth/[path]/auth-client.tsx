@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  toastApiError,
+  toastApiResponseError,
+} from "@/lib/api/error-toast";
 
 type AuthViewPath =
   | "sign-in"
@@ -18,23 +22,6 @@ type AuthViewPath =
 type AuthClientProps = {
   path: AuthViewPath;
 };
-
-type AuthErrorPayload = {
-  message?: string;
-  error?: string;
-};
-
-function readErrorMessage(payload: AuthErrorPayload | null, fallback: string) {
-  if (payload?.message && payload.message.trim().length > 0) {
-    return payload.message;
-  }
-
-  if (payload?.error && payload.error.trim().length > 0) {
-    return payload.error;
-  }
-
-  return fallback;
-}
 
 export function AuthClient({ path }: AuthClientProps) {
   const router = useRouter();
@@ -78,15 +65,15 @@ export function AuthClient({ path }: AuthClientProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | AuthErrorPayload
-          | null;
-        setError(readErrorMessage(payload, "Sign in failed"));
+        const message = await toastApiResponseError(response, "Sign in failed");
+        setError(message);
         return;
       }
 
       router.replace(callbackURL);
       router.refresh();
+    } catch (error) {
+      setError(toastApiError(error, "Sign in failed"));
     } finally {
       setLoading(false);
     }
@@ -119,15 +106,15 @@ export function AuthClient({ path }: AuthClientProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | AuthErrorPayload
-          | null;
-        setError(readErrorMessage(payload, "Sign up failed"));
+        const message = await toastApiResponseError(response, "Sign up failed");
+        setError(message);
         return;
       }
 
       router.replace(callbackURL);
       router.refresh();
+    } catch (error) {
+      setError(toastApiError(error, "Sign up failed"));
     } finally {
       setLoading(false);
     }
@@ -157,16 +144,19 @@ export function AuthClient({ path }: AuthClientProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | AuthErrorPayload
-          | null;
-        setError(readErrorMessage(payload, "Password reset request failed"));
+        const message = await toastApiResponseError(
+          response,
+          "Password reset request failed",
+        );
+        setError(message);
         return;
       }
 
       setSuccess(
         "If that email exists, a password reset link has been sent.",
       );
+    } catch (error) {
+      setError(toastApiError(error, "Password reset request failed"));
     } finally {
       setLoading(false);
     }
@@ -206,15 +196,18 @@ export function AuthClient({ path }: AuthClientProps) {
       });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as
-          | AuthErrorPayload
-          | null;
-        setError(readErrorMessage(payload, "Password reset failed"));
+        const message = await toastApiResponseError(
+          response,
+          "Password reset failed",
+        );
+        setError(message);
         return;
       }
 
       router.replace("/auth/sign-in");
       router.refresh();
+    } catch (error) {
+      setError(toastApiError(error, "Password reset failed"));
     } finally {
       setLoading(false);
     }

@@ -20,6 +20,7 @@ import {
 import { PlusIcon } from "lucide-react";
 import { createProject, type CreateProjectInput } from "@/lib/projects";
 import { ProjectCard } from "@/components/projects/project-card";
+import { toastApiError } from "@/lib/api/error-toast";
 import type { Project } from "@prisma/client";
 
 interface ProjectsClientProps {
@@ -48,8 +49,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
       router.push(`/projects/${project.id}`);
       router.refresh();
     } catch (error) {
-      console.error("Failed to create project:", error);
-      alert(error instanceof Error ? error.message : "Failed to create project");
+      toastApiError(error, "Failed to create project");
     } finally {
       setIsCreating(false);
     }

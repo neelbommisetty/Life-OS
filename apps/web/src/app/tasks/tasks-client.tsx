@@ -39,6 +39,7 @@ import {
   updateTask,
   deleteTask,
 } from "@/lib/tasks/actions";
+import { toastApiError } from "@/lib/api/error-toast";
 import type { TaskStatus, Priority } from "@prisma/client";
 import { KanbanColumn } from "./kanban-column";
 import { type TaskWithProject } from "./task-card";
@@ -112,7 +113,7 @@ export function TasksClient({
         }
       } catch (error) {
         if (!cancelled) {
-          console.error("Failed to load tasks:", error);
+          toastApiError(error, "Failed to load tasks");
         }
       }
     }
@@ -133,7 +134,7 @@ export function TasksClient({
       });
       setTasks(result);
     } catch (error) {
-      console.error("Failed to load tasks:", error);
+      toastApiError(error, "Failed to load tasks");
     }
   }, [search, projectId]);
 
@@ -173,7 +174,7 @@ export function TasksClient({
           setSheetOpen(false);
           await loadTasks();
         } catch (error) {
-          console.error("Failed to update task:", error);
+          toastApiError(error, "Failed to update task");
         }
       });
     } else {
@@ -190,7 +191,7 @@ export function TasksClient({
           setSheetOpen(false);
           await loadTasks();
         } catch (error) {
-          console.error("Failed to create task:", error);
+          toastApiError(error, "Failed to create task");
         }
       });
     }
@@ -210,7 +211,7 @@ export function TasksClient({
         setTaskToDelete(null);
         await loadTasks();
       } catch (error) {
-        console.error("Failed to delete task:", error);
+        toastApiError(error, "Failed to delete task");
       }
     });
   };
@@ -227,9 +228,9 @@ export function TasksClient({
       // await loadTasks();
       // Actually, reloading might be jarring. We can stick with optimistic update if success.
     } catch (error) {
-      console.error("Failed to move task:", error);
+      toastApiError(error, "Failed to move task");
       // Revert on failure
-      loadTasks();
+      void loadTasks();
     }
   };
 

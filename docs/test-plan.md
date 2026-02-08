@@ -56,6 +56,7 @@ Required updates for feature work:
 | Auth | Session-gated pages | `/`, `/chat`, `/projects`, `/tasks`, `/notes`, `/analytics`, `/account/*` | Unauthenticated redirect to `/auth/sign-in`; authenticated load success |
 | Auth | Account profile/security management | `/account/profile`, `/account/security` | Update profile name, change password, sign out behavior |
 | Shell | App chrome + navigation | shared layout with side/top nav | Nav links route correctly; mode toggle renders; user menu reflects server session state and sign out behavior |
+| Errors | Client API error toasts | all interactive web routes that call `/api/*` | Failed API calls show toast with payload/fallback message and never fail silently; unhandled rejected promises and route-level runtime errors surface fallback toast |
 | Home | Dashboard modules | `/` | Greeting/date renders; recent projects/upcoming tasks/recent notes blocks load |
 | Projects | Project list/create | `/projects` | Create dialog validation; successful create navigates to project detail |
 | Projects | Project detail + edit | `/projects/[id]` | Edit project metadata; tabs load Overview/Chat/Tasks/Notes |
@@ -88,6 +89,7 @@ Run this set before release and after large refactors:
 - API route tests: `apps/api/src/**/*.test.ts`
 - Web unit tests (selected):
   - `apps/web/src/lib/**/*.test.ts`
+  - `apps/web/src/lib/api/error-message.test.ts`
   - `apps/web/src/components/chat/message-actions.test.ts`
   - `apps/web/src/app/tasks/tasks-utils.test.ts`
 - Web e2e tests:
