@@ -39,6 +39,7 @@ async function proxyToApi(request: NextRequest, { params }: { params: Promise<Ro
       method: request.method,
       path: request.nextUrl.pathname,
       query: request.nextUrl.search || undefined,
+      targetUrl,
     });
 
     const body =
@@ -59,6 +60,10 @@ async function proxyToApi(request: NextRequest, { params }: { params: Promise<Ro
       method: request.method,
       path: request.nextUrl.pathname,
       status: upstreamResponse.status,
+      upstreamLocation:
+        upstreamResponse.status >= 300 && upstreamResponse.status < 400
+          ? upstreamResponse.headers.get("location") ?? undefined
+          : undefined,
     });
 
     const responseHeaders = new Headers(upstreamResponse.headers);

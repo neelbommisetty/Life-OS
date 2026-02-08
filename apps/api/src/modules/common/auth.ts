@@ -17,6 +17,11 @@ const SESSION_HEADER_DENYLIST = [
   "transfer-encoding",
   "connection",
   "expect",
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-forwarded-port",
 ] as const;
 
 function getAuthBaseUrlFromEnv() {

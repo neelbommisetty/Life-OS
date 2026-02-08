@@ -132,6 +132,11 @@ describe("resolveUserIdFromRequest", () => {
           host: "api.example.com",
           "content-type": "application/json",
           "content-length": "17",
+          forwarded: "for=10.0.0.1;proto=https;host=localhost:3000",
+          "x-forwarded-for": "10.0.0.1",
+          "x-forwarded-host": "localhost:3000",
+          "x-forwarded-proto": "https",
+          "x-forwarded-port": "443",
         },
         body: JSON.stringify({ title: "Task" }),
       }),
@@ -163,6 +168,11 @@ describe("resolveUserIdFromRequest", () => {
     expect(sessionRequestHeaders?.has("host")).toBe(false);
     expect(sessionRequestHeaders?.has("content-type")).toBe(false);
     expect(sessionRequestHeaders?.has("content-length")).toBe(false);
+    expect(sessionRequestHeaders?.has("forwarded")).toBe(false);
+    expect(sessionRequestHeaders?.has("x-forwarded-for")).toBe(false);
+    expect(sessionRequestHeaders?.has("x-forwarded-host")).toBe(false);
+    expect(sessionRequestHeaders?.has("x-forwarded-proto")).toBe(false);
+    expect(sessionRequestHeaders?.has("x-forwarded-port")).toBe(false);
   });
 
   test("fails fast when auth session lookup times out", async () => {
