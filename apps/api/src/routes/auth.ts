@@ -65,13 +65,27 @@ type AuthRouteDependencies = {
   getAuthBaseUrl?: () => string;
 };
 
-async function buildProxyBody(request: Request, headers: Headers) {
+function isSignOutPath(requestPath: string) {
+  return requestPath === `${AUTH_PROXY_PREFIX}/sign-out`;
+}
+
+async function buildProxyBody(
+  request: Request,
+  headers: Headers,
+  requestPath: string,
+) {
   if (request.method === "GET" || request.method === "HEAD") {
     return undefined;
   }
 
   const body = await request.arrayBuffer();
   if (body.byteLength === 0) {
+    if (isSignOutPath(requestPath)) {
+      headers.set("content-type", "application/json");
+      headers.delete("content-length");
+      return "{}";
+    }
+
     headers.delete("content-type");
     headers.delete("content-length");
     return undefined;
@@ -86,9 +100,10 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
   const getAuthBaseUrl = dependencies.getAuthBaseUrl ?? getAuthBaseUrlFromEnv;
 
   async function proxyAuthRequest(request: Request) {
+    const requestPath = new URL(request.url).pathname;
     const targetUrl = buildProxyUrl(
       request.url,
-      new URL(request.url).pathname,
+      requestPath,
       getAuthBaseUrl,
     );
 
@@ -97,7 +112,7 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
       headers.delete(name);
     }
 
-    const body = await buildProxyBody(request, headers);
+    const body = await buildProxyBody(request, headers, requestPath);
 
     const upstreamResponse = await fetchFn(targetUrl, {
       method: request.method,
