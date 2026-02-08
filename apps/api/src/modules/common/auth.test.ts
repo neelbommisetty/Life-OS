@@ -220,6 +220,60 @@ describe("resolveUserIdFromRequest", () => {
     expect(fetchCalled).toBe(false);
   });
 
+  test("fails fast for cross-origin /api/auth proxy base URL", async () => {
+    let fetchCalled = false;
+
+    await expect(
+      resolveUserIdFromRequest(
+        new Request("https://api.example.com/api/tasks", {
+          method: "POST",
+          headers: {
+            cookie: "neon-auth.session_token=abc123",
+          },
+        }),
+        {
+          getAuthBaseUrl: () => "https://web.example.com/api/auth",
+          fetchFn: async () => {
+            fetchCalled = true;
+            return new Response("ok", { status: 200 });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 500,
+      code: "auth_configuration_error",
+      message:
+        "NEON_AUTH_BASE_URL cannot point to a /api/auth proxy endpoint; set it to the Neon Auth upstream URL",
+    } satisfies Partial<ApiError>);
+
+    expect(fetchCalled).toBe(false);
+  });
+
+  test("includes upstream status when session lookup fails", async () => {
+    await expect(
+      resolveUserIdFromRequest(
+        new Request("https://api.example.com/api/tasks", {
+          method: "POST",
+          headers: {
+            cookie: "neon-auth.session_token=abc123",
+          },
+        }),
+        {
+          getAuthBaseUrl: () => AUTH_BASE_URL,
+          fetchFn: async () =>
+            new Response(JSON.stringify({ error: "bad_gateway" }), {
+              status: 502,
+              headers: { "content-type": "application/json" },
+            }),
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 500,
+      code: "auth_resolution_error",
+      message: "Failed to resolve auth session (upstream status 502)",
+    } satisfies Partial<ApiError>);
+  });
+
   test("caches user resolution per request with default dependencies", async () => {
     const originalFetch = globalThis.fetch;
     let fetchCount = 0;
