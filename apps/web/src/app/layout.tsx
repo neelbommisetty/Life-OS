@@ -4,6 +4,7 @@ import { SideNav } from "@/components/navigation/side-nav";
 import { TopNav } from "@/components/navigation/top-nav";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { getApiSessionUser } from "@/lib/api/session";
 import "@fontsource/fira-code";
 import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -24,11 +25,13 @@ export const metadata: Metadata = {
     "Your personal productivity platform to organize work, ideas, and tasks.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const sessionUser = await getApiSessionUser();
+
   return (
     <html lang="en" className={`${inter.variable}`} suppressHydrationWarning>
       <body
@@ -41,7 +44,7 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen bg-background">
-            <SideNav />
+            <SideNav sessionUser={sessionUser} />
             <div className="flex flex-1 flex-col pl-[64px]">
               <TopNav />
               <main className="h-[calc(100dvh-4rem)] overflow-hidden">

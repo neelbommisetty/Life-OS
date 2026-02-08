@@ -1,4 +1,5 @@
 import "server-only";
+import { cache } from "react";
 import { headers as nextHeaders } from "next/headers";
 import { redirect } from "next/navigation";
 import { buildApiUrl } from "./base-url";
@@ -64,19 +65,24 @@ async function resolveCookieHeader(cookieHeader?: string | null) {
   }
 }
 
-export async function getApiSessionUser(options?: { cookieHeader?: string | null }) {
-  const cookieHeader = await resolveCookieHeader(options?.cookieHeader);
+async function getApiSessionUserUncached(cookieHeader?: string | null) {
+  const resolvedCookieHeader = await resolveCookieHeader(cookieHeader);
   const requestHeaders = new Headers();
 
-  if (cookieHeader) {
-    requestHeaders.set("cookie", cookieHeader);
+  if (resolvedCookieHeader) {
+    requestHeaders.set("cookie", resolvedCookieHeader);
   }
 
-  const response = await fetch(buildApiUrl("/api/auth/get-session"), {
-    method: "GET",
-    headers: requestHeaders,
-    cache: "no-store",
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildApiUrl("/api/auth/get-session"), {
+      method: "GET",
+      headers: requestHeaders,
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
 
   if (response.status === 401) {
     return null;
@@ -94,6 +100,16 @@ export async function getApiSessionUser(options?: { cookieHeader?: string | null
   }
 
   return parseSessionUser(payload);
+}
+
+const getApiSessionUserCached = cache(async () => getApiSessionUserUncached());
+
+export async function getApiSessionUser(options?: { cookieHeader?: string | null }) {
+  if (options?.cookieHeader !== undefined) {
+    return getApiSessionUserUncached(options.cookieHeader);
+  }
+
+  return getApiSessionUserCached();
 }
 
 export async function requireApiSessionUser(options?: {
