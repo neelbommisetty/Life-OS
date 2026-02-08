@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CircleUserRound, Loader2, LogOut, UserRound } from "lucide-react";
+import { CircleUserRound, LogOut, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,34 +14,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type SessionUser = {
+export type SessionUser = {
   id: string;
   name: string | null;
   email: string | null;
 };
-
-type SessionResponsePayload = {
-  data?: {
-    session?: {
-      user?: SessionUser;
-    };
-    user?: SessionUser;
-  };
-  user?: SessionUser;
-};
-
-function readSessionUser(payload: SessionResponsePayload | null) {
-  if (!payload) {
-    return null;
-  }
-
-  const user = payload.data?.session?.user ?? payload.data?.user ?? payload.user;
-  if (!user?.id) {
-    return null;
-  }
-
-  return user;
-}
 
 function getInitials(name: string | null, email: string | null) {
   if (name) {
@@ -64,50 +41,9 @@ function getInitials(name: string | null, email: string | null) {
   return "U";
 }
 
-export function AuthUserMenu() {
+export function AuthUserMenu({ user }: { user: SessionUser | null }) {
   const router = useRouter();
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [loading, setLoading] = useState(true);
   const [signingOut, setSigningOut] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const load = async () => {
-      try {
-        const response = await fetch("/api/auth/get-session", {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          if (!cancelled) {
-            setUser(null);
-          }
-          return;
-        }
-
-        const payload = (await response.json().catch(() => null)) as
-          | SessionResponsePayload
-          | null;
-
-        if (!cancelled) {
-          setUser(readSessionUser(payload));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void load();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const initials = useMemo(
     () => getInitials(user?.name ?? null, user?.email ?? null),
@@ -127,14 +63,6 @@ export function AuthUserMenu() {
       setSigningOut(false);
     }
   };
-
-  if (loading) {
-    return (
-      <Button variant="ghost" size="icon-sm" disabled aria-label="Loading user">
-        <Loader2 className="size-4 animate-spin" />
-      </Button>
-    );
-  }
 
   if (!user) {
     return (
