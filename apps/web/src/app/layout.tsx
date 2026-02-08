@@ -8,6 +8,9 @@ import { UnhandledErrorToaster } from "@/components/providers/unhandled-error-to
 import { getApiSessionUser } from "@/lib/api/session";
 import "@fontsource/fira-code";
 import "./globals.css";
+
+export const dynamic = "force-dynamic";
+
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 const geistSans = Geist({
