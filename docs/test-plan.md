@@ -73,7 +73,7 @@ Required updates for feature work:
 | Chat | Assistant message actions | `/chat` | Copy, regenerate latest assistant message only, save-as-note status transitions |
 | Analytics | AI usage dashboard | `/analytics` | Summary cards, model/type/thread breakdown sections, recent activity render |
 | Pricing | Model pricing catalog | `/pricing` | Model registry renders grouped provider cards and price fields |
-| API Proxy | Web auth/chat passthrough routes | `/api/auth/[...path]`, `/api/chat/stream` | Preserves method/body/headers/query, propagates `x-request-id`, forwards upstream status, and resolves server API base URL with `API_BASE_URL` precedence (dev fallback to `http://localhost:3001`) |
+| API Proxy | Web auth/chat passthrough routes | `/api/auth/[...path]`, `/api/chat/stream` | Preserves method/body/headers/query, propagates `x-request-id`, strips `content-type`/`content-length` for empty non-GET auth bodies, forwards upstream status, and resolves server API base URL with `API_BASE_URL` precedence (dev fallback to `http://localhost:3001`) |
 
 ## Core Regression Checklist
 Run this set before release and after large refactors:

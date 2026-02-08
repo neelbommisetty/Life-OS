@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { createLogger } from "@life-os/logger";
 import { getApiBaseUrl } from "@/lib/api/base-url";
+import { getProxyBodyAndNormalizeHeaders } from "@/lib/api/proxy-request";
 
 type RouteParams = {
   path: string[];
@@ -42,10 +43,7 @@ async function proxyToApi(request: NextRequest, { params }: { params: Promise<Ro
       targetUrl,
     });
 
-    const body =
-      request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : await request.arrayBuffer();
+    const body = await getProxyBodyAndNormalizeHeaders(request, headers);
 
     const upstreamResponse = await fetch(targetUrl, {
       method: request.method,
