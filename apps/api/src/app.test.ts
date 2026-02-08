@@ -3,6 +3,27 @@ import { app } from "./app.js";
 import { requestJson, withEnv } from "./test/harness.js";
 
 describe("api app integration", () => {
+  test("adds x-request-id header when request id is missing", async () => {
+    const response = await app.request("/");
+    const requestId = response.headers.get("x-request-id");
+
+    expect(response.status).toBe(200);
+    expect(requestId).toBeString();
+    expect(requestId).not.toBe("");
+  });
+
+  test("preserves x-request-id header on error responses", async () => {
+    const requestId = "req_test_custom_id_001";
+    const response = await app.request("/api/auth/get-session", {
+      headers: {
+        "x-request-id": requestId,
+      },
+    });
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("x-request-id")).toBe(requestId);
+  });
+
   test("mounts root route", async () => {
     const response = await app.request("/");
     const body = await response.json();

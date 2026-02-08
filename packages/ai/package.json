@@ -25,6 +25,7 @@
     "@anthropic-ai/sdk": "^0.71.2",
     "@google/generative-ai": "^0.24.1",
     "@life-os/db": "workspace:*",
+    "@life-os/logger": "workspace:*",
     "@prisma/client": "^7.3.0",
     "openai": "^6.17.0",
     "server-only": "^0.0.1",
