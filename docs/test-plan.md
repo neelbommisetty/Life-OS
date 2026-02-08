@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web)
 
-Last updated: 2026-02-07
+Last updated: 2026-02-08
 
 ## Purpose
 This document tracks all current product capabilities in `apps/api` and `apps/web` and the tests required to keep them stable.
@@ -19,6 +19,7 @@ Required updates for feature work:
 | Area | Capability | Endpoints | Required Test Coverage |
 | --- | --- | --- | --- |
 | Platform | Root health response | `GET /` | Returns 200 and expected message body |
+| Platform | Request correlation logging | all API routes via app middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
 | Platform | Service readiness status | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason |
 | Auth | Neon Auth proxy passthrough | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/headers/body/query; forwards upstream status/headers; base URL missing error |
 | Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior |
@@ -69,7 +70,7 @@ Required updates for feature work:
 | Chat | Assistant message actions | `/chat` | Copy, regenerate latest assistant message only, save-as-note status transitions |
 | Analytics | AI usage dashboard | `/analytics` | Summary cards, model/type/thread breakdown sections, recent activity render |
 | Pricing | Model pricing catalog | `/pricing` | Model registry renders grouped provider cards and price fields |
-| API Proxy | Web auth/chat passthrough routes | `/api/auth/[...path]`, `/api/chat/stream` | Preserves method/body/headers/query and upstream status |
+| API Proxy | Web auth/chat passthrough routes | `/api/auth/[...path]`, `/api/chat/stream` | Preserves method/body/headers/query, propagates `x-request-id`, and forwards upstream status |
 
 ## Core Regression Checklist
 Run this set before release and after large refactors:

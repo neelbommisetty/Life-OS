@@ -3,12 +3,15 @@ import {
   getAIServicesStatus as getAIServicesStatusFromPackage,
   type AIServicesStatus,
 } from "@life-os/ai";
+import { createLogger } from "@life-os/logger";
 
 type StatusRouteDependencies = {
   hasDatabaseUrl?: () => boolean;
   checkDatabaseReady?: () => Promise<boolean>;
   getAIServicesStatus?: () => AIServicesStatus;
 };
+
+const logger = createLogger("api:status");
 
 async function checkDatabaseReadyWithPrisma() {
   const { prisma } = await import("@life-os/db");
@@ -47,7 +50,7 @@ export function createStatusRoute(dependencies: StatusRouteDependencies = {}) {
       }
     } catch (error) {
       const message = getErrorMessage(error);
-      console.error("[status] database readiness check failed:", message);
+      logger.error("Database readiness check failed", { message });
 
       if (process.env.STATUS_DEBUG === "true") {
         return {

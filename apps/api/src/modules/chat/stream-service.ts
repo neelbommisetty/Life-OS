@@ -3,8 +3,8 @@ import {
   getModelFor,
   type ModelKey,
   type ModelStreamResult,
-  createLogger,
 } from "@life-os/ai";
+import { createLogger } from "@life-os/logger";
 import {
   createChatTrackingContext,
   createSummaryTrackingContext,
