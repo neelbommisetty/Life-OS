@@ -83,13 +83,37 @@ const mockChatThread: MockChatThread = {
   project: null,
 };
 
-function jsonResponse(payload: unknown, status = 200) {
+function jsonResponse(
+  payload: unknown,
+  status = 200,
+  headers: Record<string, string> = {},
+) {
   return new Response(JSON.stringify(payload), {
     status,
     headers: {
       "content-type": "application/json",
+      ...headers,
     },
   });
+}
+
+function readCookie(request: Request, cookieName: string) {
+  const cookieHeader = request.headers.get("cookie") ?? "";
+  const cookiePart = cookieHeader
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${cookieName}=`));
+
+  if (!cookiePart) {
+    return null;
+  }
+
+  return cookiePart.slice(cookieName.length + 1);
+}
+
+function isSessionAuthenticated(request: Request) {
+  const sessionCookie = readCookie(request, "mock-session");
+  return sessionCookie !== "invalid";
 }
 
 function handleNotesById(pathname: string, method: string, request: Request) {
@@ -152,7 +176,17 @@ const server = Bun.serve({
       return jsonResponse({ ok: true });
     }
 
-    if (pathname === "/api/auth/get-session") {
+    if (pathname === "/api/auth/get-session" && method === "GET") {
+      if (!isSessionAuthenticated(request)) {
+        return jsonResponse(
+          {
+            error: "unauthorized",
+            message: "Unauthorized",
+          },
+          401,
+        );
+      }
+
       return jsonResponse({
         data: {
           session: {
@@ -164,6 +198,138 @@ const server = Bun.serve({
           },
         },
       });
+    }
+
+    if (pathname === "/api/auth/sign-in/email" && method === "POST") {
+      return request
+        .json()
+        .catch(() => ({}))
+        .then((payload) => {
+          const email =
+            payload && typeof payload === "object" && "email" in payload
+              ? String((payload as { email?: unknown }).email ?? "")
+              : "";
+          const password =
+            payload && typeof payload === "object" && "password" in payload
+              ? String((payload as { password?: unknown }).password ?? "")
+              : "";
+
+          if (email !== "demo@lifeos.dev" || password !== "demo12345") {
+            return jsonResponse(
+              {
+                message: "Invalid email or password",
+              },
+              401,
+            );
+          }
+
+          return jsonResponse(
+            {
+              success: true,
+            },
+            200,
+            {
+              "set-cookie": "mock-session=valid; Path=/; HttpOnly; SameSite=Lax",
+            },
+          );
+        });
+    }
+
+    if (pathname === "/api/auth/sign-up/email" && method === "POST") {
+      return request
+        .json()
+        .catch(() => ({}))
+        .then((payload) => {
+          const email =
+            payload && typeof payload === "object" && "email" in payload
+              ? String((payload as { email?: unknown }).email ?? "")
+              : "";
+
+          if (email.endsWith("@taken.dev")) {
+            return jsonResponse(
+              {
+                message: "Email already exists",
+              },
+              409,
+            );
+          }
+
+          return jsonResponse(
+            {
+              success: true,
+            },
+            200,
+            {
+              "set-cookie": "mock-session=valid; Path=/; HttpOnly; SameSite=Lax",
+            },
+          );
+        });
+    }
+
+    if (pathname === "/api/auth/request-password-reset" && method === "POST") {
+      return request
+        .json()
+        .catch(() => ({}))
+        .then((payload) => {
+          const email =
+            payload && typeof payload === "object" && "email" in payload
+              ? String((payload as { email?: unknown }).email ?? "")
+              : "";
+
+          if (email === "missing@lifeos.dev") {
+            return jsonResponse(
+              {
+                message: "Account not found",
+              },
+              404,
+            );
+          }
+
+          return jsonResponse({
+            success: true,
+          });
+        });
+    }
+
+    if (pathname === "/api/auth/reset-password" && method === "POST") {
+      return request
+        .json()
+        .catch(() => ({}))
+        .then((payload) => {
+          const token =
+            payload && typeof payload === "object" && "token" in payload
+              ? String((payload as { token?: unknown }).token ?? "")
+              : "";
+          const newPassword =
+            payload && typeof payload === "object" && "newPassword" in payload
+              ? String((payload as { newPassword?: unknown }).newPassword ?? "")
+              : "";
+
+          if (token !== "valid-reset-token" || newPassword.length < 8) {
+            return jsonResponse(
+              {
+                message: "Invalid or expired reset token",
+              },
+              400,
+            );
+          }
+
+          return jsonResponse({
+            success: true,
+          });
+        });
+    }
+
+    if (pathname === "/api/auth/sign-out" && method === "POST") {
+      return jsonResponse(
+        {
+          success: true,
+        },
+        200,
+        {
+          "set-cookie": "mock-session=invalid; Path=/; HttpOnly; SameSite=Lax",
+        },
+      );
     }
 
     if (pathname === "/api/home/recent-projects" && method === "GET") {

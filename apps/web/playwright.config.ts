@@ -3,7 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 const port = Number(process.env.PLAYWRIGHT_PORT ?? 3100);
 const apiPort = Number(process.env.PLAYWRIGHT_API_PORT ?? 3201);
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://127.0.0.1:${port}`;
-const apiBaseURL = process.env.PLAYWRIGHT_API_BASE_URL ?? `http://127.0.0.1:${apiPort}`;
+const apiBaseURL =
+  process.env.PLAYWRIGHT_API_BASE_URL ?? `http://127.0.0.1:${apiPort}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -27,7 +28,7 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: `ENABLE_E2E_ROUTES=1 API_BASE_URL=${apiBaseURL} bun run build && ENABLE_E2E_ROUTES=1 API_BASE_URL=${apiBaseURL} bun run start -- --port ${port}`,
+      command: `bun run prisma:generate && ENABLE_E2E_ROUTES=1 API_BASE_URL=${apiBaseURL} bun run build && ENABLE_E2E_ROUTES=1 API_BASE_URL=${apiBaseURL} bun run start -- --port ${port}`,
       url: baseURL,
       reuseExistingServer: !process.env.CI,
       timeout: 180_000,
