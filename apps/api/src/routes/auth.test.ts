@@ -82,6 +82,35 @@ describe("authRoute", () => {
     expect(proxiedBody).toBeDefined();
   });
 
+  test("drops empty text/plain body headers for sign-out proxy requests", async () => {
+    let proxiedHeaders: Headers | undefined;
+    let proxiedBody: BodyInit | null | undefined;
+
+    const app = createTestApp(
+      createAuthRoute({
+        getAuthBaseUrl: () => "https://auth.example.com/neondb/auth",
+        fetchFn: async (_, init) => {
+          proxiedHeaders = new Headers(init?.headers);
+          proxiedBody = init?.body;
+          return new Response(null, { status: 204 });
+        },
+      }),
+    );
+
+    const response = await app.request("/api/auth/sign-out", {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain;charset=UTF-8",
+      },
+      body: "",
+    });
+
+    expect(response.status).toBe(204);
+    expect(proxiedHeaders?.has("content-type")).toBe(false);
+    expect(proxiedHeaders?.has("content-length")).toBe(false);
+    expect(proxiedBody).toBeUndefined();
+  });
+
   test("returns 500 when base URL is missing", async () => {
     const app = createTestApp(
       createAuthRoute({
