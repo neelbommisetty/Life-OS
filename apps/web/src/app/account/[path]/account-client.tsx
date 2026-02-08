@@ -72,7 +72,8 @@ export function AccountClient({ path, user }: AccountClientProps) {
 
   const onChangePassword = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const currentPassword = String(form.get("currentPassword") ?? "");
     const newPassword = String(form.get("newPassword") ?? "");
     const confirmPassword = String(form.get("confirmPassword") ?? "");
@@ -109,7 +110,7 @@ export function AccountClient({ path, user }: AccountClientProps) {
       }
 
       setSuccess("Password updated");
-      (event.currentTarget as HTMLFormElement).reset();
+      formElement.reset();
     } catch (error) {
       setError(toastApiError(error, "Failed to change password"));
     } finally {
