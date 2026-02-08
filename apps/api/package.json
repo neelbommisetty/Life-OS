@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@life-os/ai": "workspace:*",
+    "@life-os/logger": "workspace:*",
     "hono": "^4.6.0",
     "jose": "^6.1.3",
     "@life-os/db": "workspace:*",

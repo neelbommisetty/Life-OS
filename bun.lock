@@ -15,6 +15,7 @@
       "dependencies": {
         "@life-os/ai": "workspace:*",
         "@life-os/db": "workspace:*",
+        "@life-os/logger": "workspace:*",
         "hono": "^4.6.0",
         "jose": "^6.1.3",
         "zod": "^4.3.6",
@@ -28,6 +29,7 @@
       "dependencies": {
         "@fontsource/fira-code": "^5.2.7",
         "@life-os/ai": "workspace:*",
+        "@life-os/logger": "workspace:*",
         "@prisma/adapter-neon": "^7.3.0",
         "@prisma/client": "^7.3.0",
         "class-variance-authority": "^0.7.1",
@@ -76,6 +78,7 @@
         "@anthropic-ai/sdk": "^0.71.2",
         "@google/generative-ai": "^0.24.1",
         "@life-os/db": "workspace:*",
+        "@life-os/logger": "workspace:*",
         "@prisma/client": "^7.3.0",
         "openai": "^6.17.0",
         "server-only": "^0.0.1",
@@ -95,6 +98,12 @@
       "devDependencies": {
         "dotenv": "^16.4.7",
         "prisma": "^7.3.0",
+        "typescript": "^5.9.3",
+      },
+    },
+    "packages/logger": {
+      "name": "@life-os/logger",
+      "devDependencies": {
         "typescript": "^5.9.3",
       },
     },
@@ -339,6 +348,8 @@
     "@life-os/ai": ["@life-os/ai@workspace:packages/ai"],
 
     "@life-os/db": ["@life-os/db@workspace:packages/db"],
+
+    "@life-os/logger": ["@life-os/logger@workspace:packages/logger"],
 
     "@modelcontextprotocol/sdk": ["@modelcontextprotocol/sdk@1.25.2", "", { "dependencies": { "@hono/node-server": "^1.19.7", "ajv": "^8.17.1", "ajv-formats": "^3.0.1", "content-type": "^1.0.5", "cors": "^2.8.5", "cross-spawn": "^7.0.5", "eventsource": "^3.0.2", "eventsource-parser": "^3.0.0", "express": "^5.0.1", "express-rate-limit": "^7.5.0", "jose": "^6.1.1", "json-schema-typed": "^8.0.2", "pkce-challenge": "^5.0.0", "raw-body": "^3.0.0", "zod": "^3.25 || ^4.0", "zod-to-json-schema": "^3.25.0" }, "peerDependencies": { "@cfworker/json-schema": "^4.1.1" }, "optionalPeers": ["@cfworker/json-schema"] }, "sha512-LZFeo4F9M5qOhC/Uc1aQSrBHxMrvxett+9KLHt7OhcExtoiRN9DKgbZffMP/nxjutWDQpfMDfP3nkHI4X9ijww=="],
 
