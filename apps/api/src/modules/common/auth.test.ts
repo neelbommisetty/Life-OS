@@ -121,6 +121,105 @@ describe("resolveUserIdFromRequest", () => {
     expect(sessionRequestHeaders?.has("host")).toBe(false);
   });
 
+  test("strips body-specific headers when resolving session for non-GET requests", async () => {
+    let sessionRequestHeaders: Headers | null = null;
+
+    const userId = await resolveUserIdFromRequest(
+      new Request("https://api.example.com/api/tasks", {
+        method: "POST",
+        headers: {
+          cookie: "neon-auth.session_token=abc123",
+          host: "api.example.com",
+          "content-type": "application/json",
+          "content-length": "17",
+        },
+        body: JSON.stringify({ title: "Task" }),
+      }),
+      {
+        getAuthBaseUrl: () => AUTH_BASE_URL,
+        fetchFn: async (_, init) => {
+          sessionRequestHeaders = new Headers(init?.headers);
+          return new Response(
+            JSON.stringify({
+              data: {
+                session: {
+                  user: { id: "user_from_session" },
+                },
+              },
+            }),
+            {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        },
+      },
+    );
+
+    expect(userId).toBe("user_from_session");
+    expect(sessionRequestHeaders?.get("cookie")).toBe(
+      "neon-auth.session_token=abc123",
+    );
+    expect(sessionRequestHeaders?.has("host")).toBe(false);
+    expect(sessionRequestHeaders?.has("content-type")).toBe(false);
+    expect(sessionRequestHeaders?.has("content-length")).toBe(false);
+  });
+
+  test("fails fast when auth session lookup times out", async () => {
+    await expect(
+      resolveUserIdFromRequest(
+        new Request("https://api.example.com/api/tasks", {
+          method: "POST",
+          headers: {
+            cookie: "neon-auth.session_token=abc123",
+          },
+        }),
+        {
+          getAuthBaseUrl: () => AUTH_BASE_URL,
+          sessionTimeoutMs: 10,
+          fetchFn: async (_, init) =>
+            await new Promise<Response>((_, reject) => {
+              init?.signal?.addEventListener("abort", () => {
+                const abortError = new Error("Aborted");
+                abortError.name = "AbortError";
+                reject(abortError);
+              });
+            }),
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 500,
+      code: "auth_resolution_error",
+    } satisfies Partial<ApiError>);
+  });
+
+  test("fails fast for self-referential auth proxy base URL", async () => {
+    let fetchCalled = false;
+
+    await expect(
+      resolveUserIdFromRequest(
+        new Request("https://api.example.com/api/tasks", {
+          method: "POST",
+          headers: {
+            cookie: "neon-auth.session_token=abc123",
+          },
+        }),
+        {
+          getAuthBaseUrl: () => "https://api.example.com/api/auth",
+          fetchFn: async () => {
+            fetchCalled = true;
+            return new Response("ok", { status: 200 });
+          },
+        },
+      ),
+    ).rejects.toMatchObject({
+      status: 500,
+      code: "auth_configuration_error",
+    } satisfies Partial<ApiError>);
+
+    expect(fetchCalled).toBe(false);
+  });
+
   test("caches user resolution per request with default dependencies", async () => {
     const originalFetch = globalThis.fetch;
     let fetchCount = 0;

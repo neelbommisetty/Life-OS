@@ -7,8 +7,17 @@ import {
 } from "jose";
 import { ApiError, unauthorizedError } from "./errors.js";
 
+const AUTH_SESSION_TIMEOUT_MS = 8_000;
 const requestUserIdCache = new WeakMap<Request, Promise<string>>();
 const jwksByBaseUrl = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+const SESSION_HEADER_DENYLIST = [
+  "host",
+  "content-length",
+  "content-type",
+  "transfer-encoding",
+  "connection",
+  "expect",
+] as const;
 
 function getAuthBaseUrlFromEnv() {
   const baseUrl = process.env.NEON_AUTH_BASE_URL?.replace(/\/+$/, "");
@@ -45,12 +54,41 @@ function getJwtAudienceFromEnv() {
   return values;
 }
 
-function buildSessionUrl(getAuthBaseUrl: () => string) {
-  return `${getAuthBaseUrl()}/get-session`;
+function buildSessionUrl(baseUrl: string) {
+  return `${baseUrl}/get-session`;
 }
 
 function buildJwksUrl(baseUrl: string) {
   return `${baseUrl}/jwt`;
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function isSelfAuthProxyBaseUrl(requestUrl: string, baseUrl: string) {
+  try {
+    const request = new URL(requestUrl);
+    const authBase = new URL(baseUrl);
+    if (request.origin !== authBase.origin) {
+      return false;
+    }
+
+    const normalizedPath = authBase.pathname.replace(/\/+$/, "");
+    return (
+      normalizedPath === "/api/auth" || normalizedPath.startsWith("/api/auth/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function buildSessionHeaders(request: Request) {
+  const headers = new Headers(request.headers);
+  for (const name of SESSION_HEADER_DENYLIST) {
+    headers.delete(name);
+  }
+  return headers;
 }
 
 function parseBearerToken(authorizationHeader: string | null) {
@@ -121,6 +159,7 @@ type ResolveUserIdDependencies = {
   getAuthBaseUrl?: () => string;
   getJwtIssuer?: () => string | undefined;
   getJwtAudience?: () => string | string[] | undefined;
+  sessionTimeoutMs?: number;
 };
 
 async function resolveUserIdFromBearerToken(
@@ -165,23 +204,48 @@ async function resolveUserIdFromSession(
   request: Request,
   dependencies: Required<ResolveUserIdDependencies>,
 ) {
-  const sessionUrl = buildSessionUrl(dependencies.getAuthBaseUrl);
-  const headers = new Headers(request.headers);
-  headers.delete("host");
+  const baseUrl = dependencies.getAuthBaseUrl();
+  if (isSelfAuthProxyBaseUrl(request.url, baseUrl)) {
+    throw new ApiError(
+      500,
+      "auth_configuration_error",
+      "NEON_AUTH_BASE_URL cannot point to this API /api/auth proxy; set it to the Neon Auth upstream URL",
+    );
+  }
+
+  const sessionUrl = buildSessionUrl(baseUrl);
+  const headers = buildSessionHeaders(request);
 
   let response: Response;
+  const abortController = new AbortController();
+  const timeout = setTimeout(
+    () => abortController.abort(),
+    dependencies.sessionTimeoutMs,
+  );
+
   try {
     response = await dependencies.fetchFn(sessionUrl, {
       method: "GET",
       headers,
       redirect: "manual",
+      signal: abortController.signal,
     });
   } catch (error) {
+    if (isAbortError(error)) {
+      throw new ApiError(
+        500,
+        "auth_resolution_error",
+        `Auth session request timed out after ${dependencies.sessionTimeoutMs}ms`,
+      );
+    }
+
     throw new ApiError(
       500,
       "auth_resolution_error",
       error instanceof Error ? error.message : "Failed to resolve user session",
     );
+  } finally {
+    clearTimeout(timeout);
   }
 
   if (!response.ok) {
@@ -244,13 +308,15 @@ export async function resolveUserIdFromRequest(
     getAuthBaseUrl: dependencies.getAuthBaseUrl ?? getAuthBaseUrlFromEnv,
     getJwtIssuer: dependencies.getJwtIssuer ?? getJwtIssuerFromEnv,
     getJwtAudience: dependencies.getJwtAudience ?? getJwtAudienceFromEnv,
+    sessionTimeoutMs: dependencies.sessionTimeoutMs ?? AUTH_SESSION_TIMEOUT_MS,
   };
 
   const hasCustomDependencies =
     dependencies.fetchFn !== undefined ||
     dependencies.getAuthBaseUrl !== undefined ||
     dependencies.getJwtIssuer !== undefined ||
-    dependencies.getJwtAudience !== undefined;
+    dependencies.getJwtAudience !== undefined ||
+    dependencies.sessionTimeoutMs !== undefined;
 
   if (hasCustomDependencies) {
     return resolveUserIdFromRequestUncached(request, resolvedDependencies);
