@@ -16,10 +16,14 @@ const BAD_REQUEST_MESSAGES = new Set([
 ]);
 
 export class ApiError extends Error {
-  readonly status: 400 | 401 | 404 | 500;
+  readonly status: 400 | 401 | 404 | 500 | 503;
   readonly code: string;
 
-  constructor(status: 400 | 401 | 404 | 500, code: string, message: string) {
+  constructor(
+    status: 400 | 401 | 404 | 500 | 503,
+    code: string,
+    message: string,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
@@ -40,6 +44,29 @@ export function notFoundError(message: string) {
   return new ApiError(404, "not_found", message);
 }
 
+export function serviceUnavailableError(message: string) {
+  return new ApiError(503, "service_unavailable", message);
+}
+
+function toServiceUnavailableMessage(message: string): string | null {
+  if (/api key is not configured/i.test(message)) {
+    return "AI provider credentials are not configured on the server";
+  }
+
+  if (/environment variable is not set/i.test(message)) {
+    return message;
+  }
+
+  if (
+    /no service route registered for/i.test(message) ||
+    /has not been registered\./i.test(message)
+  ) {
+    return "AI services are not initialized on the server";
+  }
+
+  return null;
+}
+
 export function toApiError(error: unknown): ApiError {
   if (error instanceof ApiError) {
     return error;
@@ -53,6 +80,11 @@ export function toApiError(error: unknown): ApiError {
   if (error instanceof Error) {
     if (error.message === "Unauthorized") {
       return unauthorizedError("Unauthorized");
+    }
+
+    const unavailableMessage = toServiceUnavailableMessage(error.message);
+    if (unavailableMessage) {
+      return serviceUnavailableError(unavailableMessage);
     }
 
     if (NOT_FOUND_MESSAGES.has(error.message)) {
