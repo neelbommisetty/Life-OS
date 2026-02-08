@@ -53,10 +53,12 @@ Required updates for feature work:
 | Area | Capability | Primary Routes | Required Test Coverage |
 | --- | --- | --- | --- |
 | Auth | Sign in/sign up/forgot/reset password flows | `/auth/sign-in`, `/auth/sign-up`, `/auth/forget-password`, `/auth/reset-password` | Form submit success/error states and redirects |
+| Auth | Auth route query-param rendering safety | `/auth/[path]` | `next build` passes with `useSearchParams()` wrapped in Suspense; auth pages still read `callbackURL` and `token` query params |
 | Auth | Session-gated pages | `/`, `/chat`, `/projects`, `/tasks`, `/notes`, `/analytics`, `/account/*` | Unauthenticated redirect to `/auth/sign-in`; authenticated load success |
 | Auth | Account profile/security management | `/account/profile`, `/account/security` | Update profile name, change password, sign out behavior |
 | Shell | App chrome + navigation | shared layout with side/top nav | Nav links route correctly; mode toggle renders; user menu reflects server session state and sign out behavior |
 | Errors | Client API error toasts | all interactive web routes that call `/api/*` | Failed API calls show toast with payload/fallback message and never fail silently; unhandled rejected promises and route-level runtime errors surface fallback toast |
+| Shell | Dynamic rendering boundary for API-backed pages | app root layout and authenticated routes | `next build` succeeds without API base URL at build time, while runtime session/API checks still execute on request |
 | Home | Dashboard modules | `/` | Greeting/date renders; recent projects/upcoming tasks/recent notes blocks load |
 | Projects | Project list/create | `/projects` | Create dialog validation; successful create navigates to project detail |
 | Projects | Project detail + edit | `/projects/[id]` | Edit project metadata; tabs load Overview/Chat/Tasks/Notes |

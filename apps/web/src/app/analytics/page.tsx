@@ -13,6 +13,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
 
+export const dynamic = "force-dynamic";
+
 /**
  * Format a number as USD currency
  */
