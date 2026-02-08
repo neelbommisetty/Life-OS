@@ -2,6 +2,14 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 
 const AUTH_PROXY_PREFIX = "/api/auth";
+const PROXY_HEADER_DENYLIST = [
+  "host",
+  "forwarded",
+  "x-forwarded-for",
+  "x-forwarded-host",
+  "x-forwarded-proto",
+  "x-forwarded-port",
+] as const;
 
 function getAuthBaseUrlFromEnv() {
   const baseUrl = process.env.NEON_AUTH_BASE_URL?.replace(/\/+$/, "");
@@ -70,7 +78,9 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
     );
 
     const headers = new Headers(request.headers);
-    headers.delete("host");
+    for (const name of PROXY_HEADER_DENYLIST) {
+      headers.delete(name);
+    }
 
     const upstreamResponse = await fetchFn(targetUrl, {
       method: request.method,

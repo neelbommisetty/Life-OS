@@ -1,18 +1,12 @@
 import "server-only";
+import { resolveApiBaseUrl } from "./base-url-resolver";
 
 export function getApiBaseUrl() {
-  const configuredBaseUrl =
-    process.env.API_BASE_URL ?? process.env.NEXT_PUBLIC_API_BASE_URL;
-
-  if (configuredBaseUrl) {
-    return configuredBaseUrl.replace(/\/+$/, "");
-  }
-
-  if (process.env.NODE_ENV !== "production") {
-    return "http://localhost:3001";
-  }
-
-  throw new Error("API_BASE_URL or NEXT_PUBLIC_API_BASE_URL must be set");
+  return resolveApiBaseUrl({
+    apiBaseUrl: process.env.API_BASE_URL,
+    publicApiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL,
+    nodeEnv: process.env.NODE_ENV,
+  });
 }
 
 export function buildApiUrl(path: string) {

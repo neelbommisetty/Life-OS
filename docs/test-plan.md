@@ -21,8 +21,8 @@ Required updates for feature work:
 | Platform | Root health response | `GET /` | Returns 200 and expected message body |
 | Platform | Request correlation logging | all API routes via app middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
 | Platform | Service readiness status | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason |
-| Auth | Neon Auth proxy passthrough | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/headers/body/query; forwards upstream status/headers; rewrites upstream auth redirect `Location` headers to proxy-relative `/api/auth/*`; base URL missing error |
-| Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior, non-GET session lookup strips body headers, timeout and any `/api/auth` proxy misconfiguration (same-origin or cross-origin) fail-fast behavior |
+| Auth | Neon Auth proxy passthrough | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/headers/body/query; strips hop/proxy forwarding headers before upstream auth calls; forwards upstream status/headers; rewrites upstream auth redirect `Location` headers to proxy-relative `/api/auth/*`; base URL missing error |
+| Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior, non-GET session lookup strips body and proxy forwarding headers, timeout and any `/api/auth` proxy misconfiguration (same-origin or cross-origin) fail-fast behavior |
 | Auth | Protected route gate | all non-public routes | Unauthorized when session/JWT missing/invalid; success with valid session/JWT |
 | Home | Dashboard cards data | `GET /home/recent-projects`, `/home/upcoming-tasks`, `/home/recent-notes` (+ `/api/*`) | Correct limits/order/filtering and auth isolation |
 | Projects | List/search/archive filtering | `GET /projects`, `GET /api/projects` | Search by name/description, includeArchived toggle, default non-archived |
@@ -73,7 +73,7 @@ Required updates for feature work:
 | Chat | Assistant message actions | `/chat` | Copy, regenerate latest assistant message only, save-as-note status transitions |
 | Analytics | AI usage dashboard | `/analytics` | Summary cards, model/type/thread breakdown sections, recent activity render |
 | Pricing | Model pricing catalog | `/pricing` | Model registry renders grouped provider cards and price fields |
-| API Proxy | Web auth/chat passthrough routes | `/api/auth/[...path]`, `/api/chat/stream` | Preserves method/body/headers/query, propagates `x-request-id`, and forwards upstream status |
+| API Proxy | Web auth/chat passthrough routes | `/api/auth/[...path]`, `/api/chat/stream` | Preserves method/body/headers/query, propagates `x-request-id`, forwards upstream status, and resolves server API base URL with `API_BASE_URL` precedence (dev fallback to `http://localhost:3001`) |
 
 ## Core Regression Checklist
 Run this set before release and after large refactors:

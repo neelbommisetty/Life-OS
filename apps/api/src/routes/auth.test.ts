@@ -32,6 +32,8 @@ describe("authRoute", () => {
         headers: {
           host: "localhost:3001",
           "x-test-header": "test-value",
+          "x-forwarded-host": "localhost:3000",
+          "x-forwarded-proto": "https",
         },
       },
     );
@@ -44,6 +46,8 @@ describe("authRoute", () => {
     );
     expect(proxiedHeaders?.get("x-test-header")).toBe("test-value");
     expect(proxiedHeaders?.has("host")).toBe(false);
+    expect(proxiedHeaders?.has("x-forwarded-host")).toBe(false);
+    expect(proxiedHeaders?.has("x-forwarded-proto")).toBe(false);
     expect(proxiedBody).toBeUndefined();
   });
 
