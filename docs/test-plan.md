@@ -22,7 +22,7 @@ Required updates for feature work:
 | Platform | Request correlation logging | all API routes via app middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
 | Platform | Service readiness status | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason |
 | Auth | Neon Auth proxy passthrough | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/headers/body/query; forwards upstream status/headers; base URL missing error |
-| Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior, non-GET session lookup strips body headers, timeout and self-proxy misconfiguration fail-fast behavior |
+| Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior, non-GET session lookup strips body headers, timeout and any `/api/auth` proxy misconfiguration (same-origin or cross-origin) fail-fast behavior |
 | Auth | Protected route gate | all non-public routes | Unauthorized when session/JWT missing/invalid; success with valid session/JWT |
 | Home | Dashboard cards data | `GET /home/recent-projects`, `/home/upcoming-tasks`, `/home/recent-notes` (+ `/api/*`) | Correct limits/order/filtering and auth isolation |
 | Projects | List/search/archive filtering | `GET /projects`, `GET /api/projects` | Search by name/description, includeArchived toggle, default non-archived |
@@ -46,7 +46,7 @@ Required updates for feature work:
 | Chat | List text models | `GET /chat/models`, `/api/chat/models` | Returns only text-capable models with metadata fields; authenticated app integration keeps list non-empty |
 | Chat | Streaming + regenerate flow | `POST /chat/stream`, `/api/chat/stream` | SSE events (`chunk`, `message_saved`, `done`, `error`), persistence, regenerate constraints |
 | Analytics | Usage dashboard | `GET /analytics/dashboard`, `/api/analytics/dashboard` | Default `days=30`, `limit=10`; bounds and validation errors; summary + recent calls payload |
-| Errors | Error mapping and JSON parsing | all routes | Invalid JSON -> 400, validation -> 400, not found -> 404, auth -> 401 |
+| Errors | Error mapping and JSON parsing | all routes | Invalid JSON -> 400, validation -> 400, not found -> 404, auth -> 401, server misconfiguration (missing env/API keys) -> 503 |
 
 ## Web Capabilities
 

@@ -83,6 +83,18 @@ function isSelfAuthProxyBaseUrl(requestUrl: string, baseUrl: string) {
   }
 }
 
+function isProxyAuthPath(baseUrl: string) {
+  try {
+    const parsed = new URL(baseUrl);
+    const normalizedPath = parsed.pathname.replace(/\/+$/, "");
+    return (
+      normalizedPath === "/api/auth" || normalizedPath.startsWith("/api/auth/")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function buildSessionHeaders(request: Request) {
   const headers = new Headers(request.headers);
   for (const name of SESSION_HEADER_DENYLIST) {
@@ -205,6 +217,14 @@ async function resolveUserIdFromSession(
   dependencies: Required<ResolveUserIdDependencies>,
 ) {
   const baseUrl = dependencies.getAuthBaseUrl();
+  if (isProxyAuthPath(baseUrl)) {
+    throw new ApiError(
+      500,
+      "auth_configuration_error",
+      "NEON_AUTH_BASE_URL cannot point to a /api/auth proxy endpoint; set it to the Neon Auth upstream URL",
+    );
+  }
+
   if (isSelfAuthProxyBaseUrl(request.url, baseUrl)) {
     throw new ApiError(
       500,
@@ -256,7 +276,7 @@ async function resolveUserIdFromSession(
     throw new ApiError(
       500,
       "auth_resolution_error",
-      "Failed to resolve auth session",
+      `Failed to resolve auth session (upstream status ${response.status})`,
     );
   }
 
