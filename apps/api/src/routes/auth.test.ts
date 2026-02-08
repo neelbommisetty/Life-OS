@@ -82,7 +82,7 @@ describe("authRoute", () => {
     expect(proxiedBody).toBeDefined();
   });
 
-  test("drops empty text/plain body headers for sign-out proxy requests", async () => {
+  test("normalizes empty sign-out body to application/json", async () => {
     let proxiedHeaders: Headers | undefined;
     let proxiedBody: BodyInit | null | undefined;
 
@@ -98,6 +98,35 @@ describe("authRoute", () => {
     );
 
     const response = await app.request("/api/auth/sign-out", {
+      method: "POST",
+      headers: {
+        "content-type": "text/plain;charset=UTF-8",
+      },
+      body: "",
+    });
+
+    expect(response.status).toBe(204);
+    expect(proxiedHeaders?.get("content-type")).toBe("application/json");
+    expect(proxiedHeaders?.has("content-length")).toBe(false);
+    expect(proxiedBody).toBe("{}");
+  });
+
+  test("drops empty body headers for non-sign-out proxy requests", async () => {
+    let proxiedHeaders: Headers | undefined;
+    let proxiedBody: BodyInit | null | undefined;
+
+    const app = createTestApp(
+      createAuthRoute({
+        getAuthBaseUrl: () => "https://auth.example.com/neondb/auth",
+        fetchFn: async (_, init) => {
+          proxiedHeaders = new Headers(init?.headers);
+          proxiedBody = init?.body;
+          return new Response(null, { status: 204 });
+        },
+      }),
+    );
+
+    const response = await app.request("/api/auth/request-password-reset", {
       method: "POST",
       headers: {
         "content-type": "text/plain;charset=UTF-8",
