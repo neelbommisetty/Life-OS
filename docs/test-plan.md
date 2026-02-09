@@ -96,6 +96,7 @@ Run this set before release and after large refactors:
   - `apps/web/src/lib/api/base-url.test.ts`
   - `apps/web/src/lib/api/error-message.test.ts`
   - `apps/web/src/lib/api/proxy-request.test.ts`
+  - `apps/web/src/lib/chat/validations.test.ts`
   - `apps/web/src/lib/chat-utils.test.ts`
   - `apps/web/src/lib/notes/note-save.test.ts`
   - `apps/web/src/lib/notes/note-utils.test.ts`
