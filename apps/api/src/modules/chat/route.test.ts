@@ -33,6 +33,36 @@ function createModelRegistry() {
 }
 
 describe("chatRoute", () => {
+  test("GET /api/chat/threads creates a default thread when none exist", async () => {
+    let createCalled = false;
+
+    const app = createTestApp(
+      createChatRoute({
+        getUserId: async () => USER_ID,
+        modelRegistry: createModelRegistry(),
+        getDb: async () => ({
+          chatThread: {
+            findMany: async () => [],
+            create: async () => {
+              createCalled = true;
+              return { id: THREAD_ID, name: "New thread" };
+            },
+            findFirst: async () => ({ id: THREAD_ID, modelKey: null }),
+            update: async () => ({ id: THREAD_ID, modelKey: null }),
+          },
+          chatMessage: {
+            findMany: async () => [],
+          },
+        }),
+      }),
+    );
+
+    const { response, body } = await requestJson(app, "/api/chat/threads");
+    expect(response.status).toBe(200);
+    expect(body).toEqual([{ id: THREAD_ID, name: "New thread" }]);
+    expect(createCalled).toBe(true);
+  });
+
   test("GET /api/chat/threads lists threads", async () => {
     const app = createTestApp(
       createChatRoute({
@@ -136,6 +166,37 @@ describe("chatRoute", () => {
     expect(body).toMatchObject({ id: THREAD_ID, modelKey: null });
   });
 
+  test("GET /api/chat/threads/:id resets invalid model assignments", async () => {
+    let updateCalled = false;
+
+    const app = createTestApp(
+      createChatRoute({
+        getUserId: async () => USER_ID,
+        modelRegistry: createModelRegistry(),
+        getDb: async () => ({
+          chatThread: {
+            findMany: async () => [],
+            create: async () => ({ id: THREAD_ID }),
+            findFirst: async () => ({ id: THREAD_ID, modelKey: "unknown:model" }),
+            update: async () => {
+              updateCalled = true;
+              return { id: THREAD_ID, modelKey: null };
+            },
+          },
+          chatMessage: {
+            findMany: async () => [],
+          },
+        }),
+      }),
+    );
+
+    const { response, body } = await requestJson(app, `/api/chat/threads/${THREAD_ID}`);
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ id: THREAD_ID, modelKey: null });
+    expect(updateCalled).toBe(true);
+  });
+
   test("POST /api/chat/threads/:id/model sets thread model", async () => {
     const app = createTestApp(
       createChatRoute({
@@ -167,6 +228,42 @@ describe("chatRoute", () => {
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ id: THREAD_ID, modelKey: "openai:gpt-4.1-mini" });
+  });
+
+  test("POST /api/chat/threads/:id/model returns 400 when model is unavailable", async () => {
+    const app = createTestApp(
+      createChatRoute({
+        getUserId: async () => USER_ID,
+        modelRegistry: createModelRegistry(),
+        getDb: async () => ({
+          chatThread: {
+            findMany: async () => [],
+            create: async () => ({ id: THREAD_ID }),
+            findFirst: async () => ({ id: THREAD_ID }),
+            update: async () => ({ id: THREAD_ID, modelKey: null }),
+          },
+          chatMessage: {
+            findMany: async () => [],
+          },
+        }),
+      }),
+    );
+
+    const { response, body } = await requestJson(
+      app,
+      `/api/chat/threads/${THREAD_ID}/model`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ modelKey: "openai:gpt-image-1" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({
+      error: "invalid_request",
+      message: "Selected model is not available",
+    });
   });
 
   test("GET /api/chat/threads/:id/messages lists messages", async () => {
@@ -204,11 +301,91 @@ describe("chatRoute", () => {
     expect(body.nextCursor).toBeDefined();
   });
 
-  test("GET /api/chat/models lists text models", async () => {
+  test("GET /api/chat/threads/:id/messages returns 400 for incomplete cursor parameters", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
         modelRegistry: createModelRegistry(),
+        getDb: async () => ({
+          chatThread: {
+            findMany: async () => [],
+            create: async () => ({ id: THREAD_ID }),
+            findFirst: async () => ({ id: THREAD_ID }),
+            update: async () => ({ id: THREAD_ID }),
+          },
+          chatMessage: {
+            findMany: async () => [],
+          },
+        }),
+      }),
+    );
+
+    const { response, body } = await requestJson(
+      app,
+      `/api/chat/threads/${THREAD_ID}/messages?cursorId=${MESSAGE_ID_1}`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({
+      error: "invalid_request",
+      message: "Both cursorId and cursorCreatedAt are required",
+    });
+  });
+
+  test("GET /api/chat/threads/:id/messages returns 400 for invalid cursorCreatedAt", async () => {
+    const app = createTestApp(
+      createChatRoute({
+        getUserId: async () => USER_ID,
+        modelRegistry: createModelRegistry(),
+        getDb: async () => ({
+          chatThread: {
+            findMany: async () => [],
+            create: async () => ({ id: THREAD_ID }),
+            findFirst: async () => ({ id: THREAD_ID }),
+            update: async () => ({ id: THREAD_ID }),
+          },
+          chatMessage: {
+            findMany: async () => [],
+          },
+        }),
+      }),
+    );
+
+    const { response, body } = await requestJson(
+      app,
+      `/api/chat/threads/${THREAD_ID}/messages?cursorId=${MESSAGE_ID_1}&cursorCreatedAt=not-a-date`,
+    );
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({
+      error: "invalid_request",
+      message: "cursorCreatedAt must be a valid ISO datetime",
+    });
+  });
+
+  test("GET /api/chat/models lists text models", async () => {
+    const app = createTestApp(
+      createChatRoute({
+        getUserId: async () => USER_ID,
+        modelRegistry: {
+          ...createModelRegistry(),
+          listMetadata: () => [
+            {
+              key: "openai:gpt-4.1-mini",
+              label: "GPT-4.1 mini",
+              providerId: "openai",
+              modes: ["text"],
+              supportsStreaming: true,
+            },
+            {
+              key: "openai:gpt-image-1",
+              label: "GPT Image 1",
+              providerId: "openai",
+              modes: ["image"],
+              supportsStreaming: false,
+            },
+          ],
+        },
         getDb: async () => ({
           chatThread: {
             findMany: async () => [],
