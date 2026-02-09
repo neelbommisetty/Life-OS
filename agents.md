@@ -121,7 +121,11 @@
 
 - **Testing**: Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Run tests with `bun test` or `bun run test`. No external test frameworks (Vitest, Jest, etc.).
 - **API test requirement**: Whenever adding a new API route/endpoint in `apps/api`, add or update unit tests in the same change immediately (do not defer).
-- **TestPlan maintenance requirement**: `docs/test-plan.md` is the source of truth for API/Web feature coverage. Whenever adding or changing a feature in `apps/api` or `apps/web`, update `docs/test-plan.md` in the same PR (capability row + required test coverage updates).
+- **TestPlan maintenance requirement**: `docs/test-plan.md` is the source of truth for API/Web feature coverage. Whenever adding or changing a feature in `apps/api` or `apps/web`, update `docs/test-plan.md` in the same PR.
+  - Keep the plan split into two top-level sections: `User Facing Test Cases` and `Platform Capabilities`.
+  - `User Facing Test Cases` must describe what users do and what users should see.
+  - `Platform Capabilities` must describe behind-the-scenes behavior (API contracts, auth/proxy/middleware, error mapping, build/runtime guarantees).
+  - Update the capability row(s) and required test coverage in the section(s) affected by the change.
 - Type-first: leverage TypeScript and Prisma's generated types. Avoid `any`. Use Prisma's type inference for database models.
 - Keep components small and reusable; lift shared logic into hooks/utilities.
 - Prefer ESLint/TypeScript fixes over disabling rules; if disabling, justify inline.
