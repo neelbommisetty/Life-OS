@@ -65,7 +65,6 @@
 
 ## PR workflow
 
-- PRs are optional in this private-repo workflow.
 - If using PRs, sync your branch with the latest `develop`.
 - If using PRs, always rebase when syncing with `develop` (never merge).
 - Recommended flow:
