@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import type { ChatMessage } from "@prisma/client";
+import type { ChatMessage } from "@life-os/db";
 import { SparklesIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";

@@ -3,7 +3,7 @@
 import { useDrop } from "react-dnd";
 import { cn } from "@/lib/utils";
 import { TaskCard, type TaskWithProject } from "./task-card";
-import type { TaskStatus } from "@prisma/client";
+import type { TaskStatus } from "@life-os/db";
 
 interface KanbanColumnProps {
   status: TaskStatus;

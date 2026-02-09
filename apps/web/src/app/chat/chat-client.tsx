@@ -26,7 +26,7 @@ import {
 } from "@/lib/chat/actions";
 import { saveMessageAsNote } from "@/lib/notes/actions";
 import { toastApiError } from "@/lib/api/error-toast";
-import type { ChatThread, ChatMessage, Project } from "@prisma/client";
+import type { ChatThread, ChatMessage, Project } from "@life-os/db";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
 

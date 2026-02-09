@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Trash2, Calendar } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProjectBadge } from "@/components/projects/project-badge";
-import type { Task, Project, Priority } from "@prisma/client";
+import type { Task, Project, Priority } from "@life-os/db";
 
 export type TaskWithProject = Task & { project: Project | null };
 

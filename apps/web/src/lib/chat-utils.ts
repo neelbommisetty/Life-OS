@@ -1,4 +1,4 @@
-import type { ChatMessage } from "@prisma/client";
+import type { ChatMessage } from "@life-os/db";
 
 /**
  * Approximate token count for text (rough estimate: 1 token ≈ 4 characters)

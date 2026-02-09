@@ -21,7 +21,7 @@ import { PlusIcon } from "lucide-react";
 import { createProject, type CreateProjectInput } from "@/lib/projects";
 import { ProjectCard } from "@/components/projects/project-card";
 import { toastApiError } from "@/lib/api/error-toast";
-import type { Project } from "@prisma/client";
+import type { Project } from "@life-os/db";
 
 interface ProjectsClientProps {
   initialProjects: Project[];

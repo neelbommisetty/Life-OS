@@ -1,7 +1,7 @@
 "use server";
 
 import { apiFetchJson } from "@/lib/api/fetch";
-import type { Project, Task } from "@prisma/client";
+import type { Project, Task } from "@life-os/db";
 import {
   listTasksSchema,
   createTaskSchema,
