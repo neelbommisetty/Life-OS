@@ -12,3 +12,4 @@ git config commit.template .gitmessage
 printf "Configured Git commit standard for this clone.\n"
 printf "Header format: <type>(<scope>): <one-line description>\n"
 printf "Body: include execution details.\n"
+printf "Pre-commit hooks enabled: changed-file lint/tests + web e2e.\n"

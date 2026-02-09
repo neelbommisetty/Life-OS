@@ -54,5 +54,13 @@ bun run commit:setup
 
 This configures:
 
-- `core.hooksPath=.githooks` so commit messages are linted on `git commit`
+- `core.hooksPath=.githooks` so commit hooks run on `git commit`
 - `commit.template=.gitmessage` so the commit editor opens with the required structure
+
+## Hook policy
+
+- Never bypass hooks with `git commit --no-verify`.
+- Every commit must pass all pre-commit checks:
+  - web e2e tests
+  - lint checks for changed files/workspaces
+  - unit tests for changed test files

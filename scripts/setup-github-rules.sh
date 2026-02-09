@@ -20,58 +20,31 @@ fi
 
 gh repo edit "${repo}" --default-branch develop
 
-protect_branch() {
+remove_branch_protection() {
   local branch="$1"
-  local contexts_json="$2"
-
-  local payload
-  payload="$(cat <<JSON
-{
-  "required_status_checks": {
-    "strict": true,
-    "contexts": ${contexts_json}
-  },
-  "enforce_admins": true,
-  "required_pull_request_reviews": {
-    "dismiss_stale_reviews": true,
-    "require_code_owner_reviews": false,
-    "required_approving_review_count": 0
-  },
-  "required_linear_history": true,
-  "allow_force_pushes": false,
-  "allow_deletions": false,
-  "block_creations": false,
-  "required_conversation_resolution": true,
-  "restrictions": null
-}
-JSON
-)"
-
   local output
-  if ! output="$(gh api -X PUT "repos/${owner}/${name}/branches/${branch}/protection" \
-    -H "Accept: application/vnd.github+json" \
-    --input - <<<"${payload}" 2>&1 >/dev/null)"; then
-    if [[ "${output}" == *"Upgrade to GitHub Pro"* ]]; then
-      echo "Skipping protection for ${branch}: GitHub plan does not allow branch protection on this private repo."
-      return 2
-    fi
-    echo "${output}" >&2
-    return 1
+
+  if output="$(gh api -X DELETE "repos/${owner}/${name}/branches/${branch}/protection" \
+    -H "Accept: application/vnd.github+json" 2>&1 >/dev/null)"; then
+    echo "  ${branch}: removed"
+    return 0
   fi
+
+  if [[ "${output}" == *"Branch not protected"* ]] || [[ "${output}" == *"404"* ]]; then
+    echo "  ${branch}: already unprotected"
+    return 0
+  fi
+
+  if [[ "${output}" == *"Upgrade to GitHub Pro"* ]]; then
+    echo "  ${branch}: branch protection unavailable on current GitHub plan"
+    return 0
+  fi
+
+  echo "${output}" >&2
+  return 1
 }
-
-develop_status="applied"
-main_status="applied"
-
-if ! protect_branch develop '["unit-tests"]'; then
-  develop_status="skipped"
-fi
-
-if ! protect_branch main '["unit-tests","e2e-tests"]'; then
-  main_status="skipped"
-fi
 
 echo "Default branch set to develop."
 echo "Branch protections:"
-echo "  develop (${develop_status}) => PR required + unit-tests (no approval required)"
-echo "  main (${main_status}) => PR required + unit-tests + e2e-tests (no approval required)"
+remove_branch_protection develop
+remove_branch_protection main
