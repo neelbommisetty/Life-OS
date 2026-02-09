@@ -9,10 +9,6 @@
 
 ## PR and checks policy
 
-- Branch protection rules are disabled for private-repo workflow.
-- Direct pushes to `main` and `develop` are allowed.
-- Pull requests are optional.
-- GitHub Actions are not used as required checks.
 - Pre-commit hooks are the required local gate before push/PR:
   - run web e2e tests
   - lint changed files/workspaces
