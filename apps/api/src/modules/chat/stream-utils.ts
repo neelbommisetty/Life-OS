@@ -1,4 +1,8 @@
-import type { ChatMessage } from "@prisma/client";
+export type StreamPromptMessage = {
+  role: "USER" | "ASSISTANT" | "SYSTEM";
+  content: string;
+  tokenCount: number | null;
+};
 
 export type StreamEventType = "chunk" | "done" | "error" | "message_saved";
 
@@ -47,7 +51,7 @@ Format your responses using markdown when appropriate for better readability.`;
 
 export function formatMessagesForAI(
   systemPrompt: string,
-  messages: ChatMessage[],
+  messages: StreamPromptMessage[],
   summary?: string | null,
 ): string {
   let prompt = `${systemPrompt}\n\n`;
@@ -70,7 +74,7 @@ export function formatMessagesForAI(
   return prompt;
 }
 
-export function calculateHistoryTokens(messages: ChatMessage[]): number {
+export function calculateHistoryTokens(messages: StreamPromptMessage[]): number {
   return messages.reduce(
     (total, message) =>
       total +
@@ -81,7 +85,7 @@ export function calculateHistoryTokens(messages: ChatMessage[]): number {
   );
 }
 
-export function buildSummarizationPrompt(messages: ChatMessage[]): string {
+export function buildSummarizationPrompt(messages: StreamPromptMessage[]): string {
   let prompt =
     "Please provide a concise summary of the following conversation. Focus on key points, decisions, and context that would be useful to continue the conversation:\n\n";
 

@@ -2,22 +2,41 @@
   "name": "@life-os/ai",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
   "exports": {
-    ".": "./src/index.ts",
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
     "./services": {
       "types": "./src/services.ts",
       "import": "./dist/services.js",
       "default": "./dist/services.js"
     },
-    "./init": "./src/init.ts",
-    "./providers": "./src/providers/index.ts",
-    "./providers/*": "./src/providers/*.ts",
-    "./tracking": "./src/tracking/index.ts",
-    "./tracking/*": "./src/tracking/*.ts"
+    "./init": {
+      "types": "./src/init.ts",
+      "import": "./dist/init.js",
+      "default": "./dist/init.js"
+    },
+    "./providers": {
+      "types": "./src/providers/index.ts",
+      "import": "./dist/providers/index.js",
+      "default": "./dist/providers/index.js"
+    },
+    "./providers/registry": {
+      "types": "./src/providers/registry.ts",
+      "import": "./dist/providers/registry.js",
+      "default": "./dist/providers/registry.js"
+    },
+    "./tracking": {
+      "types": "./src/tracking/index.ts",
+      "import": "./dist/tracking/index.js",
+      "default": "./dist/tracking/index.js"
+    }
   },
   "scripts": {
-    "build": "bun build src/services.ts --target=node --format=esm --outdir dist",
+    "build": "rm -rf dist && bun build src/index.ts --target=node --format=esm --packages=external --outfile dist/index.js && bun build src/services.ts --target=node --format=esm --packages=external --outfile dist/services.js && bun build src/init.ts --target=node --format=esm --packages=external --outfile dist/init.js && bun build src/providers/index.ts --target=node --format=esm --packages=external --outfile dist/providers/index.js && bun build src/providers/registry.ts --target=node --format=esm --packages=external --outfile dist/providers/registry.js && bun build src/tracking/index.ts --target=node --format=esm --packages=external --outfile dist/tracking/index.js",
     "test": "bun test",
     "lint": "tsc --noEmit -p tsconfig.lint.json"
   },

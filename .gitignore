@@ -22,6 +22,10 @@ apps/web/test-results/
 
 # production
 /build
+apps/*/build/
+apps/*/dist/
+packages/*/build/
+packages/*/dist/
 
 # misc
 .DS_Store
