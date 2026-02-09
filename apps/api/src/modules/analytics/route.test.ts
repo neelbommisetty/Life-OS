@@ -127,4 +127,73 @@ describe("analyticsRoute", () => {
       message: "days must be a positive integer",
     });
   });
+
+  test("GET /api/analytics/dashboard clamps days and limit to configured maximums", async () => {
+    let capturedSummaryDays: number | undefined;
+    let capturedRecentLimit: number | undefined;
+
+    const app = createTestApp(
+      createAnalyticsRoute({
+        getUserId: async () => USER_ID,
+        getUsageSummary: async (_userId, days) => {
+          capturedSummaryDays = days;
+          return {
+            totals: {
+              totalCalls: 0,
+              totalCostUsd: 0,
+              totalInputTokens: 0,
+              totalOutputTokens: 0,
+            },
+            byModel: [],
+            byThread: [],
+            byCallType: [],
+          };
+        },
+        getRecentAiCalls: async (_userId, limit) => {
+          capturedRecentLimit = limit;
+          return [];
+        },
+      }),
+    );
+
+    const { response } = await requestJson(
+      app,
+      "/api/analytics/dashboard?days=999&limit=500",
+    );
+
+    expect(response.status).toBe(200);
+    expect(capturedSummaryDays).toBe(365);
+    expect(capturedRecentLimit).toBe(100);
+  });
+
+  test("GET /api/analytics/dashboard returns 400 for invalid limit", async () => {
+    const app = createTestApp(
+      createAnalyticsRoute({
+        getUserId: async () => USER_ID,
+        getUsageSummary: async () => ({
+          totals: {
+            totalCalls: 0,
+            totalCostUsd: 0,
+            totalInputTokens: 0,
+            totalOutputTokens: 0,
+          },
+          byModel: [],
+          byThread: [],
+          byCallType: [],
+        }),
+        getRecentAiCalls: async () => [],
+      }),
+    );
+
+    const { response, body } = await requestJson(
+      app,
+      "/api/analytics/dashboard?limit=0",
+    );
+
+    expect(response.status).toBe(400);
+    expect(body).toEqual({
+      error: "invalid_request",
+      message: "limit must be a positive integer",
+    });
+  });
 });
