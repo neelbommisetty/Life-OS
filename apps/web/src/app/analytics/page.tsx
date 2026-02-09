@@ -3,6 +3,7 @@ import {
   type UsageSummary,
   type RecentAiCall,
 } from "@/lib/analytics/actions";
+import type { Metadata } from "next";
 import {
   Card,
   CardContent,
@@ -14,6 +15,10 @@ import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = {
+  title: "Analytics",
+  description: "Track AI usage, costs, and performance trends.",
+};
 
 /**
  * Format a number as USD currency

@@ -1,8 +1,14 @@
+import type { Metadata } from "next";
 import { TasksClient } from "./tasks-client";
 import { listTasks } from "@/lib/tasks/actions";
 import { Suspense } from "react";
 import { TasksSkeleton } from "./tasks-skeleton";
 import { requireApiSessionUser } from "@/lib/api/session";
+
+export const metadata: Metadata = {
+  title: "Tasks",
+  description: "Plan and track your work with the task board.",
+};
 
 export default async function TasksPage() {
   await requireApiSessionUser();

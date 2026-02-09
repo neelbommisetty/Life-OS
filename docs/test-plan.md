@@ -40,6 +40,7 @@ Required updates for feature work:
 | Chat | Assistant message actions | `/chat` | Users can copy output, regenerate latest assistant response, save assistant message as note | Action availability + state transitions |
 | Analytics | Usage dashboard rendering | `/analytics` | Summary cards, breakdown sections, recent activity render for empty/non-empty states | Dashboard shape and render coverage |
 | Pricing | Model pricing catalog | `/pricing` | Pricing catalog loads grouped models with key pricing fields | Catalog render and key labels/values |
+| SEO | Route metadata titles and descriptions | `/`, `/chat`, `/notes`, `/tasks`, `/tasks/archive`, `/projects`, `/projects/[id]`, `/analytics`, `/pricing`, `/auth/*`, `/account/*` | Each route exposes page-specific metadata for title/description (including dynamic auth/account/project paths) | Static metadata assertions + dynamic metadata resolution for known and fallback paths |
 | Errors | Client error feedback | all interactive routes calling `/api/*` | API/runtime failures show toasts or fallback error UI instead of silent failure | API error toast + unhandled rejection + route error fallback |
 
 ## Platform Capabilities
@@ -65,6 +66,7 @@ Required updates for feature work:
 | Web Platform | API chat stream proxy passthrough | `/api/chat/stream` | Forwards request/response stream and propagates `x-request-id` |
 | Web Platform | Server API base URL resolution | `apps/web/src/lib/api/base-url*.ts` | `API_BASE_URL` precedence, dev fallback `http://localhost:3001`, production fallback to `NEXT_PUBLIC_API_BASE_URL`, throws when unresolved in production |
 | Web Platform | Server-side API auth redirect behavior | `apps/web/src/lib/api/fetch.ts` | Server-side API 401 responses redirect to `/auth/sign-in` |
+| Web Platform | App Router metadata coverage | `apps/web/src/app/**/page.tsx` | Every page route exports `metadata` or `generateMetadata`; dynamic routes resolve context-specific titles/descriptions |
 | Build Platform | Dynamic rendering boundary | app layout + API-backed routes | `next build` succeeds without build-time API base URL while runtime checks still execute on request |
 
 ## Core Regression Checklist

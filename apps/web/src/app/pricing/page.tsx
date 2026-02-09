@@ -1,5 +1,6 @@
 import "server-only";
 
+import type { Metadata } from "next";
 import { modelRegistry } from "@life-os/ai/providers/registry";
 import { PricingCatalog } from "./pricing-catalog";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -7,6 +8,10 @@ import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/ca
 import "@life-os/ai/init";
 
 export const dynamic = "force-static";
+export const metadata: Metadata = {
+  title: "Pricing",
+  description: "Reference pricing for supported AI models.",
+};
 
 const toModelCatalog = () =>
   modelRegistry
