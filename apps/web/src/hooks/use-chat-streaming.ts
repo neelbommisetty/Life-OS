@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { parseSSEChunk, handleStreamError } from "@/lib/chat-utils";
 import { toastApiError } from "@/lib/api/error-toast";
 import { readApiErrorMessageFromResponse } from "@/lib/api/error-message";
-import type { ChatMessage } from "@prisma/client";
+import type { ChatMessage } from "@life-os/db";
 
 type UseChatStreamingParams = {
   messages: ChatMessage[];

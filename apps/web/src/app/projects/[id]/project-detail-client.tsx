@@ -38,7 +38,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { updateProject, type UpdateProjectInput } from "@/lib/projects";
 import { toastApiError } from "@/lib/api/error-toast";
-import type { Project, ChatThread, Task, Note } from "@prisma/client";
+import type { Project, ChatThread, Task, Note } from "@life-os/db";
 import { TasksClient } from "@/app/tasks/tasks-client";
 import { NotesClient } from "@/app/notes/notes-client";
 import { ChatClient } from "@/app/chat/chat-client";

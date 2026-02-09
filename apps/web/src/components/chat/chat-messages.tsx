@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MessageBubble } from "./message-bubble";
 import { ChatEmptyState } from "./chat-empty-state";
 import { StreamingMessage } from "./streaming-message";
-import type { ChatMessage } from "@prisma/client";
+import type { ChatMessage } from "@life-os/db";
 import type { ModelOption } from "./model-selector";
 
 type Props = {

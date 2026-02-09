@@ -40,7 +40,7 @@ import {
   deleteTask,
 } from "@/lib/tasks/actions";
 import { toastApiError } from "@/lib/api/error-toast";
-import type { TaskStatus, Priority } from "@prisma/client";
+import type { TaskStatus, Priority } from "@life-os/db";
 import { KanbanColumn } from "./kanban-column";
 import { type TaskWithProject } from "./task-card";
 import { selectDisplayedTasks } from "./tasks-utils";
