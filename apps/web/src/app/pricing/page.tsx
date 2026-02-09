@@ -1,11 +1,12 @@
 import "server-only";
 
 import type { Metadata } from "next";
-import { modelRegistry } from "@life-os/ai/providers/registry";
+import {
+  initializeAIServices,
+  listRegisteredModelMetadata,
+} from "@life-os/ai/services";
 import { PricingCatalog } from "./pricing-catalog";
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-// Initialize AI providers and chat services
-import "@life-os/ai/init";
 
 export const dynamic = "force-static";
 export const metadata: Metadata = {
@@ -14,8 +15,7 @@ export const metadata: Metadata = {
 };
 
 const toModelCatalog = () =>
-  modelRegistry
-    .listMetadata()
+  listRegisteredModelMetadata()
     .map((model) => ({
       key: model.key,
       label: model.label,
@@ -31,6 +31,7 @@ const toModelCatalog = () =>
     });
 
 export default function PricingPage() {
+  initializeAIServices();
 
   const modelCatalog = toModelCatalog();
 

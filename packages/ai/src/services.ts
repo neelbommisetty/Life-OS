@@ -1,5 +1,7 @@
 import { initializeProviders } from "./config";
 import { initializeChatServices } from "./chat-services";
+import { modelRegistry } from "./providers/registry";
+import type { ModelMetadata } from "./providers/types";
 
 export type AIProviderStatus =
   | "ready"
@@ -84,4 +86,8 @@ export function getAIServicesStatus(): AIServicesStatus {
     initialized: areAIServicesInitialized(),
     providers,
   };
+}
+
+export function listRegisteredModelMetadata(): ModelMetadata[] {
+  return modelRegistry.listMetadata();
 }
