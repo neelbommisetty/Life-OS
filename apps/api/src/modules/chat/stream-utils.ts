@@ -1,8 +1,4 @@
-export type StreamPromptMessage = {
-  role: "USER" | "ASSISTANT" | "SYSTEM";
-  content: string;
-  tokenCount: number | null;
-};
+import type { ChatMessage } from "@life-os/db";
 
 export type StreamEventType = "chunk" | "done" | "error" | "message_saved";
 
@@ -51,7 +47,7 @@ Format your responses using markdown when appropriate for better readability.`;
 
 export function formatMessagesForAI(
   systemPrompt: string,
-  messages: StreamPromptMessage[],
+  messages: ChatMessage[],
   summary?: string | null,
 ): string {
   let prompt = `${systemPrompt}\n\n`;
@@ -74,7 +70,7 @@ export function formatMessagesForAI(
   return prompt;
 }
 
-export function calculateHistoryTokens(messages: StreamPromptMessage[]): number {
+export function calculateHistoryTokens(messages: ChatMessage[]): number {
   return messages.reduce(
     (total, message) =>
       total +
@@ -85,7 +81,7 @@ export function calculateHistoryTokens(messages: StreamPromptMessage[]): number 
   );
 }
 
-export function buildSummarizationPrompt(messages: StreamPromptMessage[]): string {
+export function buildSummarizationPrompt(messages: ChatMessage[]): string {
   let prompt =
     "Please provide a concise summary of the following conversation. Focus on key points, decisions, and context that would be useful to continue the conversation:\n\n";
 

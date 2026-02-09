@@ -3,6 +3,7 @@ import {
   type ModelKey,
   type ModelStreamResult,
 } from "@life-os/ai";
+import type { ChatMessage, Prisma } from "@life-os/db";
 import { createLogger } from "@life-os/logger";
 import {
   createChatTrackingContext,
@@ -20,7 +21,6 @@ import {
   encodeSSE,
   resolveTokenCount,
   isPlaceholderThreadName,
-  type StreamPromptMessage,
   type StreamEvent,
 } from "./stream-utils.js";
 
@@ -28,19 +28,15 @@ const logger = createLogger("api:chat:stream");
 
 const HISTORY_TOKEN_CAP = 30000;
 const DEFAULT_THREAD_NAME = "New thread";
-const THREAD_ORDER = [
+const THREAD_ORDER: Prisma.ChatThreadOrderByWithRelationInput[] = [
   { lastChattedAt: "desc" },
   { createdAt: "desc" },
-] as const;
+];
 
-type ThreadMessage = {
-  id: string;
-  threadId: string;
-  role: "USER" | "ASSISTANT" | "SYSTEM";
-  content: string;
-  tokenCount: number | null;
-  createdAt: Date;
-};
+type ThreadMessage = Pick<
+  ChatMessage,
+  "id" | "threadId" | "role" | "content" | "tokenCount" | "createdAt"
+>;
 
 type ThreadProject = {
   name: string;
@@ -173,15 +169,23 @@ function streamResponseHeaders(): Record<string, string> {
   };
 }
 
-function toThreadMessage(message: ThreadMessage): StreamPromptMessage {
+function toThreadMessage(message: ThreadMessage): ChatMessage {
   return {
+    id: message.id,
+    threadId: message.threadId,
     role: message.role,
     content: message.content,
+    modelKey: null,
+    modelLabel: null,
+    modelProvider: null,
     tokenCount: message.tokenCount,
+    tokenCountSource: null,
+    savedNoteId: null,
+    createdAt: message.createdAt,
   };
 }
 
-function toChatMessages(messages: ThreadMessage[]): StreamPromptMessage[] {
+function toChatMessages(messages: ThreadMessage[]): ChatMessage[] {
   return messages.map(toThreadMessage);
 }
 
