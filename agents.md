@@ -13,9 +13,6 @@
 ## Git and pre-commit rules (required)
 
 - Default branch is `develop` (not `main`).
-- Branch protection rules are disabled for private-repo workflow.
-- Direct pushes to `develop` and `main` are allowed.
-- Do not rely on GitHub Actions for required test/lint checks; enforce them locally with pre-commit hooks.
 - Never use `git commit --no-verify`.
 - Every commit must pass all pre-commit hooks before push/PR.
 - Vercel deploy policy:
