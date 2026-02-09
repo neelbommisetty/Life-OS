@@ -24,7 +24,7 @@ test.describe("auth flows", () => {
     await page.getByLabel("Password").fill("wrong-password");
     await page.getByRole("button", { name: "Sign in" }).click();
 
-    await expect(page.getByText("Invalid email or password")).toBeVisible();
+    await expect(page.getByText("Invalid email or password").first()).toBeVisible();
 
     await page.getByLabel("Email").fill("demo@lifeos.dev");
     await page.getByLabel("Password").fill("demo12345");
@@ -45,7 +45,7 @@ test.describe("auth flows", () => {
     await page.getByLabel("Password").fill("safe-password-123");
     await page.getByRole("button", { name: "Create account" }).click();
 
-    await expect(page.getByText("Email already exists")).toBeVisible();
+    await expect(page.getByText("Email already exists").first()).toBeVisible();
 
     await page.getByLabel("Email").fill("new-user@lifeos.dev");
     await page.getByRole("button", { name: "Create account" }).click();
@@ -62,10 +62,27 @@ test.describe("auth flows", () => {
 
     await page.getByLabel("Email").fill("missing@lifeos.dev");
     await page.getByRole("button", { name: "Send reset link" }).click();
-    await expect(page.getByText("Account not found")).toBeVisible();
+    await expect(page.getByText("Account not found").first()).toBeVisible();
 
     await page.getByLabel("Email").fill("demo@lifeos.dev");
     await page.getByRole("button", { name: "Send reset link" }).click();
+    await expect(
+      page.getByText("If that email exists, a password reset link has been sent."),
+    ).toBeVisible();
+  });
+
+  test("recover alias route renders forgot-password flow and submits request", async ({
+    page,
+  }) => {
+    await setUnauthenticatedSessionCookie(page);
+    await page.goto("/auth/recover");
+
+    await expect(page).toHaveURL(/\/auth\/recover$/);
+    await expect(page.getByText("Recover password")).toBeVisible();
+
+    await page.getByLabel("Email").fill("demo@lifeos.dev");
+    await page.getByRole("button", { name: "Send reset link" }).click();
+
     await expect(
       page.getByText("If that email exists, a password reset link has been sent."),
     ).toBeVisible();
