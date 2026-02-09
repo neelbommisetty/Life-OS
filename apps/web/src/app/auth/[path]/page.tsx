@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { AuthClient } from "./auth-client";
 import { getApiSessionUser } from "@/lib/api/session";
@@ -25,6 +26,41 @@ function normalizePath(path: AuthPath) {
   }
 
   return path;
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ path: string }>;
+}): Promise<Metadata> {
+  const { path } = await params;
+  const typedPath = path as AuthPath;
+  const normalizedPath = AUTH_PATHS.includes(typedPath)
+    ? normalizePath(typedPath)
+    : "sign-in";
+
+  const titleByPath: Record<Exclude<AuthPath, "recover">, string> = {
+    "sign-in": "Sign In",
+    "sign-up": "Sign Up",
+    "forget-password": "Forgot Password",
+    "reset-password": "Reset Password",
+  };
+
+  const descriptionByPath: Record<Exclude<AuthPath, "recover">, string> = {
+    "sign-in": "Access your Life-OS account.",
+    "sign-up": "Create your Life-OS account.",
+    "forget-password": "Request a password reset link.",
+    "reset-password": "Set a new password for your account.",
+  };
+
+  return {
+    title: titleByPath[normalizedPath],
+    description: descriptionByPath[normalizedPath],
+    robots: {
+      index: false,
+      follow: false,
+    },
+  };
 }
 
 export default async function AuthPage({ params }: { params: Promise<{ path: string }> }) {

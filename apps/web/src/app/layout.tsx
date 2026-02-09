@@ -24,7 +24,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Life-OS",
+  title: {
+    default: "Life-OS",
+    template: "%s | Life-OS",
+  },
   description:
     "Your personal productivity platform to organize work, ideas, and tasks.",
 };
