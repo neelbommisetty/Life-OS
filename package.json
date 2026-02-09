@@ -11,7 +11,7 @@
     "dev:all": "bun run --filter=./apps/web --filter=./apps/api dev",
     "dev:web": "bun --filter=./apps/web dev",
     "dev:api": "bun --filter=./apps/api dev",
-    "prepare:runtime": "bun run prisma:generate && bun --filter=./packages/ai run build",
+    "prepare:runtime": "bun run prisma:generate && bun --filter=./packages/db run build && bun --filter=./packages/ai run build",
     "postinstall": "bun run prepare:runtime",
     "prebuild": "bun run prepare:runtime",
     "build": "bun run --filter=./apps/web build",
