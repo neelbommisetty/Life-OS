@@ -1,6 +1,7 @@
 import { RecentProjects } from "@/components/home/recent-projects";
 import { UpcomingTasks } from "@/components/home/upcoming-tasks";
 import { RecentNotes } from "@/components/home/recent-notes";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { requireApiSessionUser } from "@/lib/api/session";
 import {
@@ -8,6 +9,11 @@ import {
   UpcomingTasksSkeleton,
   RecentNotesSkeleton
 } from "@/components/home/home-skeletons";
+
+export const metadata: Metadata = {
+  title: "Home",
+  description: "View your dashboard with recent projects, tasks, and notes.",
+};
 
 export default async function Page() {
   const sessionUser = await requireApiSessionUser();
