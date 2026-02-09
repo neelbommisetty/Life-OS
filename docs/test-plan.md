@@ -1,79 +1,71 @@
 # Life-OS Test Plan (API + Web)
 
-Last updated: 2026-02-08
+Last updated: 2026-02-09
 
 ## Purpose
-This document tracks all current product capabilities in `apps/api` and `apps/web` and the tests required to keep them stable.
+This document tracks current product behavior in `apps/api` and `apps/web`, grouped into:
+- **User Facing Test Cases**: what users do and what they should see.
+- **Platform Capabilities**: behind-the-scenes API, auth, proxy, middleware, and resilience behavior.
 
 ## Update Policy
 When a feature is added or changed in `apps/api` or `apps/web`, update this file in the same change.
 
 Required updates for feature work:
-- Add or update the relevant capability row in this document.
-- Add at least one happy-path test and one edge/error-path test for the changed capability.
+- Update at least one relevant row in `User Facing Test Cases` and/or `Platform Capabilities`.
+- Add at least one happy-path test and one edge/error-path test for changed behavior.
 - If a new API endpoint is added, add/update API route tests in `apps/api/src/**/route.test.ts` in the same PR.
 - If UI behavior changes, add/update web tests (unit and/or browser flow) for the user-facing behavior.
 
-## API Capabilities
+## User Facing Test Cases
 
-| Area | Capability | Endpoints | Required Test Coverage |
+| Area | Capability | Primary Routes | User-visible expectation | Required Test Coverage |
+| --- | --- | --- | --- | --- |
+| Auth | Sign in/sign up/forgot/reset password | `/auth/sign-in`, `/auth/sign-up`, `/auth/forget-password`, `/auth/reset-password` | Forms show success and error states; redirects happen correctly | Submit success/error paths for each flow |
+| Auth | Legacy recover alias | `/auth/recover` | Route renders forgot-password experience (normalized to recover flow UI) | Route resolves and can submit password reset request path |
+| Auth | Signed-in redirect on auth pages | `/auth/sign-in`, `/auth/sign-up` | Authenticated users are redirected to `/` | Redirect occurs when session exists |
+| Auth | Session-gated app access | `/`, `/chat`, `/projects`, `/projects/[id]`, `/tasks`, `/tasks/archive`, `/notes`, `/analytics`, `/account/*` | Unauthenticated users are redirected to `/auth/sign-in`; authenticated users load pages | Redirect and authenticated load success |
+| Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
+| Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
+| Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/recent notes render | Module rendering for empty/non-empty states |
+| Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
+| Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Chat/Tasks/Notes tabs | Edit success/error + tab content render |
+| Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
+| Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
+| Notes | Note selection and URL sync | `/notes` | Selecting notes updates `noteId`; first note auto-selects on `/notes` when available | Selection behavior + URL state + default selection |
+| Notes | Note editor behavior | `/notes` | Preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S | Autosave and manual save shortcuts/edge cases |
+| Chat | Thread management UI | `/chat` and project chat tab | Users can create/archive/select threads with URL sync and grouped/searchable list | Thread lifecycle + URL sync + filtering |
+| Chat | Message history and thread switching | `/chat` | Messages paginate with cursor; switching threads returns view to latest message even after scrolling up | Cursor pagination + thread-switch scroll restoration |
+| Chat | Streaming conversation UX | `/chat` via `/api/chat/stream` | Optimistic user message, streaming assistant output, stop-stream behavior, stream error badge | Stream lifecycle, cancellation, error handling |
+| Chat | Model selection UX | `/chat` | Model list is visible; selection persists; invalid change shows error | Load list + successful change + invalid change path |
+| Chat | Assistant message actions | `/chat` | Users can copy output, regenerate latest assistant response, save assistant message as note | Action availability + state transitions |
+| Analytics | Usage dashboard rendering | `/analytics` | Summary cards, breakdown sections, recent activity render for empty/non-empty states | Dashboard shape and render coverage |
+| Pricing | Model pricing catalog | `/pricing` | Pricing catalog loads grouped models with key pricing fields | Catalog render and key labels/values |
+| Errors | Client error feedback | all interactive routes calling `/api/*` | API/runtime failures show toasts or fallback error UI instead of silent failure | API error toast + unhandled rejection + route error fallback |
+
+## Platform Capabilities
+
+| Layer | Capability | Surface | Required Test Coverage |
 | --- | --- | --- | --- |
-| Platform | Root health response | `GET /` | Returns 200 and expected message body |
-| Platform | Request correlation logging | all API routes via app middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
-| Platform | Service readiness status | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason |
-| Auth | Neon Auth proxy passthrough | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/headers/body/query; strips hop/proxy forwarding headers before upstream auth calls; normalizes empty `POST /api/auth/sign-out` bodies to `{}` with `application/json` and strips `content-type`/`content-length` for other empty non-GET auth bodies; forwards upstream status/headers; rewrites upstream auth redirect `Location` headers to proxy-relative `/api/auth/*`; base URL missing error |
-| Auth | User identity resolution | middleware on protected routes | Bearer JWT validation path, session fallback path, invalid auth handling, per-request cache behavior, non-GET session lookup strips body and proxy forwarding headers, timeout and any `/api/auth` proxy misconfiguration (same-origin or cross-origin) fail-fast behavior |
-| Auth | Protected route gate | all non-public routes | Unauthorized when session/JWT missing/invalid; success with valid session/JWT |
-| Home | Dashboard cards data | `GET /home/recent-projects`, `/home/upcoming-tasks`, `/home/recent-notes` (+ `/api/*`) | Correct limits/order/filtering and auth isolation |
-| Projects | List/search/archive filtering | `GET /projects`, `GET /api/projects` | Search by name/description, includeArchived toggle, default non-archived |
-| Projects | Get by ID | `GET /projects/:id`, `/api/projects/:id` | Own project returns 200; missing/wrong owner returns 404 |
-| Projects | Project + related items | `GET /projects/:id/items`, `/api/projects/:id/items` | Includes active chat threads/tasks/notes in expected order |
-| Projects | Create | `POST /projects`, `/api/projects` | Valid create returns 201; validation errors for missing/invalid fields |
-| Projects | Update | `PATCH /projects/:id`, `/api/projects/:id` | Partial update works; non-owner/not found returns 404 |
-| Projects | Archive/unarchive | `POST /projects/:id/archive`, `/api/projects/:id/archive`, `POST /projects/:id/unarchive`, `/api/projects/:id/unarchive` | Archive sets `archivedAt`; unarchive clears it; idempotency/error expectations |
-| Projects | Delete | `DELETE /projects/:id`, `/api/projects/:id` | Deletes own project; missing project returns 404 |
-| Tasks | List/filter | `GET /tasks`, `/api/tasks` | Search, status, project filter, ordering, auth isolation |
-| Tasks | Auto-archive stale done tasks | implicit on list endpoints | `DONE` tasks older than 7 days become archived (`deletedAt`) |
-| Tasks | List archived | `GET /tasks/archived`, `/api/tasks/archived` | Returns soft-deleted tasks ordered by `deletedAt desc` |
-| Tasks | Create/update/delete | `POST /tasks`, `PATCH /tasks/:id`, `DELETE /tasks/:id` (+ `/api/*`) | CRUD happy paths, due-date coercion, validation failures, soft-delete behavior |
-| Notes | List/filter | `GET /notes`, `/api/notes` | Search by title/content, project filtering, excludes deleted |
-| Notes | Get/create/update/delete | `GET /notes/:id`, `POST /notes`, `PATCH /notes/:id`, `DELETE /notes/:id` (+ `/api/*`) | CRUD happy paths, ownership checks, soft delete |
-| Notes | Save assistant message as note | `POST /notes/save-from-message`, `/api/notes/save-from-message` | Only assistant messages allowed, idempotent re-save, links `savedNoteId` |
-| Chat | List/create/archive threads | `GET /chat/threads`, `POST /chat/threads`, `POST /chat/threads/:threadId/archive` (+ `/api/*`) | Thread lifecycle, project scoping, archived filtering |
-| Chat | Default thread creation behavior | `GET /chat/threads`, `POST /chat/stream` (+ `/api/*`) | Creates default thread when listing and none exists; stream creates thread when needed |
-| Chat | Thread detail/model assignment | `GET /chat/threads/:threadId`, `POST /chat/threads/:threadId/model` (+ `/api/*`) | Invalid model rejected; valid model persists; invalid stored model is reset |
-| Chat | Messages pagination | `GET /chat/threads/:threadId/messages`, `/api/...` | Cursor contract (`cursorId` + `cursorCreatedAt`), `limit` bounds, ordering/nextCursor |
-| Chat | List text models | `GET /chat/models`, `/api/chat/models` | Returns only text-capable models with metadata fields; authenticated app integration keeps list non-empty |
-| Chat | Streaming + regenerate flow | `POST /chat/stream`, `/api/chat/stream` | SSE events (`chunk`, `message_saved`, `done`, `error`), persistence, regenerate constraints |
-| Analytics | Usage dashboard | `GET /analytics/dashboard`, `/api/analytics/dashboard` | Default `days=30`, `limit=10`; bounds and validation errors; summary + recent calls payload |
-| Errors | Error mapping and JSON parsing | all routes | Invalid JSON -> 400, validation -> 400, not found -> 404, auth -> 401, server misconfiguration (missing env/API keys) -> 503 |
-
-## Web Capabilities
-
-| Area | Capability | Primary Routes | Required Test Coverage |
-| --- | --- | --- | --- |
-| Auth | Sign in/sign up/forgot/reset password flows | `/auth/sign-in`, `/auth/sign-up`, `/auth/forget-password`, `/auth/reset-password` | Form submit success/error states and redirects |
-| Auth | Auth route query-param rendering safety | `/auth/[path]` | `next build` passes with `useSearchParams()` wrapped in Suspense; auth pages still read `callbackURL` and `token` query params |
-| Auth | Session-gated pages | `/`, `/chat`, `/projects`, `/tasks`, `/notes`, `/analytics`, `/account/*` | Unauthenticated redirect to `/auth/sign-in`; authenticated load success |
-| Auth | Account profile/security management | `/account/profile`, `/account/security` | Update profile name, change password, sign out behavior; password change success path keeps success state and clears form without throwing after async submit |
-| Shell | App chrome + navigation | shared layout with side/top nav | Nav links route correctly; mode toggle renders; user menu reflects server session state and sign out behavior |
-| Errors | Client API error toasts | all interactive web routes that call `/api/*` | Failed API calls show toast with payload/fallback message and never fail silently; unhandled rejected promises and route-level runtime errors surface fallback toast |
-| Shell | Dynamic rendering boundary for API-backed pages | app root layout and authenticated routes | `next build` succeeds without API base URL at build time, while runtime session/API checks still execute on request |
-| Home | Dashboard modules | `/` | Greeting/date renders; recent projects/upcoming tasks/recent notes blocks load |
-| Projects | Project list/create | `/projects` | Create dialog validation; successful create navigates to project detail |
-| Projects | Project detail + edit | `/projects/[id]` | Edit project metadata; tabs load Overview/Chat/Tasks/Notes |
-| Tasks | Kanban board CRUD | `/tasks` | Create/edit/delete task, search filter, DnD status change optimistic + rollback path |
-| Tasks | Archived tasks view | `/tasks/archive` | Archived list loads and search filters client-side |
-| Notes | Notes selection/editing | `/notes` | Select/create/delete note, URL sync via `noteId`, grouped notes by project |
-| Notes | Editor behavior | `/notes` | Markdown preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S |
-| Chat | Thread management UI | `/chat` and project-scoped chat tab | Create/archive/select thread, URL sync via `threadId`, grouped + searchable list |
-| Chat | Message history and pagination | `/chat` | Initial load, thread switch auto-scrolls to latest message on desktop/mobile layouts (including when previously scrolled up), scroll-up pagination with cursor, loading states, delayed-render content keeps latest message in view after thread switch |
-| Chat | Streaming chat UX | `/chat` via `/api/chat/stream` | Optimistic user message, live streamed assistant content, stop streaming, error badge |
-| Chat | Model selection UX | `/chat` | Model list loads, change persists, invalid selection error shown |
-| Chat | Assistant message actions | `/chat` | Copy, regenerate latest assistant message only, save-as-note status transitions |
-| Analytics | AI usage dashboard | `/analytics` | Summary cards, model/type/thread breakdown sections, recent activity render |
-| Pricing | Model pricing catalog | `/pricing` | Model registry renders grouped provider cards and price fields |
-| API Proxy | Web auth/chat passthrough routes | `/api/auth/[...path]`, `/api/chat/stream` | Preserves method/body/headers/query, propagates `x-request-id`, strips `content-type`/`content-length` for empty non-GET auth bodies, forwards upstream status, and resolves server API base URL with `API_BASE_URL` precedence (dev fallback to `http://localhost:3001`) |
+| API Platform | Root health response | `GET /` | Returns 200 and expected body |
+| API Platform | Request correlation | all API routes via middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
+| API Platform | Readiness/status contract | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason, AI status shape |
+| API Auth Proxy | Neon auth passthrough hardening | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/query/body/headers; strips host+forwarding headers; normalizes empty sign-out body to `{}` JSON; strips empty body headers on other non-GET auth routes; forwards upstream status/headers; rewrites upstream auth redirects to `/api/auth/*`; base URL missing error |
+| API Auth | User identity resolution | protected-route middleware (`resolveUserIdFromRequest`) | JWT verify path, session fallback path, invalid auth handling, per-request cache, non-GET session lookup header stripping, timeout behavior, same-origin/cross-origin `/api/auth` proxy misconfiguration fail-fast, upstream status surfaced in auth resolution errors |
+| API Auth | Protected route gate | all non-public API routes | Unauthorized for missing/invalid session/JWT; success when identity resolves |
+| API Data | Projects API contract | `/projects*`, `/api/projects*` | List/search/includeArchived, get by id, project+items payload shape/order, create/update/archive/unarchive/delete behavior |
+| API Data | Tasks API contract | `/tasks*`, `/api/tasks*` | List/filter, archived list, CRUD semantics, due-date coercion, soft delete behavior |
+| API Data | Auto-archive stale done tasks | implicit during task list queries | `DONE` tasks older than 7 days are archived (`deletedAt`) during list and archived-list reads |
+| API Data | Notes API contract | `/notes*`, `/api/notes*` | List/filter/get/create/update/delete behavior, ownership checks, assistant-message save semantics |
+| API Data | Notes back-reference cleanup | `DELETE /notes/:id` (+ `/api/*`) | Deleting a note clears linked `chatMessage.savedNoteId` references |
+| API Data | Chat threads/messages/models contract | `/chat*`, `/api/chat*` | Thread lifecycle, default thread creation, model assignment/reset behavior, cursor pagination contract, text-model filtering |
+| API Streaming | Chat stream protocol | `POST /chat/stream`, `/api/chat/stream` | SSE event contract (`chunk`, `message_saved`, `done`, `error`), persistence, regenerate constraints |
+| API Analytics | Usage dashboard contract | `/analytics/dashboard`, `/api/analytics/dashboard` | Default params (`days=30`, `limit=10`), bounds/validation errors, summary + recent calls shape |
+| API Errors | Error classification/mapping | shared error utilities + route handlers | Invalid JSON -> 400, validation -> 400, auth -> 401, not found -> 404, generic -> 500, configuration/provider readiness errors -> 503 |
+| Web Platform | API auth proxy passthrough | `/api/auth/[...path]` | Preserves method/query/body/headers to API, propagates `x-request-id`, strips empty-body `content-type`/`content-length` before proxying |
+| Web Platform | API chat stream proxy passthrough | `/api/chat/stream` | Forwards request/response stream and propagates `x-request-id` |
+| Web Platform | Server API base URL resolution | `apps/web/src/lib/api/base-url*.ts` | `API_BASE_URL` precedence, dev fallback `http://localhost:3001`, production fallback to `NEXT_PUBLIC_API_BASE_URL`, throws when unresolved in production |
+| Web Platform | Server-side API auth redirect behavior | `apps/web/src/lib/api/fetch.ts` | Server-side API 401 responses redirect to `/auth/sign-in` |
+| Build Platform | Dynamic rendering boundary | app layout + API-backed routes | `next build` succeeds without build-time API base URL while runtime checks still execute on request |
 
 ## Core Regression Checklist
 Run this set before release and after large refactors:
@@ -88,11 +80,34 @@ Run this set before release and after large refactors:
 8. Pricing page: catalog renders without runtime errors.
 
 ## Current Test File Index
-- API route tests: `apps/api/src/**/*.test.ts`
+- API route and module tests:
+  - `apps/api/src/app.test.ts`
+  - `apps/api/src/routes/auth.test.ts`
+  - `apps/api/src/routes/status.test.ts`
+  - `apps/api/src/modules/common/auth.test.ts`
+  - `apps/api/src/modules/common/errors.test.ts`
+  - `apps/api/src/modules/home/route.test.ts`
+  - `apps/api/src/modules/projects/route.test.ts`
+  - `apps/api/src/modules/tasks/route.test.ts`
+  - `apps/api/src/modules/notes/route.test.ts`
+  - `apps/api/src/modules/chat/route.test.ts`
+  - `apps/api/src/modules/analytics/route.test.ts`
 - Web unit tests (selected):
-  - `apps/web/src/lib/**/*.test.ts`
+  - `apps/web/src/lib/api/base-url.test.ts`
   - `apps/web/src/lib/api/error-message.test.ts`
+  - `apps/web/src/lib/api/proxy-request.test.ts`
+  - `apps/web/src/lib/chat-utils.test.ts`
+  - `apps/web/src/lib/notes/note-save.test.ts`
+  - `apps/web/src/lib/notes/note-utils.test.ts`
+  - `apps/web/src/lib/notes/validations.test.ts`
+  - `apps/web/src/lib/utils.test.ts`
   - `apps/web/src/components/chat/message-actions.test.ts`
   - `apps/web/src/app/tasks/tasks-utils.test.ts`
 - Web e2e tests:
-  - `apps/web/tests/e2e/*.e2e.ts`
+  - `apps/web/tests/e2e/auth-flows.e2e.ts`
+  - `apps/web/tests/e2e/session-gates.e2e.ts`
+  - `apps/web/tests/e2e/chat-model-selector.e2e.ts`
+  - `apps/web/tests/e2e/chat-scroll.e2e.ts`
+  - `apps/web/tests/e2e/chat-thread-switch-scroll.e2e.ts`
+  - `apps/web/tests/e2e/notes-selection.e2e.ts`
+  - `apps/web/tests/e2e/pricing.e2e.ts`
