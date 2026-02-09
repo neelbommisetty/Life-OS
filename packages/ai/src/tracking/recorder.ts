@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@life-os/db";
 import { prisma } from "@life-os/db";
 import { createLogger } from "../logger";
 import { getModelPriceSnapshot } from "../pricing";

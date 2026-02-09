@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { Project } from "@prisma/client";
+import type { Project } from "@life-os/db";
 
 interface ProjectCardProps {
   project: Project;

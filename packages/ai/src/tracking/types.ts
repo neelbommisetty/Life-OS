@@ -1,4 +1,4 @@
-import type { AiCallType, AiCallStatus } from '@prisma/client';
+import type { AiCallType, AiCallStatus } from '@life-os/db';
 import type { ModelUsage, ModelCallTelemetry } from "../core";
 
 /**

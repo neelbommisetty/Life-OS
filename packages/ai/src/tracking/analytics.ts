@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@life-os/db";
-import type { AiCallType, AiCallStatus, Prisma } from "@prisma/client";
+import type { AiCallType, AiCallStatus, Prisma } from "@life-os/db";
 
 /**
  * Summary of AI usage for a user over a time period.

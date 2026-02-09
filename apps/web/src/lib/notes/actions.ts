@@ -1,7 +1,7 @@
 "use server";
 
 import { apiFetchJson } from "@/lib/api/fetch";
-import type { Note, Project } from "@prisma/client";
+import type { Note, Project } from "@life-os/db";
 import {
   listNotesSchema,
   createNoteSchema,

@@ -1,7 +1,7 @@
 "use server";
 
 import { apiFetchJson } from "@/lib/api/fetch";
-import type { ChatMessage, ChatThread, Project } from "@prisma/client";
+import type { ChatMessage, ChatThread, Project } from "@life-os/db";
 import {
   listThreadsSchema,
   createThreadSchema,

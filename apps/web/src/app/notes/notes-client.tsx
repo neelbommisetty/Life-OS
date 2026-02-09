@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { createNote, updateNote, deleteNote } from "@/lib/notes/actions";
 import { toastApiError } from "@/lib/api/error-toast";
-import type { Note, Project } from "@prisma/client";
+import type { Note, Project } from "@life-os/db";
 import { NoteSelector, NoteEditor } from "@/components/notes";
 import { FileText } from "lucide-react";
 

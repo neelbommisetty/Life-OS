@@ -27,4 +27,5 @@ if (process.env.NODE_ENV !== "production") {
   globalForPrisma.prisma = prisma;
 }
 
-export type { ChatMessage, ChatRole, Prisma } from "@prisma/client";
+export { Prisma } from "@prisma/client";
+export type * from "@prisma/client";
