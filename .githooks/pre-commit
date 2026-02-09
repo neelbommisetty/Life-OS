@@ -1,0 +1,188 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
+cd "$REPO_ROOT"
+
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required for pre-commit checks." >&2
+  exit 1
+fi
+
+declare -a staged_files=()
+while IFS= read -r path; do
+  if [ -n "$path" ]; then
+    staged_files+=("$path")
+  fi
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ "${#staged_files[@]}" -eq 0 ]; then
+  exit 0
+fi
+
+declare -a web_lint_files=()
+declare -a web_unit_test_files=()
+declare -a api_unit_test_files=()
+declare -a ai_unit_test_files=()
+declare -a db_unit_test_files=()
+declare -a logger_unit_test_files=()
+
+run_api_lint=0
+run_ai_lint=0
+run_db_lint=0
+run_logger_lint=0
+run_e2e=1
+
+is_unit_test_file() {
+  local file="$1"
+
+  case "$file" in
+    *.test.ts|*.test.tsx|*.test.js|*.test.jsx|*.spec.ts|*.spec.tsx|*.spec.js|*.spec.jsx)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+for path in "${staged_files[@]}"; do
+  case "$path" in
+    apps/web/*)
+      rel="${path#apps/web/}"
+
+      case "$rel" in
+        *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs)
+          web_lint_files+=("$rel")
+          ;;
+      esac
+
+      if is_unit_test_file "$rel"; then
+        case "$rel" in
+          tests/e2e/*|*.e2e.*)
+            ;;
+          *)
+            web_unit_test_files+=("$rel")
+            ;;
+        esac
+      fi
+
+      ;;
+    apps/api/*)
+      rel="${path#apps/api/}"
+      run_api_lint=1
+
+      if is_unit_test_file "$rel"; then
+        api_unit_test_files+=("$rel")
+      fi
+      ;;
+    packages/ai/*)
+      rel="${path#packages/ai/}"
+      run_ai_lint=1
+
+      if is_unit_test_file "$rel"; then
+        ai_unit_test_files+=("$rel")
+      fi
+      ;;
+    packages/db/*)
+      rel="${path#packages/db/}"
+      run_db_lint=1
+
+      if is_unit_test_file "$rel"; then
+        db_unit_test_files+=("$rel")
+      fi
+      ;;
+    packages/logger/*)
+      rel="${path#packages/logger/}"
+      run_logger_lint=1
+
+      if is_unit_test_file "$rel"; then
+        logger_unit_test_files+=("$rel")
+      fi
+      ;;
+  esac
+done
+
+if [ "${#web_lint_files[@]}" -gt 0 ]; then
+  echo "pre-commit: linting changed files in apps/web"
+  (
+    cd apps/web
+    bun run lint -- "${web_lint_files[@]}"
+  )
+fi
+
+if [ "$run_api_lint" -eq 1 ]; then
+  echo "pre-commit: linting changed files in apps/api workspace"
+  bun run --filter=./apps/api lint
+fi
+
+if [ "$run_ai_lint" -eq 1 ]; then
+  echo "pre-commit: linting changed files in packages/ai workspace"
+  bun run --filter=./packages/ai lint
+fi
+
+if [ "$run_db_lint" -eq 1 ]; then
+  echo "pre-commit: linting changed files in packages/db workspace"
+  bun run --filter=./packages/db lint
+fi
+
+if [ "$run_logger_lint" -eq 1 ]; then
+  echo "pre-commit: linting changed files in packages/logger workspace"
+  bun run --filter=./packages/logger lint
+fi
+
+if [ "${#web_unit_test_files[@]}" -gt 0 ]; then
+  echo "pre-commit: running changed unit tests in apps/web"
+  (
+    cd apps/web
+    bun test "${web_unit_test_files[@]}"
+  )
+fi
+
+if [ "${#api_unit_test_files[@]}" -gt 0 ]; then
+  echo "pre-commit: running changed unit tests in apps/api"
+  (
+    cd apps/api
+    bun test "${api_unit_test_files[@]}"
+  )
+fi
+
+if [ "${#ai_unit_test_files[@]}" -gt 0 ]; then
+  echo "pre-commit: running changed unit tests in packages/ai"
+  (
+    cd packages/ai
+    bun test "${ai_unit_test_files[@]}"
+  )
+fi
+
+if [ "${#db_unit_test_files[@]}" -gt 0 ]; then
+  echo "pre-commit: running changed unit tests in packages/db"
+  (
+    cd packages/db
+    bun test "${db_unit_test_files[@]}"
+  )
+fi
+
+if [ "${#logger_unit_test_files[@]}" -gt 0 ]; then
+  echo "pre-commit: running changed unit tests in packages/logger"
+  (
+    cd packages/logger
+    bun test "${logger_unit_test_files[@]}"
+  )
+fi
+
+if [ "$run_e2e" -eq 1 ]; then
+  echo "pre-commit: building packages/db for runtime exports"
+  bun run --filter=./packages/db build
+
+  echo "pre-commit: building packages/ai for runtime exports"
+  bun run --filter=./packages/ai build
+
+  echo "pre-commit: running web e2e tests"
+  DATABASE_URL="${DATABASE_URL:-postgresql://user:pass@localhost:5432/db}" \
+  API_BASE_URL="${API_BASE_URL:-http://127.0.0.1:3001}" \
+  NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:3001}" \
+  bun run test:web:e2e
+fi

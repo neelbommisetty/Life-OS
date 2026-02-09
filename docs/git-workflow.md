@@ -9,11 +9,15 @@
 
 ## PR and checks policy
 
-- No direct pushes to `main` or `develop`.
-- All changes go through pull requests.
-- Required checks by target branch:
-  - `develop`: `unit-tests`
-  - `main`: `unit-tests` and `e2e-tests`
+- Branch protection rules are disabled for private-repo workflow.
+- Direct pushes to `main` and `develop` are allowed.
+- Pull requests are optional.
+- GitHub Actions are not used as required checks.
+- Pre-commit hooks are the required local gate before push/PR:
+  - run web e2e tests
+  - lint changed files/workspaces
+  - run changed unit test files
+- Never bypass hooks with `git commit --no-verify`.
 
 ## Worktree-first flow
 
@@ -26,8 +30,8 @@ git worktree add ../wt-my-feature -b codex/my-feature origin/develop
 cd ../wt-my-feature
 ```
 
-- Open a PR from `codex/my-feature` to `develop`.
-- Open a PR from `develop` to `main` when ready to release.
+- If you use PRs, open a PR from `codex/my-feature` to `develop`.
+- If you use PRs, open a PR from `develop` to `main` when ready to release.
 
 ## Vercel deploy policy
 
