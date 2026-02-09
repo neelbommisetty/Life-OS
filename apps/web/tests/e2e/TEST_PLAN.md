@@ -16,6 +16,12 @@
    - Verify second note content is not rendered by default.
    - Spec: `tests/e2e/notes-selection.e2e.ts`
 
+3. Chat thread switch resets to latest message after manual scroll-up
+   - Navigate to `/chat` and wait for a scrollable message history.
+   - Scroll up in thread A, then switch to thread B from the desktop thread list.
+   - Verify latest thread B message is visible and the container is pinned near the bottom.
+   - Spec: `tests/e2e/chat-thread-switch-scroll.e2e.ts`
+
 ## Run
 - From repo root: `bun --filter=./apps/web test:e2e`
 - Single spec: `bun --filter=./apps/web test:e2e -- tests/e2e/notes-selection.e2e.ts`

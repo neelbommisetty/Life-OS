@@ -34,8 +34,23 @@ type MockChatThread = {
   project: MockProject | null;
 };
 
+type MockChatMessage = {
+  id: string;
+  threadId: string;
+  role: "USER" | "ASSISTANT";
+  content: string;
+  createdAt: string;
+  modelKey: string | null;
+  modelLabel: string | null;
+  modelProvider: string | null;
+  tokenCount: number | null;
+  tokenCountSource: "ESTIMATE" | "PROVIDER" | null;
+  savedNoteId: string | null;
+};
+
 const now = new Date();
-const chatThreadId = "ckz1q2w3e4r5t6y7u8i9o0p1f";
+const chatThreadAId = "ckz1q2w3e4r5t6y7u8i9o0p1f";
+const chatThreadBId = "ckz1q2w3e4r5t6y7u8i9o0p2g";
 
 function iso(date: Date) {
   return date.toISOString();
@@ -68,19 +83,61 @@ const mockNotes: MockNote[] = [
   },
 ];
 
-const mockChatThread: MockChatThread = {
-  id: chatThreadId,
-  userId: "user-e2e",
-  name: "New thread",
-  modelKey: null,
-  summary: null,
-  summaryUpTo: null,
-  lastChattedAt: iso(now),
-  archivedAt: null,
-  createdAt: iso(now),
-  updatedAt: iso(now),
-  projectId: null,
-  project: null,
+function buildThreadMessages(threadId: string, label: string): MockChatMessage[] {
+  const messageCount = 40;
+  return Array.from({ length: messageCount }, (_, index) => {
+    const role = index % 2 === 0 ? "USER" : "ASSISTANT";
+    const messageNumber = index + 1;
+    return {
+      id: `${threadId}-message-${messageNumber}`,
+      threadId,
+      role,
+      content: `${label} message ${messageNumber}`,
+      createdAt: iso(new Date(now.getTime() - (messageCount - index) * 60_000)),
+      modelKey: role === "ASSISTANT" ? "openai.gpt-5-mini" : null,
+      modelLabel: role === "ASSISTANT" ? "OpenAI GPT-5 Mini" : null,
+      modelProvider: role === "ASSISTANT" ? "openai" : null,
+      tokenCount: role === "ASSISTANT" ? 42 : null,
+      tokenCountSource: role === "ASSISTANT" ? "ESTIMATE" : null,
+      savedNoteId: null,
+    };
+  });
+}
+
+const mockChatThreads: MockChatThread[] = [
+  {
+    id: chatThreadAId,
+    userId: "user-e2e",
+    name: "Thread A",
+    modelKey: null,
+    summary: null,
+    summaryUpTo: null,
+    lastChattedAt: iso(now),
+    archivedAt: null,
+    createdAt: iso(now),
+    updatedAt: iso(now),
+    projectId: null,
+    project: null,
+  },
+  {
+    id: chatThreadBId,
+    userId: "user-e2e",
+    name: "Thread B",
+    modelKey: null,
+    summary: null,
+    summaryUpTo: null,
+    lastChattedAt: iso(new Date(now.getTime() - 5 * 60_000)),
+    archivedAt: null,
+    createdAt: iso(new Date(now.getTime() - 5 * 60_000)),
+    updatedAt: iso(new Date(now.getTime() - 5 * 60_000)),
+    projectId: null,
+    project: null,
+  },
+];
+
+const mockChatMessagesByThread: Record<string, MockChatMessage[]> = {
+  [chatThreadAId]: buildThreadMessages(chatThreadAId, "Thread A"),
+  [chatThreadBId]: buildThreadMessages(chatThreadBId, "Thread B"),
 };
 
 function jsonResponse(
@@ -396,24 +453,37 @@ const server = Bun.serve({
     }
 
     if (pathname === "/api/chat/threads" && method === "GET") {
-      return jsonResponse([mockChatThread]);
+      return jsonResponse(mockChatThreads);
     }
 
-    if (
-      pathname === `/api/chat/threads/${chatThreadId}/messages` &&
-      method === "GET"
-    ) {
+    const messagesMatch = pathname.match(/^\/api\/chat\/threads\/([^/]+)\/messages$/);
+    if (messagesMatch && method === "GET") {
+      const threadId = messagesMatch[1];
+      const messages = mockChatMessagesByThread[threadId];
+      if (!messages) {
+        return jsonResponse(
+          { error: "not_found", message: "Thread not found" },
+          404,
+        );
+      }
       return jsonResponse({
-        threadId: chatThreadId,
-        messages: [],
+        threadId,
+        messages,
         nextCursor: null,
       });
     }
 
-    if (
-      pathname === `/api/chat/threads/${chatThreadId}/model` &&
-      method === "POST"
-    ) {
+    const modelMatch = pathname.match(/^\/api\/chat\/threads\/([^/]+)\/model$/);
+    if (modelMatch && method === "POST") {
+      const threadId = modelMatch[1];
+      const threadIndex = mockChatThreads.findIndex((thread) => thread.id === threadId);
+      if (threadIndex === -1) {
+        return jsonResponse(
+          { error: "not_found", message: "Thread not found" },
+          404,
+        );
+      }
+
       return request
         .json()
         .catch(() => ({}))
@@ -423,9 +493,13 @@ const server = Bun.serve({
               ? (payload as { modelKey?: string | null }).modelKey ?? null
               : null;
 
-          mockChatThread.modelKey = modelKey;
-          mockChatThread.updatedAt = iso(new Date());
-          return jsonResponse(mockChatThread);
+          const updated = {
+            ...mockChatThreads[threadIndex],
+            modelKey,
+            updatedAt: iso(new Date()),
+          };
+          mockChatThreads[threadIndex] = updated;
+          return jsonResponse(updated);
         });
     }
 

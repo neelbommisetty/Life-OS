@@ -135,31 +135,44 @@ export function ChatClient({ projectId }: { projectId?: string }) {
     onInvalidate: handleInvalidate,
   });
 
-  // Scroll hook
-  const { messagesContainerRef, handleScroll } = useChatScroll({
+  const fetchNextPage = useCallback(async () => {
+    if (!effectiveThreadId || !nextCursor || isFetchingNextPage) return;
+    setIsFetchingNextPage(true);
+    try {
+      const result = await listMessages({
+        threadId: effectiveThreadId,
+        cursor: nextCursor,
+        limit: pageSize,
+      });
+      setMessages((prev) => [...result.messages, ...prev]);
+      setNextCursor(result.nextCursor);
+      setHasNextPage(!!result.nextCursor);
+    } catch (error) {
+      toastApiError(error, "Failed to fetch more messages");
+    } finally {
+      setIsFetchingNextPage(false);
+    }
+  }, [effectiveThreadId, nextCursor, isFetchingNextPage, pageSize]);
+
+  // Separate scroll state per layout to prevent hidden pane refs
+  // from hijacking scroll behavior on thread switches.
+  const desktopScroll = useChatScroll({
     threadId: effectiveThreadId,
     messagesLength: messages.length,
     isLoading: isLoadingMessages,
     isFetchingNextPage,
     hasNextPage,
-    fetchNextPage: async () => {
-      if (!effectiveThreadId || !nextCursor || isFetchingNextPage) return;
-      setIsFetchingNextPage(true);
-      try {
-        const result = await listMessages({
-          threadId: effectiveThreadId,
-          cursor: nextCursor,
-          limit: pageSize,
-        });
-        setMessages((prev) => [...result.messages, ...prev]);
-        setNextCursor(result.nextCursor);
-        setHasNextPage(!!result.nextCursor);
-      } catch (error) {
-        toastApiError(error, "Failed to fetch more messages");
-      } finally {
-        setIsFetchingNextPage(false);
-      }
-    },
+    fetchNextPage,
+    isPending: isStreaming,
+    streamingContent,
+  });
+  const mobileScroll = useChatScroll({
+    threadId: effectiveThreadId,
+    messagesLength: messages.length,
+    isLoading: isLoadingMessages,
+    isFetchingNextPage,
+    hasNextPage,
+    fetchNextPage,
     isPending: isStreaming,
     streamingContent,
   });
@@ -400,8 +413,8 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           pendingAssistantId={pendingAssistantId}
           streamError={streamError}
           isPending={isPending}
-          messagesContainerRef={messagesContainerRef}
-          onScroll={handleScroll}
+          messagesContainerRef={desktopScroll.messagesContainerRef}
+          onScroll={desktopScroll.handleScroll}
           onRegenerate={handleRegenerateClick}
           onStopStreaming={handleStopStreaming}
           onSelectPrompt={(prompt) => handleSubmit(undefined, prompt)}
@@ -452,8 +465,8 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           pendingAssistantId={pendingAssistantId}
           streamError={streamError}
           isPending={isPending}
-          messagesContainerRef={messagesContainerRef}
-          onScroll={handleScroll}
+          messagesContainerRef={mobileScroll.messagesContainerRef}
+          onScroll={mobileScroll.handleScroll}
           onRegenerate={handleRegenerateClick}
           onStopStreaming={handleStopStreaming}
           onSelectPrompt={(prompt) => handleSubmit(undefined, prompt)}
