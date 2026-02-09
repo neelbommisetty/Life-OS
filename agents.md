@@ -10,14 +10,14 @@
   - `packages/ai`: Shared AI routing/providers/utilities (`@life-os/ai`).
 - Prefer sharing code via `packages/*` (workspace deps) rather than importing across `apps/*`.
 
-## GitHub workflow rules (required)
+## Git and pre-commit rules (required)
 
 - Default branch is `develop` (not `main`).
-- Never push directly to `main` or `develop`.
-- All changes must go through pull requests.
-- Required checks:
-  - PRs into `develop` must pass `unit-tests`.
-  - PRs into `main` must pass `unit-tests` and `e2e-tests`.
+- Branch protection rules are disabled for private-repo workflow.
+- Direct pushes to `develop` and `main` are allowed.
+- Do not rely on GitHub Actions for required test/lint checks; enforce them locally with pre-commit hooks.
+- Never use `git commit --no-verify`.
+- Every commit must pass all pre-commit hooks before push/PR.
 - Vercel deploy policy:
   - Only deploy from `main`.
   - Do not deploy branch previews (including `develop`).
@@ -57,6 +57,10 @@
 - Body is required and must include execution details.
 - Use the repo setup command once per clone to enable hook + template:
   - `bun run commit:setup`
+- Pre-commit hooks must run before each commit and currently enforce:
+  - web e2e tests
+  - lint checks for changed files/workspaces
+  - unit tests for changed test files
 - Allowed `type` values:
   - `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
 - Allowed `scope` values:
@@ -64,8 +68,9 @@
 
 ## PR workflow
 
-- Before creating a PR, sync your branch with the latest `develop`.
-- Always rebase when syncing with `develop` (never merge).
+- PRs are optional in this private-repo workflow.
+- If using PRs, sync your branch with the latest `develop`.
+- If using PRs, always rebase when syncing with `develop` (never merge).
 - Recommended flow:
   - `git fetch origin`
   - `git pull --rebase origin develop`
