@@ -493,6 +493,15 @@ const server = Bun.serve({
               ? (payload as { modelKey?: string | null }).modelKey ?? null
               : null;
 
+          if (modelKey === "openai.gpt-5-mini") {
+            return jsonResponse(
+              {
+                message: "Model selection is unavailable right now",
+              },
+              400,
+            );
+          }
+
           const updated = {
             ...mockChatThreads[threadIndex],
             modelKey,
