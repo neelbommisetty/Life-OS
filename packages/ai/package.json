@@ -42,7 +42,7 @@
     "build:tracking": "bun build src/tracking/index.ts --target=node --format=esm --packages=external --outfile dist/tracking/index.js",
     "build": "bun run build:clean && bun run build:core && bun run build:providers && bun run build:tracking",
     "test": "bun test",
-    "lint": "tsc --noEmit -p tsconfig.lint.json"
+    "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
