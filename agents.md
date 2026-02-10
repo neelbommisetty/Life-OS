@@ -1,143 +1,45 @@
-## Monorepo (Bun workspaces)
+## Root Workspace Behavior
 
-- This repo is a Bun workspace monorepo (`workspaces: ["apps/*", "packages/*"]`).
-- Apps:
-  - `apps/web`: Next.js 16 App Router (React 19) web app.
-  - `apps/api`: Bun + Hono API service.
-  - `apps/ios`: Native iOS app (Swift / Xcode) — separate conventions from the TS codebase.
-- Packages:
-  - `packages/db`: Prisma + Neon (Postgres) schema/migrations + shared DB client (`@life-os/db`).
-  - `packages/ai`: Shared AI routing/providers/utilities (`@life-os/ai`).
-- Prefer sharing code via `packages/*` (workspace deps) rather than importing across `apps/*`.
+- This repository is a Bun workspace monorepo (`workspaces: ["apps/*", "packages/*"]`).
+- Active TypeScript workspaces are `apps/web`, `apps/api`, `packages/db`, `packages/ai`, and `packages/logger`.
+- `apps/ios` is intentionally out of scope for these root TS conventions.
+- Prefer sharing code through `packages/*` workspace dependencies instead of cross-importing between apps.
 
-## Git and pre-commit rules (required)
+## Orchestration Commands
 
-- Default branch is `develop` (not `main`).
-- Never use `git commit --no-verify`.
-- Every commit must pass all pre-commit hooks before push/PR.
-- Vercel deploy policy:
-  - Only deploy from `main`.
-  - Do not deploy branch previews (including `develop`).
+- Run orchestration scripts from the repo root `package.json`.
+- Common entry points:
+  - `bun run dev:all` for web + api.
+  - `bun run dev:web` or `bun run dev:api` for single-app dev.
+  - `bun run lint` and `bun run test` for cross-workspace checks.
+  - `bun run build` and `bun run start` for web production flow.
+  - `bun run prisma:generate`, `bun run prisma:migrate`, `bun run prisma:deploy` for DB lifecycle.
+- If a workspace-local command is needed, use Bun filters:
+  - `bun --filter=./apps/web <script>`
+  - `bun --filter=./apps/api <script>`
+  - `bun --filter=./packages/<name> <script>`
+- Add dependencies to the specific workspace, not the repo root:
+  - `bun add <dep> --filter=./apps/web`
+  - `bun add <dep> --filter=./packages/ai`
 
-## Worktree-first git workflow
+## Build and Runtime Guardrails
 
-- Prefer one worktree per active branch to avoid branch switching in a single directory.
-- Create feature branches from `develop`.
-- Keep branch naming predictable (`codex/<task>`, `feat/<task>`, `fix/<task>`).
-- Typical flow:
-  - `git fetch origin`
-  - `git worktree add ../wt-<branch> -b <branch> origin/develop`
-  - Work, commit on `<branch>`, open PR to `develop`.
-  - Promote via PR from `develop` to `main` for release.
+- Runtime build orchestration is centralized through root scripts:
+  - `prepare:runtime` builds required package runtime artifacts used by apps.
+  - `postinstall` and `prebuild` must continue to run runtime preparation.
+- Any `packages/*` module consumed at runtime by apps must expose loadable JS outputs (not TS-only sources).
+- Keep each runtime package `main`/`exports` aligned with built artifacts in `dist` (or equivalent runtime path).
+- Vercel policy: deploy only from `main`; do not deploy branch previews (including `develop`).
 
-## Commands in a monorepo
+## Git, Commit, and PR Policy
 
-- Prefer running scripts from the repo root via `package.json`:
-  - Web: `bun dev` / `bun run dev:web` (or `bun run dev:all` for web+api), `bun run build`, `bun run start`
-  - API: `bun run dev:api`
-  - Lint: `bun run lint` (all configured workspaces), `bun run lint:web` (web only)
-  - Tests: `bun run test` (all configured workspaces), `bun run test:web`, `bun run test:api` (and `bun --filter=./packages/* test` as needed)
-  - Prisma (DB package): `bun run prisma:generate`, `bun run prisma:migrate`, `bun run prisma:deploy`
-- When you need to run a workspace-local script directly, use Bun filters:
-  - Example: `bun --filter=./apps/web dev`
-  - Example: `bun --filter=./packages/db prisma:migrate`
-- When adding dependencies, add them to the correct workspace (app/package), not the repo root:
-  - Example: `bun add <dep> --filter=./apps/web`
-  - Example: `bun add <dep> --filter=./packages/ai`
-- shadcn/ui commands should run from `apps/web` (where `components.json` lives):
-  - `cd apps/web && bunx shadcn@latest add <component>`
-
-## Commit message standard
-
-- Format: `<type>(<scope>[,<scope>...]): <one-line description>`
-- `scope` must use monorepo scopes and can include multiple comma-separated scopes.
-- Body is required and must include execution details.
-- Use the repo setup command once per clone to enable hook + template:
-  - `bun run commit:setup`
-- Pre-commit hooks must run before each commit and currently enforce:
-  - web e2e tests
-  - lint checks for changed files/workspaces
-  - unit tests for changed test files
-- Allowed `type` values:
-  - `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
-- Allowed `scope` values:
-  - `apps/web`, `apps/api`, `apps/ios`, `packages/db`, `packages/ai`, `repo`, `docs`, `tooling`, `monorepo`
-
-## PR workflow
-
-- If using PRs, sync your branch with the latest `develop`.
-- If using PRs, always rebase when syncing with `develop` (never merge).
-- Recommended flow:
-  - `git fetch origin`
-  - `git pull --rebase origin develop`
-- Never use merge-based sync for feature branches:
-  - Do not run `git merge develop`.
-  - Do not run `git pull` without `--rebase`.
-- Keep history linear and squash local/WIP commits before pushing PR updates.
-- If a PR is already open, re-sync with `develop` before pushing new commits.
-
-## Framework and language
-
-- `apps/web` uses Next.js 16 App Router with TypeScript only. Keep server actions/server components preferred where possible.
-- `apps/web` uses React 19 with React Compiler enabled (via `babel-plugin-react-compiler`).
-- Use Bun for install/dev scripts; match package.json scripts (avoid npm/yarn commands).
-- Keep minimal polyfills; no Node-only APIs in `apps/web` client components.
-
-## Styling and UI
-
-- Applies to `apps/web`.
-- **shadcn/ui**: Use shadcn/ui components from `apps/web/src/components/ui` (imported as `@/components/ui`). Components are configured with Radix Maia style, RSC support, and CSS variables. Add new components via `cd apps/web && bunx shadcn@latest add <component>`.
-- Tailwind CSS 4 is primary styling; prefer utility classes; co-locate component-specific styles via `className`.
-- **Icons**: Use `lucide-react` for all icons (configured in shadcn setup).
-- Use the `cn()` utility from `apps/web/src/lib/utils` (imported as `@/lib/utils`) for conditional className merging.
-- Prefer CSS transitions for animations; add animation libraries only when complex animations are required.
-
-## Data and API layer
-
-- **Prisma + Neon**: Use Prisma ORM with Neon (PostgreSQL) for database operations.
-- **DB package**: The Prisma schema and migrations live in `packages/db/prisma/schema.prisma` and `packages/db/prisma/migrations`.
-- **Database Access**:
-  - Shared (preferred for non-Next code): import Prisma client from `@life-os/db`.
-  - Web app (`apps/web`): server code typically imports `prisma` from `@/lib/db` (`apps/web/src/lib/db.ts`), which is the app-local Prisma client wrapper.
-- **Prisma Generate / Migrations**: Run Prisma via the DB workspace (prefer root scripts):
-  - Generate: `bun run prisma:generate` (or `bun --filter=./packages/db prisma:generate`)
-  - Create/apply dev migration: `bun run prisma:migrate` (or `bun --filter=./packages/db prisma:migrate`)
-  - Deploy migrations (prod): `bun run prisma:deploy` (or `bun --filter=./packages/db prisma:deploy`)
-- **Neon Integration**: Use Neon's serverless adapter (`@prisma/adapter-neon`) for edge/serverless deployments. Connection strings are managed via environment variables.
-- **Neon Auth**: Use Neon Auth (`@neondatabase/auth`). Provision Neon Auth via Neon MCP tools or manually set up the `neon_auth` schema. Web auth configuration is in `apps/web/src/lib/auth/server.ts` and `apps/web/src/lib/auth/client.ts`.
-- **Vercel API deployment guardrails**:
-  - In `apps/api`, use explicit `.js` extensions for relative ESM imports (example: `./routes/status.js`) so Node runtime resolution works in Vercel.
-  - Keep Prisma runtime in `packages/db` and import it as `@life-os/db` from API code; do not duplicate Prisma client init in `apps/api`.
-  - Any `packages/*` workspace module imported by an app at runtime must export a runtime-loadable JS entry (not only TS source files like `src/*.ts`), with `package.json` `main`/`exports` configured for Node/Vercel resolution.
-
-## State and data fetching
-
-- Applies to `apps/web`.
-- Default to server components; use client components only for interactivity.
-- For server data, use Prisma client directly in server components and server actions. Import from `@/lib/db`.
-- For client-side data fetching, use server actions or API routes that wrap Prisma queries. Avoid exposing Prisma client to client components.
-- Use React Server Components for initial data loading; use client components with server actions for mutations.
-
-## Testing and quality
-
-- **Testing**: Use Bun's built-in test runner (`bun:test`). Import test utilities from `bun:test` (e.g., `import { test, expect, describe } from "bun:test"`). Run tests with `bun test` or `bun run test`. No external test frameworks (Vitest, Jest, etc.).
-- **API test requirement**: Whenever adding a new API route/endpoint in `apps/api`, add or update unit tests in the same change immediately (do not defer).
-- **TestPlan maintenance requirement**: `docs/test-plan.md` is the source of truth for API/Web feature coverage. Whenever adding or changing a feature in `apps/api` or `apps/web`, update `docs/test-plan.md` in the same PR.
-  - Keep the plan split into two top-level sections: `User Facing Test Cases` and `Platform Capabilities`.
-  - `User Facing Test Cases` must describe what users do and what users should see.
-  - `Platform Capabilities` must describe behind-the-scenes behavior (API contracts, auth/proxy/middleware, error mapping, build/runtime guarantees).
-  - Update the capability row(s) and required test coverage in the section(s) affected by the change.
-- Type-first: leverage TypeScript and Prisma's generated types. Avoid `any`. Use Prisma's type inference for database models.
-- Keep components small and reusable; lift shared logic into hooks/utilities.
-- Prefer ESLint/TypeScript fixes over disabling rules; if disabling, justify inline.
-
-## Performance and DX
-
-- Co-locate server-only code away from client bundles; guard with `use server`/`use client` as needed.
-- Avoid long-running work in request handlers; offload to background jobs where applicable.
-- Keep imports absolute per tsconfig paths if configured; avoid deep relative paths.
-
-## Misc
-
-- Environment variables: document in `.env.example`. Keep app-local `.env` files under the relevant workspace (ex: `apps/web/.env`) in sync as needed.
-- Keep accessibility in mind: aria labels for inputs/interactive elements; keyboard support for dialogs/menus.
+- Default branch is `develop`; create feature branches from `develop`.
+- Prefer worktree-first flow to avoid branch switching in a single directory.
+- Keep branch names predictable: `codex/<task>`, `feat/<task>`, `fix/<task>`.
+- Do not use `git commit --no-verify`; all commits must pass pre-commit hooks.
+- Configure hooks/templates once per clone with `bun run commit:setup`.
+- Commit message format: `<type>(<scope>[,<scope>...]): <one-line description>`.
+- Commit bodies are required and must include execution details.
+- Allowed `type`: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
+- Allowed `scope`: `apps/web`, `apps/api`, `apps/ios`, `packages/db`, `packages/ai`, `repo`, `docs`, `tooling`, `monorepo`.
+- For PR sync, always rebase on `develop`; never merge `develop` into feature branches.
