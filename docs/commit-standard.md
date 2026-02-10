@@ -64,3 +64,4 @@ This configures:
   - web e2e tests
   - lint checks for changed files/workspaces
   - unit tests for changed test files
+  - iOS unit + UI tests when staged changes include `apps/ios/*`

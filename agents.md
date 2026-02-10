@@ -2,7 +2,7 @@
 
 - This repository is a Bun workspace monorepo (`workspaces: ["apps/*", "packages/*"]`).
 - Active TypeScript workspaces are `apps/web`, `apps/api`, `packages/db`, `packages/ai`, and `packages/logger`.
-- `apps/ios` is intentionally out of scope for these root TS conventions.
+- `apps/ios` follows dedicated Swift/Xcode conventions in `apps/ios/AGENTS.md`; root-level git and hook policies still apply.
 - Prefer sharing code through `packages/*` workspace dependencies instead of cross-importing between apps.
 
 ## Orchestration Commands
@@ -37,6 +37,7 @@
 - Prefer worktree-first flow to avoid branch switching in a single directory.
 - Keep branch names predictable: `codex/<task>`, `feat/<task>`, `fix/<task>`.
 - Do not use `git commit --no-verify`; all commits must pass pre-commit hooks.
+- Pre-commit hooks include conditional iOS XCTest + XCUITest execution whenever staged changes include `apps/ios/*`.
 - Configure hooks/templates once per clone with `bun run commit:setup`.
 - Commit message format: `<type>(<scope>[,<scope>...]): <one-line description>`.
 - Commit bodies are required and must include execution details.

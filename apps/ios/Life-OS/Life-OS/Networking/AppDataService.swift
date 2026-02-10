@@ -1,0 +1,23 @@
+import Foundation
+
+struct AppDataService {
+    private let api = APIClient()
+
+    func loadHomeSnapshot() async throws -> HomeSnapshot {
+        async let projectsData = api.request(path: "/api/home/recent-projects")
+        async let tasksData = api.request(path: "/api/home/upcoming-tasks")
+        async let notesData = api.request(path: "/api/home/recent-notes")
+
+        let decoder = JSONDecoder()
+        return HomeSnapshot(
+            recentProjects: try decoder.decode([ProjectItem].self, from: try await projectsData),
+            upcomingTasks: try decoder.decode([TaskItem].self, from: try await tasksData),
+            recentNotes: try decoder.decode([NoteItem].self, from: try await notesData)
+        )
+    }
+
+    func listNotes() async throws -> [NoteItem] {
+        let data = try await api.request(path: "/api/notes")
+        return try JSONDecoder().decode([NoteItem].self, from: data)
+    }
+}

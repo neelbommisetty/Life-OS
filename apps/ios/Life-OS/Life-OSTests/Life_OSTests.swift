@@ -6,30 +6,183 @@
 //
 
 import XCTest
+@testable import Life_OS
 
 final class Life_OSTests: XCTestCase {
 
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+    override func setUp() async throws {
+        await IOSMockAPI.shared.reset()
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    func testMockAuthSignInLifecycle() async throws {
+        let sessionBefore = await IOSMockAPI.shared.request(
+            path: "/api/auth/get-session",
+            method: "GET",
+            body: nil
+        )
+        XCTAssertEqual(sessionBefore.statusCode, 401)
+
+        let invalidSignIn = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "wrong@lifeos.dev",
+                "password": "wrong-password"
+            ]
+        )
+        XCTAssertEqual(invalidSignIn.statusCode, 401)
+        XCTAssertEqual(errorMessage(from: invalidSignIn.data), "Invalid email or password")
+
+        let validSignIn = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "demo@lifeos.dev",
+                "password": "demo12345"
+            ]
+        )
+        XCTAssertEqual(validSignIn.statusCode, 200)
+
+        let sessionAfter = await IOSMockAPI.shared.request(
+            path: "/api/auth/get-session",
+            method: "GET",
+            body: nil
+        )
+        XCTAssertEqual(sessionAfter.statusCode, 200)
+        XCTAssertEqual(sessionUser(from: sessionAfter.data)?["email"] as? String, "demo@lifeos.dev")
+
+        let signOut = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-out",
+            method: "POST",
+            body: [:]
+        )
+        XCTAssertEqual(signOut.statusCode, 200)
+
+        let sessionAfterSignOut = await IOSMockAPI.shared.request(
+            path: "/api/auth/get-session",
+            method: "GET",
+            body: nil
+        )
+        XCTAssertEqual(sessionAfterSignOut.statusCode, 401)
     }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
+    func testMockAccountSettingsUpdateProfileAndChangePassword() async throws {
+        _ = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "demo@lifeos.dev",
+                "password": "demo12345"
+            ]
+        )
+
+        let updateProfile = await IOSMockAPI.shared.request(
+            path: "/api/auth/update-user",
+            method: "POST",
+            body: [
+                "name": "Updated Test User"
+            ]
+        )
+        XCTAssertEqual(updateProfile.statusCode, 200)
+        XCTAssertEqual(sessionUser(from: updateProfile.data)?["name"] as? String, "Updated Test User")
+
+        let invalidCurrentPassword = await IOSMockAPI.shared.request(
+            path: "/api/auth/change-password",
+            method: "POST",
+            body: [
+                "currentPassword": "wrong-current",
+                "newPassword": "new-password-123"
+            ]
+        )
+        XCTAssertEqual(invalidCurrentPassword.statusCode, 400)
+        XCTAssertEqual(errorMessage(from: invalidCurrentPassword.data), "Current password is incorrect")
+
+        let changePassword = await IOSMockAPI.shared.request(
+            path: "/api/auth/change-password",
+            method: "POST",
+            body: [
+                "currentPassword": "demo12345",
+                "newPassword": "new-password-123"
+            ]
+        )
+        XCTAssertEqual(changePassword.statusCode, 200)
+
+        _ = await IOSMockAPI.shared.request(path: "/api/auth/sign-out", method: "POST", body: [:])
+
+        let oldPasswordSignIn = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "demo@lifeos.dev",
+                "password": "demo12345"
+            ]
+        )
+        XCTAssertEqual(oldPasswordSignIn.statusCode, 401)
+
+        let newPasswordSignIn = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "demo@lifeos.dev",
+                "password": "new-password-123"
+            ]
+        )
+        XCTAssertEqual(newPasswordSignIn.statusCode, 200)
     }
 
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        measure {
-            // Put the code you want to measure the time of here.
+    func testMockProtectedDataRequiresAuth() async throws {
+        let notesWithoutAuth = await IOSMockAPI.shared.request(
+            path: "/api/notes",
+            method: "GET",
+            body: nil
+        )
+        XCTAssertEqual(notesWithoutAuth.statusCode, 401)
+
+        _ = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "demo@lifeos.dev",
+                "password": "demo12345"
+            ]
+        )
+
+        let notesWithAuth = await IOSMockAPI.shared.request(
+            path: "/api/notes",
+            method: "GET",
+            body: nil
+        )
+        XCTAssertEqual(notesWithAuth.statusCode, 200)
+
+        let notesArray = try XCTUnwrap(jsonObject(from: notesWithAuth.data) as? [[String: Any]])
+        XCTAssertFalse(notesArray.isEmpty)
+    }
+
+    private func jsonObject(from data: Data) throws -> Any {
+        try JSONSerialization.jsonObject(with: data, options: [])
+    }
+
+    private func errorMessage(from data: Data) -> String? {
+        guard
+            let payload = try? jsonObject(from: data) as? [String: Any],
+            let message = payload["message"] as? String
+        else {
+            return nil
         }
+
+        return message
     }
 
+    private func sessionUser(from data: Data) -> [String: Any]? {
+        guard
+            let payload = try? jsonObject(from: data) as? [String: Any],
+            let dataObject = payload["data"] as? [String: Any],
+            let sessionObject = dataObject["session"] as? [String: Any],
+            let user = sessionObject["user"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        return user
+    }
 }

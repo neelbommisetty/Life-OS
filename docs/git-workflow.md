@@ -13,6 +13,7 @@
   - run web e2e tests
   - lint changed files/workspaces
   - run changed unit test files
+  - run iOS unit + UI tests when staged changes include `apps/ios/*`
 - Never bypass hooks with `git commit --no-verify`.
 
 ## Worktree-first flow

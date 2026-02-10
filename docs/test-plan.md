@@ -1,20 +1,21 @@
-# Life-OS Test Plan (API + Web)
+# Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-02-09
+Last updated: 2026-02-10
 
 ## Purpose
-This document tracks current product behavior in `apps/api` and `apps/web`, grouped into:
+This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
 - **User Facing Test Cases**: what users do and what they should see.
 - **Platform Capabilities**: behind-the-scenes API, auth, proxy, middleware, and resilience behavior.
 
 ## Update Policy
-When a feature is added or changed in `apps/api` or `apps/web`, update this file in the same change.
+When a feature is added or changed in `apps/api`, `apps/web`, or `apps/ios`, update this file in the same change.
 
 Required updates for feature work:
 - Update at least one relevant row in `User Facing Test Cases` and/or `Platform Capabilities`.
 - Add at least one happy-path test and one edge/error-path test for changed behavior.
 - If a new API endpoint is added, add/update API route tests in `apps/api/src/**/route.test.ts` in the same PR.
 - If UI behavior changes, add/update web tests (unit and/or browser flow) for the user-facing behavior.
+- If iOS behavior changes, add/update iOS unit and UI tests (`apps/ios/Life-OS/Life-OSTests`, `apps/ios/Life-OS/Life-OSUITests`) for the user-facing behavior.
 
 ## User Facing Test Cases
 
@@ -25,6 +26,9 @@ Required updates for feature work:
 | Auth | Signed-in redirect on auth pages | `/auth/sign-in`, `/auth/sign-up` | Authenticated users are redirected to `/` | Redirect occurs when session exists |
 | Auth | Session-gated app access | `/`, `/chat`, `/projects`, `/projects/[id]`, `/tasks`, `/tasks/archive`, `/notes`, `/analytics`, `/account/*` | Unauthenticated users are redirected to `/auth/sign-in`; authenticated users load pages | Redirect and authenticated load success |
 | Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
+| iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in/sign-up/recover/reset show success/error feedback | UI flow coverage for invalid + valid sign-in, recover/reset validations, and gated app unlock |
+| iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
+| iOS Shell | Protected mobile tabs | `apps/ios` home/notes/account tabs | Authenticated users can navigate tabs and load protected data; unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
 | Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
 | Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/recent notes render | Module rendering for empty/non-empty states |
 | Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
@@ -70,6 +74,8 @@ Required updates for feature work:
 | Web Platform | App Router metadata coverage | `apps/web/src/app/**/page.tsx` | Every page route exports `metadata` or `generateMetadata`; dynamic routes resolve context-specific titles/descriptions |
 | Build Platform | Dynamic rendering boundary | app layout + API-backed routes | `next build` succeeds without build-time API base URL while runtime checks still execute on request |
 | Build Platform | Monorepo runtime prep orchestration | root `postinstall` / `prebuild` / `vercel:install:*` scripts and app Vercel `installCommand` | Install/build flows deterministically run Prisma client generation plus DB/AI workspace runtime builds before API/web build and type steps |
+| iOS Platform | Auth/API client contract handling | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`APIClient`, `AuthService`, `AppState`) | iOS maps to `/api/auth/*` contracts, enforces login gate, and transitions to auth on `401` responses |
+| iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`IOSMockAPI`) | Deterministic auth/home/notes/account responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests |
 
 ## Core Regression Checklist
 Run this set before release and after large refactors:
@@ -82,6 +88,7 @@ Run this set before release and after large refactors:
 6. Chat: send prompt, stream response, regenerate, save assistant message as note.
 7. Analytics: dashboard loads with non-empty and empty usage states.
 8. Pricing page: catalog renders without runtime errors.
+9. iOS smoke: invalid + valid sign-in, account profile/password updates, and sign-out returns to auth gate.
 
 ## Current Test File Index
 - API route and module tests:
@@ -116,3 +123,6 @@ Run this set before release and after large refactors:
   - `apps/web/tests/e2e/chat-thread-switch-scroll.e2e.ts`
   - `apps/web/tests/e2e/notes-selection.e2e.ts`
   - `apps/web/tests/e2e/pricing.e2e.ts`
+- iOS tests:
+  - `apps/ios/Life-OS/Life-OSTests/Life_OSTests.swift`
+  - `apps/ios/Life-OS/Life-OSUITests/Life_OSUITests.swift`

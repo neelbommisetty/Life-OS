@@ -33,6 +33,7 @@ run_api_lint=0
 run_ai_lint=0
 run_db_lint=0
 run_logger_lint=0
+run_ios_tests=0
 run_e2e=1
 
 is_unit_test_file() {
@@ -46,6 +47,72 @@ is_unit_test_file() {
       return 1
       ;;
   esac
+}
+
+find_ios_simulator_id() {
+  local destination_output=""
+  local destination_id=""
+  local booted_id=""
+  local available_id=""
+
+  destination_output=$(
+    xcodebuild \
+      -project "apps/ios/Life-OS/Life-OS.xcodeproj" \
+      -scheme "Life-OS" \
+      -showdestinations 2>/dev/null || true
+  )
+  destination_id=$(
+    printf "%s\n" "$destination_output" | awk '
+      /platform:iOS Simulator/ && /name:iPhone/ && /id:/ && $0 !~ /placeholder/ {
+        if (match($0, /id:[[:space:]]*[0-9A-Fa-f-]+/)) {
+          simulator_id = substr($0, RSTART, RLENGTH)
+          sub(/^id:[[:space:]]*/, "", simulator_id)
+          print simulator_id
+          exit 0
+        }
+      }
+    '
+  )
+  if [ -n "$destination_id" ]; then
+    printf "%s" "$destination_id"
+    return 0
+  fi
+
+  booted_id=$(
+    xcrun simctl list devices booted available 2>/dev/null | awk '
+      /^[[:space:]]+iPhone/ && /\(Booted\)/ {
+        if (match($0, /\([0-9A-Fa-f-]+\)/)) {
+          simulator_id = substr($0, RSTART, RLENGTH)
+          gsub(/[()]/, "", simulator_id)
+          print simulator_id
+          exit 0
+        }
+      }
+    '
+  )
+  if [ -n "$booted_id" ]; then
+    printf "%s" "$booted_id"
+    return 0
+  fi
+
+  available_id=$(
+    xcrun simctl list devices available 2>/dev/null | awk '
+      /^[[:space:]]+iPhone/ {
+        if (match($0, /\([0-9A-Fa-f-]+\)/)) {
+          simulator_id = substr($0, RSTART, RLENGTH)
+          gsub(/[()]/, "", simulator_id)
+          print simulator_id
+          exit 0
+        }
+      }
+    '
+  )
+  if [ -n "$available_id" ]; then
+    printf "%s" "$available_id"
+    return 0
+  fi
+
+  return 1
 }
 
 for path in "${staged_files[@]}"; do
@@ -101,6 +168,9 @@ for path in "${staged_files[@]}"; do
       if is_unit_test_file "$rel"; then
         logger_unit_test_files+=("$rel")
       fi
+      ;;
+    apps/ios/*)
+      run_ios_tests=1
       ;;
   esac
 done
@@ -171,6 +241,39 @@ if [ "${#logger_unit_test_files[@]}" -gt 0 ]; then
     cd packages/logger
     bun test "${logger_unit_test_files[@]}"
   )
+fi
+
+if [ "$run_ios_tests" -eq 1 ]; then
+  if ! command -v xcodebuild >/dev/null 2>&1 || ! command -v xcrun >/dev/null 2>&1; then
+    echo "pre-commit: iOS changes detected, but Xcode command-line tools are unavailable." >&2
+    exit 1
+  fi
+
+  ios_simulator_id=$(find_ios_simulator_id || true)
+  if [ -z "$ios_simulator_id" ]; then
+    echo "pre-commit: iOS changes detected, but no available iPhone simulator was found." >&2
+    exit 1
+  fi
+
+  echo "pre-commit: running iOS unit tests (Life-OSTests)"
+  xcodebuild \
+    -project "apps/ios/Life-OS/Life-OS.xcodeproj" \
+    -scheme "Life-OS" \
+    -destination "platform=iOS Simulator,id=$ios_simulator_id" \
+    -parallel-testing-enabled NO \
+    -maximum-concurrent-test-simulator-destinations 1 \
+    -only-testing:"Life-OSTests" \
+    test
+
+  echo "pre-commit: running iOS UI tests (Life-OSUITests)"
+  xcodebuild \
+    -project "apps/ios/Life-OS/Life-OS.xcodeproj" \
+    -scheme "Life-OS" \
+    -destination "platform=iOS Simulator,id=$ios_simulator_id" \
+    -parallel-testing-enabled NO \
+    -maximum-concurrent-test-simulator-destinations 1 \
+    -only-testing:"Life-OSUITests" \
+    test
 fi
 
 if [ "$run_e2e" -eq 1 ]; then
