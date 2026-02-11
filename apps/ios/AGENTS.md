@@ -60,5 +60,5 @@ These instructions apply to all files under `apps/ios/*`.
 ## Repo policy reminders
 
 - Never use `git commit --no-verify`.
-- Pre-commit now runs iOS tests when staged files include `apps/ios/*`.
+- Pre-commit is branch-aware: `main` runs iOS unit + UI tests when available, `develop` runs iOS unit tests when available, and other branches run iOS unit tests when staged files include `apps/ios/*`.
 - Update `docs/test-plan.md` whenever iOS feature behavior changes.

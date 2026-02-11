@@ -6,10 +6,16 @@ REPO_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
 cd "$REPO_ROOT"
 
-git config core.hooksPath .githooks
+if ! command -v bun >/dev/null 2>&1; then
+  echo "bun is required to set up git hooks." >&2
+  exit 1
+fi
+
+bun run prepare
 git config commit.template .gitmessage
 
 printf "Configured Git commit standard for this clone.\n"
 printf "Header format: <type>(<scope>): <one-line description>\n"
 printf "Body: include execution details.\n"
-printf "Pre-commit hooks enabled: changed-file lint/tests + conditional iOS tests + web e2e.\n"
+printf "Pre-commit hooks enabled via Husky.\n"
+printf "Branch policy: main=full tests (+web e2e), develop=unit tests, others=changed-workspace lint+unit.\n"

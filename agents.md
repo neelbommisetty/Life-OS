@@ -38,7 +38,7 @@
 - Prefer worktree-first flow to avoid branch switching in a single directory.
 - Keep branch names predictable: `codex/<task>`, `feat/<task>`, `fix/<task>`.
 - Do not use `git commit --no-verify`; all commits must pass pre-commit hooks.
-- Pre-commit hooks include conditional iOS XCTest + XCUITest execution whenever staged changes include `apps/ios/*`.
+- Pre-commit hooks are branch-aware: `main` runs full tests (plus web e2e), `develop` runs unit tests, and other branches run lint + unit tests only for changed workspaces.
 - Configure hooks/templates once per clone with `bun run commit:setup`.
 - Commit message format: `<type>(<scope>[,<scope>...]): <one-line description>`.
 - Commit bodies are required and must include execution details.

@@ -54,14 +54,13 @@ bun run commit:setup
 
 This configures:
 
-- `core.hooksPath=.githooks` so commit hooks run on `git commit`
+- Husky git hooks from `.husky/*`
 - `commit.template=.gitmessage` so the commit editor opens with the required structure
 
 ## Hook policy
 
 - Never bypass hooks with `git commit --no-verify`.
-- Every commit must pass all pre-commit checks:
-  - web e2e tests
-  - lint checks for changed files/workspaces
-  - unit tests for changed test files
-  - iOS unit + UI tests when staged changes include `apps/ios/*`
+- Branch-aware pre-commit behavior:
+  - `main`: run full workspace unit suite (`bun run test`) + web e2e; run iOS unit + UI tests when available.
+  - `develop`: run full workspace unit suite (`bun run test`); run iOS unit tests when available.
+  - any other branch: run lint + unit tests only for changed workspaces (for example, web-only changes run only web checks); run iOS unit tests when staged changes include `apps/ios/*`.
