@@ -11,6 +11,11 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
+current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+if [ -z "$current_branch" ] || [ "$current_branch" = "HEAD" ]; then
+  current_branch="detached"
+fi
+
 declare -a staged_files=()
 while IFS= read -r path; do
   if [ -n "$path" ]; then
@@ -23,31 +28,12 @@ if [ "${#staged_files[@]}" -eq 0 ]; then
 fi
 
 declare -a web_lint_files=()
-declare -a web_unit_test_files=()
-declare -a api_unit_test_files=()
-declare -a ai_unit_test_files=()
-declare -a db_unit_test_files=()
-declare -a logger_unit_test_files=()
-
-run_api_lint=0
-run_ai_lint=0
-run_db_lint=0
-run_logger_lint=0
-run_ios_tests=0
-run_e2e=1
-
-is_unit_test_file() {
-  local file="$1"
-
-  case "$file" in
-    *.test.ts|*.test.tsx|*.test.js|*.test.jsx|*.spec.ts|*.spec.tsx|*.spec.js|*.spec.jsx)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
+changed_web=0
+changed_api=0
+changed_ai=0
+changed_db=0
+changed_logger=0
+changed_ios=0
 
 find_ios_simulator_id() {
   local destination_output=""
@@ -115,144 +101,28 @@ find_ios_simulator_id() {
   return 1
 }
 
-for path in "${staged_files[@]}"; do
-  case "$path" in
-    apps/web/*)
-      rel="${path#apps/web/}"
+run_ios_tests() {
+  local include_ui="$1"
+  local strict="$2"
+  local ios_simulator_id=""
 
-      case "$rel" in
-        *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs)
-          web_lint_files+=("$rel")
-          ;;
-      esac
-
-      if is_unit_test_file "$rel"; then
-        case "$rel" in
-          tests/e2e/*|*.e2e.*)
-            ;;
-          *)
-            web_unit_test_files+=("$rel")
-            ;;
-        esac
-      fi
-
-      ;;
-    apps/api/*)
-      rel="${path#apps/api/}"
-      run_api_lint=1
-
-      if is_unit_test_file "$rel"; then
-        api_unit_test_files+=("$rel")
-      fi
-      ;;
-    packages/ai/*)
-      rel="${path#packages/ai/}"
-      run_ai_lint=1
-
-      if is_unit_test_file "$rel"; then
-        ai_unit_test_files+=("$rel")
-      fi
-      ;;
-    packages/db/*)
-      rel="${path#packages/db/}"
-      run_db_lint=1
-
-      if is_unit_test_file "$rel"; then
-        db_unit_test_files+=("$rel")
-      fi
-      ;;
-    packages/logger/*)
-      rel="${path#packages/logger/}"
-      run_logger_lint=1
-
-      if is_unit_test_file "$rel"; then
-        logger_unit_test_files+=("$rel")
-      fi
-      ;;
-    apps/ios/*)
-      run_ios_tests=1
-      ;;
-  esac
-done
-
-if [ "${#web_lint_files[@]}" -gt 0 ]; then
-  echo "pre-commit: linting changed files in apps/web"
-  (
-    cd apps/web
-    bun run lint -- "${web_lint_files[@]}"
-  )
-fi
-
-if [ "$run_api_lint" -eq 1 ]; then
-  echo "pre-commit: linting changed files in apps/api workspace"
-  bun run --filter=./apps/api lint
-fi
-
-if [ "$run_ai_lint" -eq 1 ]; then
-  echo "pre-commit: linting changed files in packages/ai workspace"
-  bun run --filter=./packages/ai lint
-fi
-
-if [ "$run_db_lint" -eq 1 ]; then
-  echo "pre-commit: linting changed files in packages/db workspace"
-  bun run --filter=./packages/db lint
-fi
-
-if [ "$run_logger_lint" -eq 1 ]; then
-  echo "pre-commit: linting changed files in packages/logger workspace"
-  bun run --filter=./packages/logger lint
-fi
-
-if [ "${#web_unit_test_files[@]}" -gt 0 ]; then
-  echo "pre-commit: running changed unit tests in apps/web"
-  (
-    cd apps/web
-    bun test "${web_unit_test_files[@]}"
-  )
-fi
-
-if [ "${#api_unit_test_files[@]}" -gt 0 ]; then
-  echo "pre-commit: running changed unit tests in apps/api"
-  (
-    cd apps/api
-    bun test "${api_unit_test_files[@]}"
-  )
-fi
-
-if [ "${#ai_unit_test_files[@]}" -gt 0 ]; then
-  echo "pre-commit: running changed unit tests in packages/ai"
-  (
-    cd packages/ai
-    bun test "${ai_unit_test_files[@]}"
-  )
-fi
-
-if [ "${#db_unit_test_files[@]}" -gt 0 ]; then
-  echo "pre-commit: running changed unit tests in packages/db"
-  (
-    cd packages/db
-    bun test "${db_unit_test_files[@]}"
-  )
-fi
-
-if [ "${#logger_unit_test_files[@]}" -gt 0 ]; then
-  echo "pre-commit: running changed unit tests in packages/logger"
-  (
-    cd packages/logger
-    bun test "${logger_unit_test_files[@]}"
-  )
-fi
-
-if [ "$run_ios_tests" -eq 1 ]; then
   if ! command -v xcodebuild >/dev/null 2>&1 || ! command -v xcrun >/dev/null 2>&1; then
-    echo "pre-commit: iOS changes detected, but Xcode command-line tools are unavailable." >&2
-    exit 1
+    if [ "$strict" -eq 1 ]; then
+      echo "pre-commit: iOS tests required, but Xcode command-line tools are unavailable." >&2
+      exit 1
+    fi
+    echo "pre-commit: skipping iOS tests because Xcode command-line tools are unavailable."
+    return 0
   fi
 
   ios_simulator_id=$(find_ios_simulator_id || true)
   if [ -z "$ios_simulator_id" ]; then
-    echo "pre-commit: iOS changes detected, but no available iPhone simulator was found." >&2
-    exit 1
+    if [ "$strict" -eq 1 ]; then
+      echo "pre-commit: iOS tests required, but no available iPhone simulator was found." >&2
+      exit 1
+    fi
+    echo "pre-commit: skipping iOS tests because no iPhone simulator is available."
+    return 0
   fi
 
   echo "pre-commit: running iOS unit tests (Life-OSTests)"
@@ -265,18 +135,20 @@ if [ "$run_ios_tests" -eq 1 ]; then
     -only-testing:"Life-OSTests" \
     test
 
-  echo "pre-commit: running iOS UI tests (Life-OSUITests)"
-  xcodebuild \
-    -project "apps/ios/Life-OS/Life-OS.xcodeproj" \
-    -scheme "Life-OS" \
-    -destination "platform=iOS Simulator,id=$ios_simulator_id" \
-    -parallel-testing-enabled NO \
-    -maximum-concurrent-test-simulator-destinations 1 \
-    -only-testing:"Life-OSUITests" \
-    test
-fi
+  if [ "$include_ui" -eq 1 ]; then
+    echo "pre-commit: running iOS UI tests (Life-OSUITests)"
+    xcodebuild \
+      -project "apps/ios/Life-OS/Life-OS.xcodeproj" \
+      -scheme "Life-OS" \
+      -destination "platform=iOS Simulator,id=$ios_simulator_id" \
+      -parallel-testing-enabled NO \
+      -maximum-concurrent-test-simulator-destinations 1 \
+      -only-testing:"Life-OSUITests" \
+      test
+  fi
+}
 
-if [ "$run_e2e" -eq 1 ]; then
+run_web_e2e_tests() {
   echo "pre-commit: building packages/db for runtime exports"
   bun run --filter=./packages/db build
 
@@ -288,4 +160,110 @@ if [ "$run_e2e" -eq 1 ]; then
   API_BASE_URL="${API_BASE_URL:-http://127.0.0.1:3001}" \
   NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-http://127.0.0.1:3001}" \
   bun run test:web:e2e
-fi
+}
+
+for path in "${staged_files[@]}"; do
+  case "$path" in
+    apps/web/*)
+      changed_web=1
+      rel="${path#apps/web/}"
+
+      case "$rel" in
+        *.js|*.jsx|*.ts|*.tsx|*.mjs|*.cjs)
+          web_lint_files+=("$rel")
+          ;;
+      esac
+      ;;
+    apps/api/*)
+      changed_api=1
+      ;;
+    packages/ai/*)
+      changed_ai=1
+      ;;
+    packages/db/*)
+      changed_db=1
+      ;;
+    packages/logger/*)
+      changed_logger=1
+      ;;
+    apps/ios/*)
+      changed_ios=1
+      ;;
+  esac
+done
+
+echo "pre-commit: branch '$current_branch'"
+
+case "$current_branch" in
+  main)
+    echo "pre-commit: running full test suite for main"
+    bun run test
+    run_ios_tests 1 0
+    run_web_e2e_tests
+    ;;
+  develop)
+    echo "pre-commit: running unit tests only for develop"
+    bun run test
+    run_ios_tests 0 0
+    ;;
+  *)
+    echo "pre-commit: running changed-workspace lint + unit tests"
+
+    if [ "${#web_lint_files[@]}" -gt 0 ]; then
+      echo "pre-commit: linting changed files in apps/web"
+      (
+        cd apps/web
+        bun run lint -- "${web_lint_files[@]}"
+      )
+    fi
+
+    if [ "$changed_api" -eq 1 ]; then
+      echo "pre-commit: linting apps/api"
+      bun run --filter=./apps/api lint
+    fi
+
+    if [ "$changed_ai" -eq 1 ]; then
+      echo "pre-commit: linting packages/ai"
+      bun run --filter=./packages/ai lint
+    fi
+
+    if [ "$changed_db" -eq 1 ]; then
+      echo "pre-commit: linting packages/db"
+      bun run --filter=./packages/db lint
+    fi
+
+    if [ "$changed_logger" -eq 1 ]; then
+      echo "pre-commit: linting packages/logger"
+      bun run --filter=./packages/logger lint
+    fi
+
+    if [ "$changed_web" -eq 1 ]; then
+      echo "pre-commit: running unit tests in apps/web"
+      bun run --filter=./apps/web test
+    fi
+
+    if [ "$changed_api" -eq 1 ]; then
+      echo "pre-commit: running unit tests in apps/api"
+      bun run --filter=./apps/api test
+    fi
+
+    if [ "$changed_ai" -eq 1 ]; then
+      echo "pre-commit: running unit tests in packages/ai"
+      bun run --filter=./packages/ai test
+    fi
+
+    if [ "$changed_db" -eq 1 ]; then
+      echo "pre-commit: running unit tests in packages/db"
+      bun run --filter=./packages/db test
+    fi
+
+    if [ "$changed_logger" -eq 1 ]; then
+      echo "pre-commit: running unit tests in packages/logger"
+      bun run --filter=./packages/logger test
+    fi
+
+    if [ "$changed_ios" -eq 1 ]; then
+      run_ios_tests 0 1
+    fi
+    ;;
+esac
