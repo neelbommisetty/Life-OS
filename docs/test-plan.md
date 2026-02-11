@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-02-10
+Last updated: 2026-02-11
 
 ## Purpose
 This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
@@ -26,7 +26,7 @@ Required updates for feature work:
 | Auth | Signed-in redirect on auth pages | `/auth/sign-in`, `/auth/sign-up` | Authenticated users are redirected to `/` | Redirect occurs when session exists |
 | Auth | Session-gated app access | `/`, `/chat`, `/projects`, `/projects/[id]`, `/tasks`, `/tasks/archive`, `/notes`, `/analytics`, `/account/*` | Unauthenticated users are redirected to `/auth/sign-in`; authenticated users load pages | Redirect and authenticated load success |
 | Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
-| iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in/sign-up/recover/reset show success/error feedback | UI flow coverage for invalid + valid sign-in, recover/reset validations, and gated app unlock |
+| iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in screen renders branded hero + centered auth card and sign-in/sign-up/recover/reset show success/error feedback | UI flow coverage for invalid + valid sign-in, recover/reset validations, and gated app unlock |
 | iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
 | iOS Shell | Protected mobile tabs | `apps/ios` home/notes/account tabs | Authenticated users can navigate tabs and load protected data; unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
 | Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
@@ -74,7 +74,7 @@ Required updates for feature work:
 | Web Platform | App Router metadata coverage | `apps/web/src/app/**/page.tsx` | Every page route exports `metadata` or `generateMetadata`; dynamic routes resolve context-specific titles/descriptions |
 | Build Platform | Dynamic rendering boundary | app layout + API-backed routes | `next build` succeeds without build-time API base URL while runtime checks still execute on request |
 | Build Platform | Monorepo runtime prep orchestration | root `postinstall` / `prebuild` / `vercel:install:*` scripts and app Vercel `installCommand` | Install/build flows deterministically run Prisma client generation plus DB/AI workspace runtime builds before API/web build and type steps |
-| iOS Platform | Auth/API client contract handling | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`APIClient`, `AuthService`, `AppState`) | iOS maps to `/api/auth/*` contracts, enforces login gate, and transitions to auth on `401` responses |
+| iOS Platform | Auth/API client contract handling | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`APIClient`, `AuthService`, `AppState`) | iOS maps to `/api/auth/*` contracts, treats empty/null session payloads as signed-out, enforces login gate, and transitions to auth on `401` responses |
 | iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`IOSMockAPI`) | Deterministic auth/home/notes/account responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests |
 
 ## Core Regression Checklist

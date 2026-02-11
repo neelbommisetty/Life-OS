@@ -158,6 +158,25 @@ final class Life_OSTests: XCTestCase {
         XCTAssertFalse(notesArray.isEmpty)
     }
 
+    func testDecodeSessionUserHandlesEmptyAndNullPayloads() throws {
+        let authService = AuthService()
+
+        XCTAssertNil(try authService.decodeSessionUser(from: Data()))
+        XCTAssertNil(try authService.decodeSessionUser(from: Data("   ".utf8)))
+        XCTAssertNil(try authService.decodeSessionUser(from: Data("null".utf8)))
+    }
+
+    func testDecodeSessionUserParsesValidSessionPayload() throws {
+        let authService = AuthService()
+        let payload = """
+        {"data":{"session":{"user":{"id":"user-123","name":"Demo","email":"demo@lifeos.dev"}}}}
+        """
+
+        let user = try authService.decodeSessionUser(from: Data(payload.utf8))
+        XCTAssertEqual(user?.id, "user-123")
+        XCTAssertEqual(user?.email, "demo@lifeos.dev")
+    }
+
     private func jsonObject(from data: Data) throws -> Any {
         try JSONSerialization.jsonObject(with: data, options: [])
     }
