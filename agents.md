@@ -3,6 +3,7 @@
 - This repository is a Bun workspace monorepo (`workspaces: ["apps/*", "packages/*"]`).
 - Active TypeScript workspaces are `apps/web`, `apps/api`, `packages/db`, `packages/ai`, and `packages/logger`.
 - `apps/ios` follows dedicated Swift/Xcode conventions in `apps/ios/AGENTS.md`; root-level git and hook policies still apply.
+- Put workspace-specific AGENTS policy updates in that workspace's `AGENTS.md` rather than this root file.
 - Prefer sharing code through `packages/*` workspace dependencies instead of cross-importing between apps.
 
 ## Orchestration Commands

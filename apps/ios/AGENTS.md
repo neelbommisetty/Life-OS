@@ -8,6 +8,16 @@ These instructions apply to all files under `apps/ios/*`.
 - Do not apply web/api TypeScript conventions inside `apps/ios`.
 - Keep iOS implementation self-contained in `apps/ios/Life-OS`.
 
+## iOS visual design policy
+
+- Prefer native, minimalist iOS UI patterns over custom visual systems.
+- Use system SwiftUI building blocks first: `Form`, `List`, `Section`, `NavigationStack`, `TabView`, standard `Button` styles, and SF Symbols.
+- Use semantic/system colors and materials, not hardcoded custom theme palettes.
+- Do not add custom iOS design-system token layers or style abstractions unless explicitly requested.
+- Avoid decorative glassmorphism-heavy treatments on core product screens.
+- Keep spacing and interaction patterns consistent across auth, home, notes, and account screens.
+- Preserve existing accessibility identifiers on auth/account controls so XCUITests remain stable.
+
 ## Current architecture
 
 - Keep root composition in `apps/ios/Life-OS/Life-OS/ContentView.swift`.

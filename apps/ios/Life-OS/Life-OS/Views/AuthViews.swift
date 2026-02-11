@@ -2,22 +2,19 @@ import SwiftUI
 
 struct BootstrappingView: View {
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             ProgressView()
                 .progressViewStyle(.circular)
-                .scaleEffect(1.2)
 
             Text("Checking session")
-                .font(.headline.weight(.semibold))
+                .font(.headline)
 
             Text("Life-OS is validating your auth state")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
-        .padding(26)
-        .frame(maxWidth: 340)
-        .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-        .padding()
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -38,46 +35,37 @@ struct AuthGatewayView: View {
     @State private var confirmPassword = ""
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
-                VStack(spacing: 8) {
-                    Text("Life-OS")
-                        .font(.largeTitle.weight(.bold))
+        NavigationStack {
+            Form {
+                Section {
                     Text("Every view is protected. Authenticate to continue.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
                 }
-                .padding(.top, 24)
 
-                AuthFlowSwitch(flow: $appState.authFlow) {
-                    appState.clearAuthFeedback()
+                Section("Authentication") {
+                    AuthFlowSwitch(flow: $appState.authFlow) {
+                        appState.clearAuthFeedback()
+                    }
                 }
 
                 if let authError = appState.authError {
-                    MessageBanner(text: authError, color: .red, identifier: "auth.error")
+                    Section {
+                        MessageBanner(text: authError, color: .red, identifier: "auth.error")
+                    }
                 }
 
                 if let authSuccess = appState.authSuccess {
-                    MessageBanner(text: authSuccess, color: .blue, identifier: "auth.success")
-                }
-
-                Group {
-                    switch appState.authFlow {
-                    case .signIn:
-                        signInForm
-                    case .signUp:
-                        signUpForm
-                    case .recover:
-                        recoverForm
-                    case .resetPassword:
-                        resetForm
+                    Section {
+                        MessageBanner(text: authSuccess, color: .green, identifier: "auth.success")
                     }
                 }
-                .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-                .padding(.horizontal)
+
+                activeFlowSection
             }
-            .padding(.bottom, 30)
+            .navigationTitle("Life-OS")
+            .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
         }
         .onAppear {
             if !appState.resetToken.isEmpty {
@@ -91,22 +79,31 @@ struct AuthGatewayView: View {
         }
     }
 
-    private var signInForm: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Sign in")
-                .font(.title3.weight(.semibold))
+    @ViewBuilder
+    private var activeFlowSection: some View {
+        switch appState.authFlow {
+        case .signIn:
+            signInSection
+        case .signUp:
+            signUpSection
+        case .recover:
+            recoverSection
+        case .resetPassword:
+            resetSection
+        }
+    }
 
+    private var signInSection: some View {
+        Section("Sign In") {
             TextField("Email", text: $signInEmail)
                 .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.emailAddress)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.signIn.email")
 
             SecureField("Password", text: $signInPassword)
                 .textContentType(.password)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.signIn.password")
 
             Button {
@@ -122,42 +119,28 @@ struct AuthGatewayView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .buttonStyle(.borderedProminent)
             .disabled(appState.isSubmittingAuth)
             .accessibilityIdentifier("auth.signIn.submit")
 
-            HStack {
-                Button("Create account") {
-                    appState.authFlow = .signUp
-                    appState.clearAuthFeedback()
-                }
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.blue)
-                .accessibilityIdentifier("auth.signIn.gotoSignUp")
-
-                Spacer()
-
-                Button("Forgot password?") {
-                    appState.authFlow = .recover
-                    appState.clearAuthFeedback()
-                }
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.blue)
-                .accessibilityIdentifier("auth.signIn.gotoRecover")
+            Button("Create account") {
+                appState.authFlow = .signUp
+                appState.clearAuthFeedback()
             }
+            .accessibilityIdentifier("auth.signIn.gotoSignUp")
+
+            Button("Forgot password?") {
+                appState.authFlow = .recover
+                appState.clearAuthFeedback()
+            }
+            .accessibilityIdentifier("auth.signIn.gotoRecover")
         }
-        .padding(20)
     }
 
-    private var signUpForm: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Create account")
-                .font(.title3.weight(.semibold))
-
+    private var signUpSection: some View {
+        Section("Create Account") {
             TextField("Name", text: $signUpName)
                 .textContentType(.name)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.signUp.name")
 
             TextField("Email", text: $signUpEmail)
@@ -165,12 +148,10 @@ struct AuthGatewayView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.emailAddress)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.signUp.email")
 
             SecureField("Password", text: $signUpPassword)
                 .textContentType(.newPassword)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.signUp.password")
 
             Button {
@@ -186,8 +167,7 @@ struct AuthGatewayView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .buttonStyle(.borderedProminent)
             .disabled(appState.isSubmittingAuth)
             .accessibilityIdentifier("auth.signUp.submit")
 
@@ -195,24 +175,17 @@ struct AuthGatewayView: View {
                 appState.authFlow = .signIn
                 appState.clearAuthFeedback()
             }
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.blue)
             .accessibilityIdentifier("auth.signUp.gotoSignIn")
         }
-        .padding(20)
     }
 
-    private var recoverForm: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Recover password")
-                .font(.title3.weight(.semibold))
-
+    private var recoverSection: some View {
+        Section("Recover Password") {
             TextField("Email", text: $recoverEmail)
                 .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .keyboardType(.emailAddress)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.recover.email")
 
             Button {
@@ -228,53 +201,37 @@ struct AuthGatewayView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .buttonStyle(.borderedProminent)
             .disabled(appState.isSubmittingAuth)
             .accessibilityIdentifier("auth.recover.submit")
 
-            HStack {
-                Button("Back to sign in") {
-                    appState.authFlow = .signIn
-                    appState.clearAuthFeedback()
-                }
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.blue)
-                .accessibilityIdentifier("auth.recover.gotoSignIn")
-
-                Spacer()
-
-                Button("Have a token?") {
-                    appState.authFlow = .resetPassword
-                    appState.clearAuthFeedback()
-                }
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.blue)
-                .accessibilityIdentifier("auth.recover.gotoReset")
+            Button("Back to sign in") {
+                appState.authFlow = .signIn
+                appState.clearAuthFeedback()
             }
+            .accessibilityIdentifier("auth.recover.gotoSignIn")
+
+            Button("Have a token?") {
+                appState.authFlow = .resetPassword
+                appState.clearAuthFeedback()
+            }
+            .accessibilityIdentifier("auth.recover.gotoReset")
         }
-        .padding(20)
     }
 
-    private var resetForm: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Set new password")
-                .font(.title3.weight(.semibold))
-
+    private var resetSection: some View {
+        Section("Set New Password") {
             TextField("Reset token", text: $resetToken)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .authInputStyle()
                 .accessibilityIdentifier("auth.reset.token")
 
             SecureField("New password", text: $resetPassword)
                 .textContentType(.newPassword)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.reset.newPassword")
 
             SecureField("Confirm password", text: $confirmPassword)
                 .textContentType(.newPassword)
-                .authInputStyle()
                 .accessibilityIdentifier("auth.reset.confirmPassword")
 
             Button {
@@ -294,8 +251,7 @@ struct AuthGatewayView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .buttonStyle(.borderedProminent)
             .disabled(appState.isSubmittingAuth)
             .accessibilityIdentifier("auth.reset.submit")
 
@@ -303,11 +259,8 @@ struct AuthGatewayView: View {
                 appState.authFlow = .signIn
                 appState.clearAuthFeedback()
             }
-            .font(.footnote.weight(.semibold))
-            .foregroundStyle(.blue)
             .accessibilityIdentifier("auth.reset.gotoSignIn")
         }
-        .padding(20)
     }
 }
 
@@ -316,28 +269,18 @@ struct AuthFlowSwitch: View {
     var onChange: () -> Void
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(AuthFlow.allCases) { item in
-                    Button(item.title) {
-                        flow = item
-                        onChange()
-                    }
-                    .font(.footnote.weight(.semibold))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(flow == item ? Color.blue.opacity(0.18) : Color.white.opacity(0.12))
-                    .overlay {
-                        Capsule().stroke(flow == item ? Color.blue.opacity(0.45) : Color.white.opacity(0.3), lineWidth: 1)
-                    }
-                    .clipShape(Capsule())
+        Picker("Flow", selection: $flow) {
+            ForEach(AuthFlow.allCases) { item in
+                Text(item.title)
+                    .tag(item)
                     .accessibilityIdentifier("auth.flow.\(item.rawValue)")
-                }
             }
-            .padding(.horizontal)
         }
-        .liquidCard(.clear, in: Capsule())
-        .padding(.horizontal)
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("auth.flow.selector")
+        .onChange(of: flow) { _, _ in
+            onChange()
+        }
     }
 }
 
@@ -347,19 +290,14 @@ struct MessageBanner: View {
     var identifier: String?
 
     var body: some View {
-        let banner = Text(text)
-            .font(.footnote)
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(color.opacity(0.08))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(color.opacity(0.35), lineWidth: 1)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .padding(.horizontal)
+        let banner = Label {
+            Text(text)
+                .font(.footnote)
+        } icon: {
+            Image(systemName: "info.circle.fill")
+        }
+        .foregroundStyle(color)
+        .frame(maxWidth: .infinity, alignment: .leading)
 
         if let identifier {
             banner.accessibilityIdentifier(identifier)
