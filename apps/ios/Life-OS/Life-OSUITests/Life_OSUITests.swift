@@ -93,6 +93,7 @@ final class Life_OSUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Password updated"].waitForExistence(timeout: 4))
 
         let signOut = app.descendants(matching: .any)["account.signOut"]
+        ensureElementExists(signOut, in: app)
         tapElementWhenHittable(signOut, in: app)
 
         XCTAssertTrue(app.buttons["auth.signIn.submit"].waitForExistence(timeout: 6))
@@ -191,6 +192,21 @@ final class Life_OSUITests: XCTestCase {
 
         // Fallback for transient simulator hit-testing issues.
         element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    private func ensureElementExists(_ element: XCUIElement, in app: XCUIApplication) {
+        if element.waitForExistence(timeout: 2) {
+            return
+        }
+
+        for _ in 0..<5 {
+            app.swipeUp()
+            if element.waitForExistence(timeout: 1) {
+                return
+            }
+        }
+
+        XCTAssertTrue(element.waitForExistence(timeout: 1))
     }
 
     private func dismissKeyboardIfVisible(in app: XCUIApplication) {

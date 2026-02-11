@@ -6,14 +6,30 @@ struct AuthService {
     func getSession() async throws -> SessionUser? {
         do {
             let data = try await api.request(path: "/api/auth/get-session", method: "GET")
-            let payload = try JSONDecoder().decode(SessionPayload.self, from: data)
-            return payload.resolvedUser
+            return try decodeSessionUser(from: data)
         } catch {
             if error.isUnauthorized {
                 return nil
             }
             throw error
         }
+    }
+
+    func decodeSessionUser(from data: Data) throws -> SessionUser? {
+        // Some auth setups can return an empty 200 body when there is no session.
+        // Treat that as signed-out instead of surfacing a decoding error banner.
+        if data.isEmpty {
+            return nil
+        }
+
+        if let raw = String(data: data, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           raw.isEmpty || raw == "null" {
+            return nil
+        }
+
+        let payload = try JSONDecoder().decode(SessionPayload.self, from: data)
+        return payload.resolvedUser
     }
 
     func signIn(email: String, password: String) async throws -> SessionUser {
