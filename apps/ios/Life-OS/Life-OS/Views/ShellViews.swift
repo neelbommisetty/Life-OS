@@ -46,12 +46,12 @@ struct HomeTabView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 3) {
+            List {
+                Section {
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text("Welcome")
-                                .font(.title.bold())
+                                .font(.headline)
                             Text(appState.sessionUser?.name ?? appState.sessionUser?.email ?? "Authenticated User")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
@@ -59,99 +59,95 @@ struct HomeTabView: View {
 
                         Spacer()
 
-                        Button {
-                            Task {
-                                await appState.refreshProtectedData()
+                        if appState.isRefreshingProtectedData {
+                            ProgressView()
+                        } else {
+                            Button("Refresh", systemImage: "arrow.clockwise") {
+                                Task {
+                                    await appState.refreshProtectedData()
+                                }
                             }
-                        } label: {
-                            if appState.isRefreshingProtectedData {
-                                ProgressView()
-                                    .frame(width: 44, height: 44)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.headline.weight(.semibold))
-                                    .frame(width: 44, height: 44)
-                            }
-                        }
-                        .buttonStyle(.glassProminent)
-                        .tint(.blue)
-                    }
-
-                    if let protectedError = appState.protectedError {
-                        MessageBanner(text: protectedError, color: .red, identifier: "home.error")
-                            .padding(.horizontal, -16)
-                    }
-
-                    HomeSnapshotCards(snapshot: appState.homeSnapshot)
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Quick capture")
-                                .font(.headline.weight(.semibold))
-
-                            Spacer()
-
-                            Label(
-                                speechRecognizer.isRecording ? "Live" : "Ready",
-                                systemImage: speechRecognizer.isRecording ? "waveform.circle.fill" : "checkmark.circle.fill"
-                            )
-                            .font(.footnote.weight(.semibold))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .liquidCard(.clear, in: Capsule())
-                        }
-
-                        ZStack(alignment: .topLeading) {
-                            TextEditor(text: $noteText)
-                                .padding(12)
-                                .frame(minHeight: 180)
-                                .scrollContentBackground(.hidden)
-                                .background(.clear)
-
-                            if noteText.isEmpty {
-                                Text("Type here or tap the mic to append speech...")
-                                    .foregroundStyle(.secondary)
-                                    .padding(.top, 22)
-                                    .padding(.leading, 18)
-                                    .allowsHitTesting(false)
-                            }
-                        }
-                        .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-
-                        HStack(spacing: 12) {
-                            Text(statusText)
-                                .font(.callout)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(2)
-
-                            Spacer()
-
-                            Button {
-                                toggleRecording()
-                            } label: {
-                                Image(systemName: speechRecognizer.isRecording ? "stop.fill" : "mic.fill")
-                                    .font(.title3.weight(.semibold))
-                                    .frame(width: 52, height: 52)
-                            }
-                            .buttonStyle(.glassProminent)
-                            .tint(speechRecognizer.isRecording ? .red : .blue)
-                            .accessibilityLabel(speechRecognizer.isRecording ? "Stop voice input" : "Start voice input")
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .liquidCard(.clear, in: Capsule())
-
-                        if let errorMessage = speechRecognizer.errorMessage {
-                            Text(errorMessage)
-                                .font(.footnote)
-                                .foregroundStyle(.red)
+                            .labelStyle(.iconOnly)
                         }
                     }
-                    .padding(16)
-                    .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
                 }
-                .padding()
+
+                if let protectedError = appState.protectedError {
+                    Section {
+                        MessageBanner(text: protectedError, color: .red, identifier: "home.error")
+                    }
+                }
+
+                Section("Snapshot") {
+                    HomeMetricRow(
+                        title: "Recent projects",
+                        count: appState.homeSnapshot.recentProjects.count,
+                        subtitle: appState.homeSnapshot.recentProjects.first?.name ?? "No projects yet",
+                        icon: "folder"
+                    )
+
+                    HomeMetricRow(
+                        title: "Upcoming tasks",
+                        count: appState.homeSnapshot.upcomingTasks.count,
+                        subtitle: appState.homeSnapshot.upcomingTasks.first?.title ?? "No tasks pending",
+                        icon: "checklist"
+                    )
+
+                    HomeMetricRow(
+                        title: "Recent notes",
+                        count: appState.homeSnapshot.recentNotes.count,
+                        subtitle: appState.homeSnapshot.recentNotes.first?.title ?? "No notes yet",
+                        icon: "note.text"
+                    )
+                }
+
+                Section("Quick Capture") {
+                    Label(
+                        speechRecognizer.isRecording ? "Live" : "Ready",
+                        systemImage: speechRecognizer.isRecording ? "waveform.circle.fill" : "checkmark.circle.fill"
+                    )
+                    .foregroundStyle(speechRecognizer.isRecording ? .red : .secondary)
+
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $noteText)
+                            .frame(minHeight: 160)
+                            .scrollContentBackground(.hidden)
+                            .background(Color.clear)
+
+                        if noteText.isEmpty {
+                            Text("Type here or tap the mic to append speech...")
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 8)
+                                .padding(.leading, 6)
+                                .allowsHitTesting(false)
+                        }
+                    }
+
+                    Text(statusText)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    Button {
+                        toggleRecording()
+                    } label: {
+                        Label(
+                            speechRecognizer.isRecording ? "Stop voice input" : "Start voice input",
+                            systemImage: speechRecognizer.isRecording ? "stop.fill" : "mic.fill"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(speechRecognizer.isRecording ? .red : .accentColor)
+                    .accessibilityLabel(speechRecognizer.isRecording ? "Stop voice input" : "Start voice input")
+
+                    if let errorMessage = speechRecognizer.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Life-OS")
         }
     }
@@ -180,40 +176,11 @@ struct HomeTabView: View {
         if speechRecognizer.isRecording {
             return speechRecognizer.liveTranscript.isEmpty ? "Listening..." : speechRecognizer.liveTranscript
         }
-        return "Tap the glass mic to append speech"
+        return "Tap the mic to append speech"
     }
 }
 
-struct HomeSnapshotCards: View {
-    let snapshot: HomeSnapshot
-
-    var body: some View {
-        VStack(spacing: 10) {
-            HomeMetricCard(
-                title: "Recent projects",
-                count: snapshot.recentProjects.count,
-                subtitle: snapshot.recentProjects.first?.name ?? "No projects yet",
-                icon: "folder"
-            )
-
-            HomeMetricCard(
-                title: "Upcoming tasks",
-                count: snapshot.upcomingTasks.count,
-                subtitle: snapshot.upcomingTasks.first?.title ?? "No tasks pending",
-                icon: "checklist"
-            )
-
-            HomeMetricCard(
-                title: "Recent notes",
-                count: snapshot.recentNotes.count,
-                subtitle: snapshot.recentNotes.first?.title ?? "No notes yet",
-                icon: "note.text"
-            )
-        }
-    }
-}
-
-struct HomeMetricCard: View {
+struct HomeMetricRow: View {
     let title: String
     let count: Int
     let subtitle: String
@@ -222,13 +189,12 @@ struct HomeMetricCard: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.headline)
-                .frame(width: 38, height: 38)
-                .liquidCard(.clear, in: Circle())
+                .foregroundStyle(Color.accentColor)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.subheadline.weight(.semibold))
+
                 Text(subtitle)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
@@ -238,13 +204,8 @@ struct HomeMetricCard: View {
             Spacer()
 
             Text("\(count)")
-                .font(.headline.weight(.bold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .liquidCard(.clear, in: Capsule())
+                .font(.headline.monospacedDigit())
         }
-        .padding(14)
-        .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 }
 
@@ -253,51 +214,46 @@ struct NotesTabView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            List {
                 if appState.notes.isEmpty {
                     Text("No notes yet")
                         .foregroundStyle(.secondary)
-                        .padding()
-                        .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 } else {
-                    ScrollView {
-                        VStack(spacing: 10) {
-                            ForEach(appState.notes) { note in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text(note.title)
-                                        .font(.headline)
+                    ForEach(appState.notes) { note in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(note.title)
+                                .font(.headline)
 
-                                    if !note.content.isEmpty {
-                                        Text(note.content)
-                                            .font(.footnote)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(3)
-                                    }
+                            if !note.content.isEmpty {
+                                Text(note.content)
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(3)
+                            }
 
-                                    if let updatedAt = note.updatedAt {
-                                        Text(updatedAt)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(14)
-                                .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            if let updatedAt = note.updatedAt {
+                                Text(updatedAt)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        .padding()
+                        .padding(.vertical, 4)
                     }
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Notes")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task {
-                            await appState.refreshProtectedData()
+                    if appState.isRefreshingProtectedData {
+                        ProgressView()
+                    } else {
+                        Button("Refresh", systemImage: "arrow.clockwise") {
+                            Task {
+                                await appState.refreshProtectedData()
+                            }
                         }
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
+                        .labelStyle(.iconOnly)
                     }
                 }
             }
@@ -331,61 +287,46 @@ struct AccountTabView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Signed in")
-                            .font(.headline)
-
+            Form {
+                Section("Signed In") {
+                    LabeledContent("Name") {
                         Text(appState.sessionUser?.name ?? "No name")
-                            .font(.title3.weight(.semibold))
+                    }
 
+                    LabeledContent("Email") {
                         Text(appState.sessionUser?.email ?? "No email")
-                            .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(18)
-                    .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                }
 
+                Section("Settings") {
                     HStack(spacing: 8) {
                         ForEach(AccountSection.allCases) { section in
-                            Button(section.title) {
-                                selectedSection = section
-                                appState.clearAccountFeedback()
-                            }
-                            .font(.footnote.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(selectedSection == section ? Color.blue.opacity(0.18) : Color.white.opacity(0.12))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(selectedSection == section ? Color.blue.opacity(0.45) : Color.white.opacity(0.28), lineWidth: 1)
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .accessibilityIdentifier("account.section.\(section.rawValue)")
+                            accountSectionButton(for: section)
                         }
                     }
-                    .padding(8)
-                    .liquidCard(.clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                }
 
-                    if let accountError = appState.accountError {
+                if let accountError = appState.accountError {
+                    Section {
                         MessageBanner(text: accountError, color: .red, identifier: "account.error")
-                            .padding(.horizontal, -16)
                     }
+                }
 
-                    if let accountSuccess = appState.accountSuccess {
-                        MessageBanner(text: accountSuccess, color: .blue, identifier: "account.success")
-                            .padding(.horizontal, -16)
+                if let accountSuccess = appState.accountSuccess {
+                    Section {
+                        MessageBanner(text: accountSuccess, color: .green, identifier: "account.success")
                     }
+                }
 
-                    if selectedSection == .profile {
-                        profileSettingsCard
-                    } else {
-                        securitySettingsCard
-                    }
+                if selectedSection == .profile {
+                    profileSettingsSection
+                } else {
+                    securitySettingsSection
+                }
 
-                    Button {
+                Section {
+                    Button(role: .destructive) {
                         Task {
                             await appState.signOut()
                         }
@@ -398,12 +339,9 @@ struct AccountTabView: View {
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .buttonStyle(.glassProminent)
-                    .tint(.red)
                     .disabled(appState.isSubmittingAuth)
                     .accessibilityIdentifier("account.signOut")
                 }
-                .padding()
             }
             .navigationTitle("Account")
             .onAppear {
@@ -417,37 +355,27 @@ struct AccountTabView: View {
         }
     }
 
-    private var profileSettingsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Profile settings")
-                .font(.headline.weight(.semibold))
+    @ViewBuilder
+    private func accountSectionButton(for section: AccountSection) -> some View {
+        let button = Button(section.title) {
+            selectedSection = section
+            appState.clearAccountFeedback()
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityIdentifier("account.section.\(section.rawValue)")
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Email")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text(appState.sessionUser?.email ?? "No email")
-                    .font(.body)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.white.opacity(0.1))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(Color.white.opacity(0.26), lineWidth: 1)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            }
+        if selectedSection == section {
+            button.buttonStyle(.borderedProminent)
+        } else {
+            button.buttonStyle(.bordered)
+        }
+    }
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Name")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                TextField("Name", text: $profileName)
-                    .textContentType(.name)
-                    .authInputStyle()
-                    .accessibilityIdentifier("account.profile.name")
-            }
+    private var profileSettingsSection: some View {
+        Section("Profile Settings") {
+            TextField("Name", text: $profileName)
+                .textContentType(.name)
+                .accessibilityIdentifier("account.profile.name")
 
             Button {
                 Task {
@@ -462,33 +390,24 @@ struct AccountTabView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .buttonStyle(.borderedProminent)
             .disabled(appState.isSubmittingAuth)
             .accessibilityIdentifier("account.profile.save")
         }
-        .padding(16)
-        .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
-    private var securitySettingsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Security settings")
-                .font(.headline.weight(.semibold))
-
+    private var securitySettingsSection: some View {
+        Section("Security Settings") {
             SecureField("Current password", text: $currentPassword)
                 .textContentType(.password)
-                .authInputStyle()
                 .accessibilityIdentifier("account.security.currentPassword")
 
             SecureField("New password", text: $newPassword)
                 .textContentType(.newPassword)
-                .authInputStyle()
                 .accessibilityIdentifier("account.security.newPassword")
 
             SecureField("Confirm new password", text: $confirmPassword)
                 .textContentType(.newPassword)
-                .authInputStyle()
                 .accessibilityIdentifier("account.security.confirmPassword")
 
             Button {
@@ -513,12 +432,9 @@ struct AccountTabView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
-            .buttonStyle(.glassProminent)
-            .tint(.blue)
+            .buttonStyle(.borderedProminent)
             .disabled(appState.isSubmittingAuth)
             .accessibilityIdentifier("account.security.changePassword")
         }
-        .padding(16)
-        .liquidCard(.regular, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 }
