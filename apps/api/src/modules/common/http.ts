@@ -1,4 +1,5 @@
 import type { Context } from "hono";
+import * as Sentry from "@sentry/node";
 import { badRequestError, toApiError, toErrorBody } from "./errors.js";
 
 export async function readJsonBody(c: Context) {
@@ -48,5 +49,10 @@ export function parseNumberQuery(value: string | undefined) {
 
 export function handleRouteError(c: Context, error: unknown) {
   const apiError = toApiError(error);
+
+  if (apiError.status >= 500) {
+    Sentry.captureException(error);
+  }
+
   return c.json(toErrorBody(apiError), apiError.status);
 }

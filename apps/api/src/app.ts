@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import * as Sentry from "@sentry/node";
 import { initializeAIServices } from "@life-os/ai";
 import { createLogger } from "@life-os/logger";
 import { authRoute } from "./routes/auth.js";
@@ -49,6 +50,28 @@ try {
 }
 
 export const app = new Hono();
+
+app.onError((error, c) => {
+  const apiError = toApiError(error);
+
+  if (apiError.status >= 500) {
+    Sentry.captureException(error, {
+      tags: {
+        method: c.req.method,
+        path: c.req.path,
+        request_id:
+          c.res.headers.get(REQUEST_ID_HEADER) ??
+          c.req.header(REQUEST_ID_HEADER) ??
+          "unknown",
+      },
+      extra: {
+        status: apiError.status,
+      },
+    });
+  }
+
+  return c.json(toErrorBody(apiError), apiError.status);
+});
 
 const PUBLIC_PATHS = new Set(["/", "/status", "/api/status"]);
 

@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-02-11
+Last updated: 2026-02-13
 
 ## Purpose
 This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
@@ -53,6 +53,7 @@ Required updates for feature work:
 | --- | --- | --- | --- |
 | API Platform | Root health response | `GET /` | Returns 200 and expected body |
 | API Platform | Request correlation | all API routes via middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
+| API Platform | Sentry error + tracing instrumentation | API bootstrap (`instrument.ts`) + shared route error handling | Verifies 5xx errors are captured while 4xx errors are not, and tracing init is loaded from both Bun server and Vercel entrypoint |
 | API Platform | Readiness/status contract | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason, AI status shape |
 | API Auth Proxy | Neon auth passthrough hardening | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/query/body/headers; strips host+forwarding headers; normalizes empty sign-out body to `{}` JSON; strips empty body headers on other non-GET auth routes; forwards upstream status/headers; rewrites upstream auth redirects to `/api/auth/*`; base URL missing error |
 | API Auth | User identity resolution | protected-route middleware (`resolveUserIdFromRequest`) | JWT verify path, session fallback path, invalid auth handling, per-request cache, non-GET session lookup header stripping, timeout behavior, same-origin/cross-origin `/api/auth` proxy misconfiguration fail-fast, upstream status surfaced in auth resolution errors |
@@ -97,6 +98,7 @@ Run this set before release and after large refactors:
   - `apps/api/src/routes/status.test.ts`
   - `apps/api/src/modules/common/auth.test.ts`
   - `apps/api/src/modules/common/errors.test.ts`
+  - `apps/api/src/modules/common/http.test.ts`
   - `apps/api/src/modules/home/route.test.ts`
   - `apps/api/src/modules/projects/route.test.ts`
   - `apps/api/src/modules/tasks/route.test.ts`

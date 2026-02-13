@@ -1,3 +1,4 @@
+import "./instrument.js";
 import { serve } from "bun";
 import { createLogger } from "@life-os/logger";
 import { app } from "./app.js";
