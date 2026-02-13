@@ -8,6 +8,7 @@
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@sentry/node": "^10.38.0",
     "@life-os/ai": "workspace:*",
     "@life-os/logger": "workspace:*",
     "hono": "^4.6.0",

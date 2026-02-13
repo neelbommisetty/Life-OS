@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { app } from "./app.js";
 import { requestJson, withEnv } from "./test/harness.js";
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL =
+    "postgresql://life_os_test:life_os_test@localhost:5432/life_os_test";
+}
+
+const { app } = await import("./app.js");
 
 describe("api app integration", () => {
   test("adds x-request-id header when request id is missing", async () => {
@@ -14,11 +20,13 @@ describe("api app integration", () => {
 
   test("preserves x-request-id header on error responses", async () => {
     const requestId = "req_test_custom_id_001";
-    const response = await app.request("/api/auth/get-session", {
-      headers: {
-        "x-request-id": requestId,
-      },
-    });
+    const response = await withEnv({ NEON_AUTH_BASE_URL: undefined }, () =>
+      app.request("/api/auth/get-session", {
+        headers: {
+          "x-request-id": requestId,
+        },
+      }),
+    );
 
     expect(response.status).toBe(500);
     expect(response.headers.get("x-request-id")).toBe(requestId);
