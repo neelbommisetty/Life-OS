@@ -43,6 +43,29 @@ final class Life_OSUITests: XCTestCase {
     }
 
     @MainActor
+    func testSignInTrimsWhitespaceAroundEmail() throws {
+        let app = makeApp()
+        app.launch()
+
+        let emailField = app.textFields["auth.signIn.email"]
+        let passwordField = app.secureTextFields["auth.signIn.password"]
+        let submitButton = app.buttons["auth.signIn.submit"]
+
+        XCTAssertTrue(emailField.waitForExistence(timeout: 6))
+        XCTAssertTrue(passwordField.exists)
+        XCTAssertTrue(submitButton.exists)
+
+        emailField.tap()
+        emailField.typeText("  demo@lifeos.dev  ")
+        passwordField.tap()
+        passwordField.typeText("demo12345")
+        submitButton.tap()
+        dismissKeyboardIfVisible(in: app)
+
+        XCTAssertTrue(app.tabBars.buttons["person.crop.circle"].waitForExistence(timeout: 6))
+    }
+
+    @MainActor
     func testAccountSettingsProfileAndSecurityFlows() throws {
         let app = makeApp()
         app.launch()

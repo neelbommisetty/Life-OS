@@ -28,6 +28,10 @@ struct APIClient {
         request.setValue("application/json", forHTTPHeaderField: "accept")
         request.httpShouldHandleCookies = true
 
+        if let cookieHeader = await inMemoryCookieJar.cookieHeader(for: url) {
+            request.setValue(cookieHeader, forHTTPHeaderField: "cookie")
+        }
+
         if let body {
             guard JSONSerialization.isValidJSONObject(body) else {
                 throw AppNetworkError.invalidBody
@@ -41,6 +45,8 @@ struct APIClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw AppNetworkError.invalidResponse
         }
+
+        await inMemoryCookieJar.ingest(response: httpResponse, for: url)
 
         if httpResponse.statusCode == 401 {
             let message = parseMessage(from: data) ?? "Unauthorized"
@@ -75,5 +81,112 @@ struct APIClient {
     func clearAllCookies() {
         let storage = HTTPCookieStorage.shared
         storage.cookies?.forEach(storage.deleteCookie)
+        Task {
+            await inMemoryCookieJar.clear()
+        }
+    }
+
+    private var inMemoryCookieJar: InMemoryCookieJar {
+        APIClient.cookieJar
+    }
+
+    private static let cookieJar = InMemoryCookieJar()
+}
+
+actor InMemoryCookieJar {
+    private var cookiesByHost: [String: [String: String]] = [:]
+
+    func ingest(response: HTTPURLResponse, for url: URL) {
+        guard let host = normalizedHost(for: url) else {
+            return
+        }
+
+        let cookiePairs = parseSetCookiePairs(from: response.allHeaderFields)
+        guard !cookiePairs.isEmpty else {
+            return
+        }
+
+        var hostCookies = cookiesByHost[host] ?? [:]
+        for (cookieName, cookieValue) in cookiePairs {
+            if cookieValue.isEmpty {
+                hostCookies.removeValue(forKey: cookieName)
+            } else {
+                hostCookies[cookieName] = cookieValue
+            }
+        }
+
+        cookiesByHost[host] = hostCookies
+    }
+
+    func cookieHeader(for url: URL) -> String? {
+        guard
+            let host = normalizedHost(for: url),
+            let hostCookies = cookiesByHost[host],
+            !hostCookies.isEmpty
+        else {
+            return nil
+        }
+
+        return hostCookies
+            .sorted(by: { $0.key < $1.key })
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "; ")
+    }
+
+    func clear() {
+        cookiesByHost.removeAll()
+    }
+
+    private func normalizedHost(for url: URL) -> String? {
+        url.host?.lowercased()
+    }
+
+    private func parseSetCookiePairs(
+        from headerFields: [AnyHashable: Any]
+    ) -> [(String, String)] {
+        var pairs: [(String, String)] = []
+
+        for (rawKey, rawValue) in headerFields {
+            guard
+                let key = rawKey as? String,
+                key.caseInsensitiveCompare("set-cookie") == .orderedSame
+            else {
+                continue
+            }
+
+            let headerValue: String
+            if let stringValue = rawValue as? String {
+                headerValue = stringValue
+            } else {
+                headerValue = "\(rawValue)"
+            }
+
+            // Multiple cookies can be collapsed into one header string.
+            let cookieChunks = headerValue.split(separator: ",")
+            for chunk in cookieChunks {
+                let segment = chunk.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !segment.isEmpty else {
+                    continue
+                }
+
+                let pairSegment = segment.split(separator: ";", maxSplits: 1).first ?? Substring()
+                guard let equalsIndex = pairSegment.firstIndex(of: "=") else {
+                    continue
+                }
+
+                let name = pairSegment[..<equalsIndex]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let value = pairSegment[pairSegment.index(after: equalsIndex)...]
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                guard !name.isEmpty else {
+                    continue
+                }
+
+                pairs.append((name, value))
+            }
+        }
+
+        return pairs
     }
 }

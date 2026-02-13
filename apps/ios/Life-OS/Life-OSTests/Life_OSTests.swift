@@ -177,6 +177,61 @@ final class Life_OSTests: XCTestCase {
         XCTAssertEqual(user?.email, "demo@lifeos.dev")
     }
 
+    @MainActor
+    func testAppStateSignInTrimsEmailWhitespace() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        defer { unsetenv("LIFE_OS_USE_MOCK_API") }
+
+        let appState = AppState()
+        await appState.signIn(email: "  demo@lifeos.dev  ", password: "demo12345")
+
+        XCTAssertEqual(appState.sessionUser?.email, "demo@lifeos.dev")
+        XCTAssertNil(appState.authError)
+    }
+
+    func testInMemoryCookieJarStoresSecureCookieFromResponse() async throws {
+        let jar = InMemoryCookieJar()
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:3001/api/auth/sign-in/email"))
+        let response = try XCTUnwrap(
+            HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Set-Cookie": "__Secure-neon-auth.session_token=abc123; Path=/; HttpOnly; Secure; SameSite=None; Partitioned"
+                ]
+            )
+        )
+
+        await jar.ingest(response: response, for: url)
+        let cookieHeader = await jar.cookieHeader(for: url)
+
+        XCTAssertEqual(cookieHeader, "__Secure-neon-auth.session_token=abc123")
+    }
+
+    func testInMemoryCookieJarClearRemovesStoredCookies() async throws {
+        let jar = InMemoryCookieJar()
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:3001/api/auth/sign-in/email"))
+        let response = try XCTUnwrap(
+            HTTPURLResponse(
+                url: url,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: [
+                    "Set-Cookie": "__Secure-neon-auth.session_token=abc123; Path=/; HttpOnly; Secure; SameSite=None; Partitioned"
+                ]
+            )
+        )
+
+        await jar.ingest(response: response, for: url)
+        let headerBeforeClear = await jar.cookieHeader(for: url)
+        XCTAssertNotNil(headerBeforeClear)
+
+        await jar.clear()
+        let headerAfterClear = await jar.cookieHeader(for: url)
+        XCTAssertNil(headerAfterClear)
+    }
+
     private func jsonObject(from data: Data) throws -> Any {
         try JSONSerialization.jsonObject(with: data, options: [])
     }
