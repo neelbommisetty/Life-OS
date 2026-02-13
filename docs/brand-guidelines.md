@@ -4,6 +4,8 @@ Last updated: 2026-02-13
 
 These guidelines define how Life-OS should *feel* and *behave* across product surfaces (web, iOS, API-driven assistant flows). Visual design (colors/type/components) is intentionally out of scope for this first version.
 
+For visual + interaction guidance, see `docs/brand-design-guidelines.md`.
+
 ---
 
 ## Audience
@@ -221,5 +223,4 @@ If the UI uses different labels today, treat this as the direction for convergen
 
 ## Visual Design (TBD)
 
-Color, typography, layout, components, and motion guidelines will live here once defined.
-
+Color, typography, layout, components, and motion guidelines live in `docs/brand-design-guidelines.md`.
