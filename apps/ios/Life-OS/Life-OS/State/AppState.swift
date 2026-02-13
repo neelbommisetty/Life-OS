@@ -84,8 +84,10 @@ final class AppState: ObservableObject {
     }
 
     func signIn(email: String, password: String) async {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+
         guard !isSubmittingAuth else { return }
-        guard !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !normalizedEmail.isEmpty else {
             authError = "Email is required"
             return
         }
@@ -99,7 +101,10 @@ final class AppState: ObservableObject {
         defer { isSubmittingAuth = false }
 
         do {
-            sessionUser = try await authService.signIn(email: email, password: password)
+            sessionUser = try await authService.signIn(
+                email: normalizedEmail,
+                password: password
+            )
             authFlow = .signIn
             await refreshProtectedData()
         } catch {
@@ -108,12 +113,15 @@ final class AppState: ObservableObject {
     }
 
     func signUp(name: String, email: String, password: String) async {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+
         guard !isSubmittingAuth else { return }
-        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !trimmedName.isEmpty else {
             authError = "Name is required"
             return
         }
-        guard !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !normalizedEmail.isEmpty else {
             authError = "Email is required"
             return
         }
@@ -127,7 +135,11 @@ final class AppState: ObservableObject {
         defer { isSubmittingAuth = false }
 
         do {
-            sessionUser = try await authService.signUp(name: name, email: email, password: password)
+            sessionUser = try await authService.signUp(
+                name: trimmedName,
+                email: normalizedEmail,
+                password: password
+            )
             authFlow = .signIn
             await refreshProtectedData()
         } catch {
@@ -136,8 +148,10 @@ final class AppState: ObservableObject {
     }
 
     func requestPasswordReset(email: String) async {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+
         guard !isSubmittingAuth else { return }
-        guard !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !normalizedEmail.isEmpty else {
             authError = "Email is required"
             return
         }
@@ -147,7 +161,7 @@ final class AppState: ObservableObject {
         defer { isSubmittingAuth = false }
 
         do {
-            try await authService.requestPasswordReset(email: email)
+            try await authService.requestPasswordReset(email: normalizedEmail)
             authSuccess = "If that email exists, a password reset link has been sent."
         } catch {
             authError = error.userFacingMessage
