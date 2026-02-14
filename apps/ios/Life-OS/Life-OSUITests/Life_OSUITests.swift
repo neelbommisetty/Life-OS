@@ -87,7 +87,7 @@ final class Life_OSUITests: XCTestCase {
         let saveProfile = app.descendants(matching: .any)["account.profile.save"]
         tapElementWhenHittable(saveProfile, in: app)
 
-        XCTAssertTrue(app.staticTexts["Profile updated"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Profile updated."].waitForExistence(timeout: 4))
 
         let securitySection = app.descendants(matching: .any)["account.section.security"]
         tapElementWhenHittable(securitySection, in: app)
@@ -108,12 +108,12 @@ final class Life_OSUITests: XCTestCase {
         XCTAssertTrue(changePassword.exists)
         changePassword.tap()
 
-        XCTAssertTrue(app.staticTexts["Passwords do not match"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Passwords don't match."].waitForExistence(timeout: 4))
 
         confirmPassword.clearAndTypeText("new-password-123")
         changePassword.tap()
 
-        XCTAssertTrue(app.staticTexts["Password updated"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.staticTexts["Password updated."].waitForExistence(timeout: 4))
 
         let signOut = app.descendants(matching: .any)["account.signOut"]
         ensureElementExists(signOut, in: app)

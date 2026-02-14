@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModelSelector, type ModelOption } from "./model-selector";
+import { brand } from "@/lib/brand";
 
 type Props = {
   input: string;
@@ -118,7 +119,7 @@ export function ChatInput({
             adjustHeight(e.target);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Message Life-OS..."
+          placeholder={`Message the ${brand.terms.assistant.toLowerCase()}...`}
           aria-label="Message input"
           disabled={isPending || !effectiveThreadId}
           rows={1}
@@ -154,7 +155,7 @@ export function ChatInput({
 
       <div className="mt-2 text-center">
         <p className="text-[10px] text-muted-foreground/40 uppercase tracking-widest">
-          Life-OS can make mistakes. Please verify important information.
+          Verify important details.
         </p>
       </div>
     </form>

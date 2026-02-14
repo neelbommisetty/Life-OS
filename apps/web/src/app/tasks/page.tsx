@@ -7,7 +7,7 @@ import { requireApiSessionUser } from "@/lib/api/session";
 
 export const metadata: Metadata = {
   title: "Tasks",
-  description: "Plan and track your work with the task board.",
+  description: "Track tasks and deadlines, with strong defaults.",
 };
 
 export default async function TasksPage() {

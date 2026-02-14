@@ -1,7 +1,7 @@
 "use client";
 
 import { type RefObject, useRef, useEffect } from "react";
-import { LoaderIcon, AlertCircleIcon } from "lucide-react";
+import { LoaderIcon, AlertCircleIcon, SparklesIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { MessageBubble } from "./message-bubble";
@@ -169,8 +169,8 @@ export function ChatMessages({
       {/* Blocking mutation pending state (fallback) */}
       {isPending && !isActiveThreadStreaming && (
         <div className="flex items-start gap-3 animate-in fade-in duration-300">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground text-xs font-semibold">
-            AI
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-foreground">
+            <SparklesIcon className="h-4 w-4" />
           </div>
           <Card className="flex-1">
             <CardContent className="px-4 py-3">

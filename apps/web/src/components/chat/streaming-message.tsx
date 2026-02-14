@@ -34,12 +34,12 @@ export function StreamingMessage({
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
-              Life-OS AI
+              Assistant
             </span>
             {isStreaming && (
               <span className="text-[11px] text-muted-foreground flex items-center gap-1">
                 <LoaderIcon className="h-3 w-3 animate-spin" />
-                typing...
+                drafting…
               </span>
             )}
           </div>
@@ -55,7 +55,7 @@ export function StreamingMessage({
             ) : (
               <div className="flex items-center gap-2 text-muted-foreground animate-pulse">
                 <LoaderIcon className="h-4 w-4 animate-spin" />
-                <span className="text-xs">Thinking...</span>
+                <span className="text-xs">Drafting…</span>
               </div>
             )}
           </div>
@@ -68,8 +68,8 @@ export function StreamingMessage({
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0 rounded-full hover:bg-destructive/10 hover:text-destructive text-muted-foreground focus:ring-destructive/20"
-            title="Stop generating"
-            aria-label="Stop generating"
+            title="Stop"
+            aria-label="Stop"
           >
             <StopCircleIcon className="h-4 w-4" />
           </Button>

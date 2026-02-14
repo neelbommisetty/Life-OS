@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getProjectWithItems } from "@/lib/projects";
 import { ProjectDetailClient } from "./project-detail-client";
 import { notFound } from "next/navigation";
+import { brand } from "@/lib/brand";
 
 interface ProjectDetailPageProps {
   params: Promise<{ id: string }>;
@@ -14,7 +15,7 @@ export async function generateMetadata({
 
   return {
     title: `Project ${id}`,
-    description: "Review and manage project details, tasks, notes, and chat.",
+    description: `Review project details, tasks, ${brand.terms.library.toLowerCase()}, and the ${brand.terms.assistant.toLowerCase()}.`,
   };
 }
 

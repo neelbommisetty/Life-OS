@@ -10,7 +10,7 @@ extension String {
 extension Error {
     var userFacingMessage: String {
         if let networkError = self as? AppNetworkError {
-            return networkError.errorDescription ?? "Something went wrong"
+            return networkError.errorDescription ?? Brand.couldnt("complete that request")
         }
         return localizedDescription
     }

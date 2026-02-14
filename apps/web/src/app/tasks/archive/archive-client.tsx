@@ -11,6 +11,7 @@ import { type TaskWithProject } from "../task-card";
 import { cn } from "@/lib/utils";
 import { toastApiError } from "@/lib/api/error-toast";
 import Link from "next/link";
+import { couldnt } from "@/lib/brand";
 // We might need a separate permanent delete action or reuse the soft delete (which would just update timestamp if we wanted)
 // But typically "archive" implies soft deleted.
 // For now let's just display them.
@@ -27,7 +28,7 @@ export function ArchiveClient() {
       const archivedResult = await listArchivedTasks();
       setArchivedTasks(archivedResult);
     } catch (error) {
-      toastApiError(error, "Failed to load archived tasks");
+      toastApiError(error, couldnt("load archived tasks"));
     } finally {
       setIsLoading(false);
     }
@@ -54,7 +55,7 @@ export function ArchiveClient() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Archived Tasks</h1>
             <p className="text-muted-foreground mt-1">
-              View completed and deleted tasks
+              Review completed and archived tasks.
             </p>
           </div>
         </div>
@@ -83,7 +84,7 @@ export function ArchiveClient() {
       ) : filteredTasks.length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
-            <p className="text-muted-foreground">No archived tasks found</p>
+            <p className="text-muted-foreground">No archived tasks.</p>
           </CardContent>
         </Card>
       ) : (

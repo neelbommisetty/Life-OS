@@ -146,32 +146,32 @@ describe("Stream Error Handling", () => {
   test("handles StreamError with STREAM_ABORTED code", () => {
     const error = new StreamError("Stream was aborted", "STREAM_ABORTED");
     const message = handleStreamError(error);
-    expect(message).toBe("Response was cancelled.");
+    expect(message).toBe("Canceled.");
   });
 
   test("handles StreamError with NETWORK_ERROR code", () => {
     const error = new StreamError("Network failed", "NETWORK_ERROR");
     const message = handleStreamError(error);
-    expect(message).toBe("Network connection was lost. Please try again.");
+    expect(message).toBe("Couldn't reach the server. Try again.");
   });
 
   test("handles StreamError with PARSE_ERROR code", () => {
     const error = new StreamError("Parse failed", "PARSE_ERROR");
     const message = handleStreamError(error);
-    expect(message).toBe("Received invalid response format.");
+    expect(message).toBe("Couldn't read the response. Try again.");
   });
 
   test("handles StreamError with STREAM_ERROR code", () => {
     const error = new StreamError("General stream error", "STREAM_ERROR");
     const message = handleStreamError(error);
-    expect(message).toBe("An error occurred while streaming the response.");
+    expect(message).toBe("Couldn't stream the response. Try again.");
   });
 
   test("handles AbortError", () => {
     const error = new Error("The operation was aborted");
     error.name = "AbortError";
     const message = handleStreamError(error);
-    expect(message).toBe("Request was cancelled.");
+    expect(message).toBe("Canceled.");
   });
 
   test("handles generic Error", () => {
@@ -181,10 +181,10 @@ describe("Stream Error Handling", () => {
   });
 
   test("handles non-Error values", () => {
-    expect(handleStreamError("string error")).toBe("An unexpected error occurred.");
-    expect(handleStreamError(null)).toBe("An unexpected error occurred.");
-    expect(handleStreamError(undefined)).toBe("An unexpected error occurred.");
-    expect(handleStreamError(123)).toBe("An unexpected error occurred.");
+    expect(handleStreamError("string error")).toBe("Couldn't complete that request. Try again.");
+    expect(handleStreamError(null)).toBe("Couldn't complete that request. Try again.");
+    expect(handleStreamError(undefined)).toBe("Couldn't complete that request. Try again.");
+    expect(handleStreamError(123)).toBe("Couldn't complete that request. Try again.");
   });
 });
 
@@ -244,4 +244,3 @@ const x = 42;
     expect(parsed?.text).toBe(unicodeText);
   });
 });
-

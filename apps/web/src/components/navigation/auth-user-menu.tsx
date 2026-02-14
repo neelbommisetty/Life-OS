@@ -9,6 +9,7 @@ import {
   toastApiError,
   toastApiResponseError,
 } from "@/lib/api/error-toast";
+import { couldnt } from "@/lib/brand";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,14 +64,14 @@ export function AuthUserMenu({ user }: { user: SessionUser | null }) {
       });
 
       if (!response.ok) {
-        await toastApiResponseError(response, "Failed to sign out");
+        await toastApiResponseError(response, couldnt("sign out"));
         return;
       }
 
       router.replace("/auth/sign-in");
       router.refresh();
     } catch (error) {
-      toastApiError(error, "Failed to sign out");
+      toastApiError(error, couldnt("sign out"));
     } finally {
       setSigningOut(false);
     }

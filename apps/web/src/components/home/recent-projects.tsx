@@ -14,7 +14,7 @@ export async function RecentProjects() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold tracking-tight">Recent Projects</h2>
         <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-primary">
-          <Link href="/projects">View All</Link>
+          <Link href="/projects">View all</Link>
         </Button>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -42,7 +42,7 @@ export async function RecentProjects() {
               </CardHeader>
               <CardContent>
                 <div className="text-sm text-muted-foreground">
-                  {project._count.tasks > 0 ? `${project._count.tasks} pending tasks` : 'No pending tasks'}
+                  {project._count.tasks > 0 ? `${project._count.tasks} open tasks` : "No open tasks"}
                 </div>
               </CardContent>
               <CardFooter className="pt-0 text-xs text-muted-foreground flex items-center gap-2">
@@ -57,7 +57,7 @@ export async function RecentProjects() {
             <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center mb-3">
               <Plus className="h-5 w-5" />
             </div>
-            <span className="font-medium">Create Project</span>
+            <span className="font-medium">Create project</span>
           </Card>
         </Link>
       </div>

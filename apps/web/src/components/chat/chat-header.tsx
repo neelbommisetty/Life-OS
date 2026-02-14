@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { ModelOption } from "./model-selector";
+import { brand } from "@/lib/brand";
 
 type Props = {
   threadTitle?: string;
@@ -42,7 +43,7 @@ export function ChatHeader({ threadTitle, activeModel, isDrawer, onMenuToggle }:
         <div className="flex flex-col min-w-0 flex-1">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-sm font-semibold text-foreground shrink-0">
-              AI Chat
+              {brand.terms.assistant}
             </span>
             {threadTitle && (
               <>
@@ -68,7 +69,7 @@ export function ChatHeader({ threadTitle, activeModel, isDrawer, onMenuToggle }:
       <div className="flex items-center gap-2 shrink-0">
         <Badge variant="default" className="hidden sm:flex rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-tight bg-primary/10 text-primary whitespace-nowrap">
           <SparklesIcon className="h-2.5 w-2.5" />
-          <span>AI Assistant</span>
+          <span>{brand.terms.assistant}</span>
         </Badge>
       </div>
     </div>

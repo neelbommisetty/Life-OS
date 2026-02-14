@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import { ChatClient } from "./chat-client";
 import { requireApiSessionUser } from "@/lib/api/session";
+import { brand } from "@/lib/brand";
 
 export const metadata: Metadata = {
-  title: "Chat",
-  description: "Chat with your AI workspace and manage conversation threads.",
+  title: brand.terms.assistant,
+  description: "Draft, summarize, and turn work into a clear next step.",
 };
 
 export default async function ChatPage() {

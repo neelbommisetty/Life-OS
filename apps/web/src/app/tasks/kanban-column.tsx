@@ -70,7 +70,7 @@ export function KanbanColumn({
         ))}
         {tasks.length === 0 && (
           <div className="h-24 border-2 border-dashed border-muted-foreground/20 rounded-lg flex items-center justify-center text-sm text-muted-foreground/50">
-            Drop tasks here
+            Drop to move.
           </div>
         )}
       </div>

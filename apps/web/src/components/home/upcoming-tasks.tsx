@@ -23,8 +23,11 @@ export async function UpcomingTasks() {
       </div>
       <div className="space-y-3">
         {tasks.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground border rounded-lg border-dashed">
-            No upcoming tasks
+          <div className="text-center py-8 text-muted-foreground border rounded-lg border-dashed space-y-2">
+            <p>No tasks due soon.</p>
+            <Button variant="link" className="h-auto p-0 text-muted-foreground" asChild>
+              <Link href="/tasks">Add a task</Link>
+            </Button>
           </div>
         ) : (
           tasks.map((task) => (
@@ -44,7 +47,7 @@ export async function UpcomingTasks() {
                       {format(task.dueDate, "MMM d, h:mm a")}
                     </span>
                   ) : (
-                    <span>No due date</span>
+                    <span>No deadline</span>
                   )}
                 </div>
               </div>
@@ -55,7 +58,7 @@ export async function UpcomingTasks() {
           ))
         )}
         <Button variant="link" className="w-full text-muted-foreground" asChild>
-          <Link href="/tasks">View all tasks</Link>
+          <Link href="/tasks">View all</Link>
         </Button>
       </div>
     </div>

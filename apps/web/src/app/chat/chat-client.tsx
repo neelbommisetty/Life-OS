@@ -29,6 +29,7 @@ import { toastApiError } from "@/lib/api/error-toast";
 import type { ChatThread, ChatMessage, Project } from "@life-os/db";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
+import { brand, couldnt } from "@/lib/brand";
 
 type ChatThreadWithProject = ChatThread & { project: Project | null };
 
@@ -105,14 +106,14 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setNextCursor(result.nextCursor);
         setHasNextPage(!!result.nextCursor);
       } catch (error) {
-        toastApiError(error, "Failed to refresh messages");
+        toastApiError(error, couldnt("refresh messages"));
       }
       // Refetch threads (for lastChattedAt updates)
       try {
         const threadResult = await listThreads({ projectId });
         setThreads(threadResult);
       } catch (error) {
-        toastApiError(error, "Failed to refresh threads");
+        toastApiError(error, couldnt("refresh threads"));
       }
     },
     [pageSize, projectId],
@@ -148,7 +149,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
       setNextCursor(result.nextCursor);
       setHasNextPage(!!result.nextCursor);
     } catch (error) {
-      toastApiError(error, "Failed to fetch more messages");
+      toastApiError(error, couldnt("load more messages"));
     } finally {
       setIsFetchingNextPage(false);
     }
@@ -203,7 +204,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setThreads(threadsResult);
         setModels(modelsResult);
       } catch (error) {
-        toastApiError(error, "Failed to load initial chat data");
+        toastApiError(error, couldnt("load the assistant"));
       } finally {
         setIsLoadingThreads(false);
         setIsLoadingModels(false);
@@ -230,7 +231,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setNextCursor(result.nextCursor);
         setHasNextPage(!!result.nextCursor);
       } catch (error) {
-        toastApiError(error, "Failed to load messages");
+        toastApiError(error, couldnt("load messages"));
       } finally {
         setIsLoadingMessages(false);
       }
@@ -288,7 +289,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setThreads((prev) => [thread, ...prev]);
         setThreadIdInUrl(thread.id);
       } catch (error) {
-        toastApiError(error, "Failed to create thread");
+        toastApiError(error, couldnt("create the thread"));
       }
     });
   };
@@ -301,7 +302,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
         setThreads((prev) => prev.filter((t) => t.id !== effectiveThreadId));
         setThreadIdInUrl(null, true);
       } catch (error) {
-        toastApiError(error, "Failed to archive thread");
+        toastApiError(error, couldnt("archive the thread"));
       }
     });
   };
@@ -325,7 +326,7 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           prev.map((t) => (t.id === updated.id ? updated : t)),
         );
       } catch (error) {
-        const message = toastApiError(error, "Failed to update model");
+        const message = toastApiError(error, couldnt("update the model"));
         setModelError(message);
       }
     });
@@ -353,10 +354,10 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           ),
         );
         if (!result.alreadySaved) {
-          toast.success("Note saved");
+          toast.success(`Saved to ${brand.terms.library}.`);
         }
       } catch (error) {
-        toastApiError(error, "Failed to save note");
+        toastApiError(error, couldnt(`save to ${brand.terms.library.toLowerCase()}`));
       } finally {
         setSavingNoteById((prev) => {
           const next = { ...prev };

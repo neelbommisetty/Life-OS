@@ -13,11 +13,12 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
+import { brand } from "@/lib/brand";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "Analytics",
-  description: "Track AI usage, costs, and performance trends.",
+  description: `Track ${brand.terms.assistant.toLowerCase()} usage, costs, and performance trends.`,
 };
 
 /**
@@ -124,7 +125,7 @@ function ModelBreakdown({ summary }: { summary: UsageSummary }) {
         <CardHeader>
           <CardTitle>Usage by Model</CardTitle>
           <CardDescription>
-            No AI calls recorded yet. Start chatting to see usage breakdown.
+            No activity yet. Use the assistant to see usage here.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -266,21 +267,21 @@ function RecentActivity({ calls }: { calls: RecentAiCall[] }) {
   if (calls.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>
-            No AI calls recorded yet. Start chatting to see activity.
-          </CardDescription>
-        </CardHeader>
-      </Card>
-    );
-  }
+      <CardHeader>
+        <CardTitle>Recent Activity</CardTitle>
+        <CardDescription>
+          No activity yet. Use the assistant to see recent calls.
+        </CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Recent Activity</CardTitle>
-        <CardDescription>Latest AI calls</CardDescription>
+        <CardDescription>Latest calls</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -340,9 +341,9 @@ export default async function AnalyticsPage() {
   return (
     <div className="container mx-auto max-w-6xl space-y-8 px-4 py-8">
       <div>
-        <h1 className="text-2xl font-semibold">AI Usage Analytics</h1>
+        <h1 className="text-2xl font-semibold">Usage analytics</h1>
         <p className="text-muted-foreground">
-          Track your AI usage, costs, and performance over the last 30 days.
+          Track assistant usage, costs, and performance over the last 30 days.
         </p>
       </div>
 

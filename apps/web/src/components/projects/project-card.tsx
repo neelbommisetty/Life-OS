@@ -11,7 +11,7 @@ export function ProjectCard({ project }: ProjectCardProps) {
     ? project.description.length > 150
       ? `${project.description.slice(0, 150)}...`
       : project.description
-    : "No description";
+    : "No description.";
 
   return (
     <Link href={`/projects/${project.id}`}>

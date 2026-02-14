@@ -28,11 +28,11 @@ Required updates for feature work:
 | Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
 | iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in normalizes surrounding email whitespace; auth screens show success/error feedback across sign-in/sign-up/recover/reset | Unit + UI flow coverage for invalid + valid sign-in, whitespace-trimmed sign-in email, recover/reset validations, and gated app unlock |
 | iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
-| iOS Shell | Protected mobile tabs | `apps/ios` home/notes/account tabs | Authenticated users can navigate tabs and load protected data; unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
+| iOS Shell | Protected mobile tabs | `apps/ios` home/library/account tabs | Authenticated users can navigate tabs and load protected data; unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
 | Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
-| Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/recent notes render | Module rendering for empty/non-empty states |
+| Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/library render | Module rendering for empty/non-empty states |
 | Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
-| Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Chat/Tasks/Notes tabs | Edit success/error + tab content render |
+| Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Assistant/Tasks/Library tabs | Edit success/error + tab content render |
 | Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
 | Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
 | Notes | Note selection and URL sync | `/notes` | Selecting notes updates `noteId`; first note auto-selects on `/notes` when available | Selection behavior + URL state + default selection |
@@ -76,7 +76,7 @@ Required updates for feature work:
 | Build Platform | Dynamic rendering boundary | app layout + API-backed routes | `next build` succeeds without build-time API base URL while runtime checks still execute on request |
 | Build Platform | Monorepo runtime prep orchestration | root `postinstall` / `prebuild` / `vercel:install:*` scripts and app Vercel `installCommand` | Install/build flows deterministically run Prisma client generation plus DB/AI workspace runtime builds before API/web build and type steps |
 | iOS Platform | Auth/API client contract handling | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`APIClient`, `AuthService`, `AppState`) | iOS maps to `/api/auth/*` contracts, trims surrounding whitespace from auth email inputs before request submission, keeps an in-memory fallback cookie jar from auth `Set-Cookie` headers for subsequent API requests, treats empty/null session payloads as signed-out, enforces login gate, and transitions to auth on `401` responses |
-| iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`IOSMockAPI`) | Deterministic auth/home/notes/account responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests |
+| iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`IOSMockAPI`) | Deterministic auth/home/library/account responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests |
 
 ## Core Regression Checklist
 Run this set before release and after large refactors:

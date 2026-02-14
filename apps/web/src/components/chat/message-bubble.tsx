@@ -39,7 +39,7 @@ export function MessageBubble({
 
   const modelLabelText = useMemo(() => {
     // If no label is set, it's autorouting
-    if (!effectiveModelLabel) return "Auto routing";
+    if (!effectiveModelLabel) return "Auto";
     if (!effectiveModelProvider) return effectiveModelLabel;
     const providerName =
       effectiveModelProvider === "openai"
@@ -152,7 +152,7 @@ export function MessageBubble({
         <div className="flex flex-col gap-1 min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-foreground">
-              Life-OS AI
+              Assistant
             </span>
             <span className="text-[11px] text-muted-foreground">
               {timestampLabel}

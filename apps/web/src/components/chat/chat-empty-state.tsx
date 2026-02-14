@@ -2,12 +2,11 @@
 
 import {
   LightbulbIcon,
-  BookOpenIcon,
-  SparklesIcon,
   MessageSquareIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
+import { brand } from "@/lib/brand";
 
 type PromptSuggestion = {
   label: string;
@@ -17,19 +16,22 @@ type PromptSuggestion = {
 
 const SUGGESTIONS: PromptSuggestion[] = [
   {
-    label: "Brainstorm ideas",
-    prompt: "Help me brainstorm creative ideas for a new project I'm working on.",
+    label: "Plan today",
+    prompt:
+      "Turn these tasks and deadlines into a plan with 2–3 focus blocks:\n\n- \n- \n- ",
     icon: LightbulbIcon,
   },
   {
-    label: "Learn something",
-    prompt: "Explain how quantum computing works in simple terms.",
-    icon: BookOpenIcon,
+    label: "Draft a message",
+    prompt:
+      "Draft an email/message to [person] about [topic]. Keep it concise and actionable.",
+    icon: MessageSquareIcon,
   },
   {
-    label: "Get creative",
-    prompt: "Write a short story about a robot discovering emotions for the first time.",
-    icon: SparklesIcon,
+    label: "Summarize into next steps",
+    prompt:
+      "Summarize this and list the next actions (with owners and due dates if stated):\n\n",
+    icon: MessageSquareIcon,
   },
 ];
 
@@ -46,11 +48,11 @@ export function ChatEmptyState({ onSelectPrompt }: Props) {
 
       <div className="max-w-md text-center">
         <h3 className="text-lg font-semibold text-foreground">
-          Welcome to AI Chat
+          {brand.terms.assistant}
         </h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          I&apos;m here to help you brainstorm ideas, answer questions, learn new things,
-          or just have a creative conversation. What would you like to explore?
+          Share what you&apos;re working on. I can draft, summarize, and turn deadlines
+          into a plan. You can review and edit anything.
         </p>
       </div>
 

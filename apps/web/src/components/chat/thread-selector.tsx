@@ -161,7 +161,7 @@ function ThreadsList({
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 p-2 space-y-4">
       {directChats.length === 0 && projectThreads.length === 0 ? (
         <div className="px-3 py-4 text-center text-xs text-muted-foreground">
-          {searchQuery ? "No matching threads found." : "No threads yet."}
+          {searchQuery ? "No matching threads." : "No threads yet. Create one."}
         </div>
       ) : (
         <>
@@ -169,7 +169,7 @@ function ThreadsList({
           {directChats.length > 0 && (
             <div className="space-y-0.5">
               <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                Direct Chats
+                Threads
               </div>
               {directChats.map((thread) => {
                 const isSelected = value === thread.id;
@@ -212,7 +212,7 @@ function ThreadsList({
           {projectThreads.length > 0 && (
             <div className="space-y-2">
               <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
-                Project Threads
+                Project threads
               </div>
               {projectThreads.map(({ project, threads: projectThreadList }) => {
                 const isCollapsed = collapsedProjects.has(project.id);
