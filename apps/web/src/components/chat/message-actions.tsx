@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { CheckIcon, CopyIcon, FileTextIcon, RotateCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { brand, couldnt } from "@/lib/brand";
 
 export function getMessageCopyText(content: string): string {
   return content;
@@ -35,9 +36,9 @@ export function MessageActions({
       await navigator.clipboard.writeText(
         getMessageCopyText(messageContent)
       );
-      toast.success("Copied to clipboard");
+      toast.success("Copied.");
     } catch {
-      toast.error("Failed to copy");
+      toast.error(couldnt("copy that"));
     }
   }, [messageContent]);
 
@@ -58,7 +59,7 @@ export function MessageActions({
       {isSavedNote ? (
         <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
           <CheckIcon className="h-3 w-3" />
-          Saved as note
+          {`Saved to ${brand.terms.library.toLowerCase()}`}
         </span>
       ) : onSaveAsNote ? (
         <Button
@@ -68,10 +69,10 @@ export function MessageActions({
           variant="ghost"
           size="xs"
           className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium"
-          title="Save as note"
+          title={`Save to ${brand.terms.library.toLowerCase()}`}
         >
           <FileTextIcon className="h-3 w-3" />
-          Save as note
+          {`Save to ${brand.terms.library.toLowerCase()}`}
         </Button>
       ) : null}
       {onRegenerate && (

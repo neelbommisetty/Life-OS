@@ -24,6 +24,7 @@ import { toastApiError } from "@/lib/api/error-toast";
 import type { Note, Project } from "@life-os/db";
 import { NoteSelector, NoteEditor } from "@/components/notes";
 import { FileText } from "lucide-react";
+import { brand, couldnt } from "@/lib/brand";
 
 type NoteWithProject = Note & { project: Project | null };
 
@@ -100,7 +101,7 @@ export function NotesClient({
     startTransition(async () => {
       try {
         const created = await createNote({
-          title: "New Note",
+          title: "Untitled note",
           content: "",
           projectId,
         });
@@ -109,7 +110,7 @@ export function NotesClient({
         setNoteIdInUrl(created.id);
         setIsMobileDrawerOpen(false);
       } catch (error) {
-        toastApiError(error, "Failed to create note");
+        toastApiError(error, couldnt("create the note"));
       }
     });
   };
@@ -134,7 +135,7 @@ export function NotesClient({
               }
               resolve(true);
             } catch (error) {
-              toastApiError(error, "Failed to save note");
+              toastApiError(error, couldnt("save the note"));
               resolve(false);
             }
           })();
@@ -160,7 +161,7 @@ export function NotesClient({
         setDeleteDialogOpen(false);
         setNoteToDelete(null);
       } catch (error) {
-        toastApiError(error, "Failed to delete note");
+        toastApiError(error, couldnt("delete the note"));
       }
     });
   };
@@ -212,11 +213,10 @@ export function NotesClient({
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-foreground">
-                    Select a note
+                    No note selected
                   </h3>
                   <p className="text-sm mt-1">
-                    Choose a note from the sidebar or create a new one to get
-                    started.
+                    Choose a note from the sidebar, or capture a new one.
                   </p>
                 </div>
               </div>
@@ -259,17 +259,17 @@ export function NotesClient({
                 </div>
                 <div>
                   <h3 className="text-lg font-medium text-foreground">
-                    Select a note
+                    No note selected
                   </h3>
                   <p className="text-sm mt-1">
-                    Open the menu to choose a note or create a new one.
+                    Open the menu to choose a note, or capture a new one.
                   </p>
                 </div>
                 <button
                   onClick={() => setIsMobileDrawerOpen(true)}
                   className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium"
                 >
-                  Open Notes
+                  Open {brand.terms.library}
                 </button>
               </div>
             </div>

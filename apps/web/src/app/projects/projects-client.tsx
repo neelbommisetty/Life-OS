@@ -22,6 +22,7 @@ import { createProject, type CreateProjectInput } from "@/lib/projects";
 import { ProjectCard } from "@/components/projects/project-card";
 import { toastApiError } from "@/lib/api/error-toast";
 import type { Project } from "@life-os/db";
+import { brand, couldnt } from "@/lib/brand";
 
 interface ProjectsClientProps {
   initialProjects: Project[];
@@ -49,7 +50,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
       router.push(`/projects/${project.id}`);
       router.refresh();
     } catch (error) {
-      toastApiError(error, "Failed to create project");
+      toastApiError(error, couldnt("create the project"));
     } finally {
       setIsCreating(false);
     }
@@ -61,21 +62,21 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
         <div>
           <h1 className="text-3xl font-bold">Projects</h1>
           <p className="text-muted-foreground mt-1">
-            Organize your threads, tasks, and notes
+            Group threads, tasks, and {brand.terms.library.toLowerCase()}.
           </p>
         </div>
         <AlertDialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
           <AlertDialogTrigger asChild>
             <Button>
               <PlusIcon className="h-4 w-4 mr-2" />
-              New Project
+              Create project
             </Button>
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Create New Project</AlertDialogTitle>
+              <AlertDialogTitle>Create project</AlertDialogTitle>
               <AlertDialogDescription>
-                Create a project to organize related threads, tasks, and notes.
+                Create a project to group related threads, tasks, and notes.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="space-y-4 py-4">
@@ -83,7 +84,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
                 <Label htmlFor="name">Name</Label>
                 <Input
                   id="name"
-                  placeholder="My Project"
+                  placeholder="Project name"
                   value={formData.name}
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
@@ -105,10 +106,10 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
                 />
               </div>
               <div>
-                <Label htmlFor="aiInstructions">AI Instructions (optional)</Label>
+                <Label htmlFor="aiInstructions">Assistant instructions (optional)</Label>
                 <Textarea
                   id="aiInstructions"
-                  placeholder="Instructions for AI when chatting in this project context"
+                  placeholder="How the assistant should behave in this project"
                   value={formData.aiInstructions}
                   onChange={(e) =>
                     setFormData({ ...formData, aiInstructions: e.target.value })
@@ -124,7 +125,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
                 onClick={handleCreate}
                 disabled={isCreating || !formData.name.trim()}
               >
-                {isCreating ? "Creating..." : "Create Project"}
+                {isCreating ? "Creating..." : "Create project"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -134,10 +135,10 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
       {projects.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">No projects yet</p>
+            <p className="text-muted-foreground mb-4">No projects yet.</p>
             <Button onClick={() => setIsCreateOpen(true)}>
               <PlusIcon className="h-4 w-4 mr-2" />
-              Create your first project
+              Create project
             </Button>
           </div>
         </div>

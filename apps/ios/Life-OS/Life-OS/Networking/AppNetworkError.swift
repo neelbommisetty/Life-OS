@@ -10,15 +10,15 @@ enum AppNetworkError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Invalid API URL. Set LIFE_OS_API_BASE_URL for iOS app config."
+            return "Couldn't connect. Check LIFE_OS_API_BASE_URL."
         case .invalidResponse:
-            return "Invalid server response"
+            return Brand.couldnt("read the server response")
         case .unauthorized(let message):
             return message
         case .server(_, let message):
             return message
         case .invalidBody:
-            return "Invalid request payload"
+            return Brand.couldnt("send that request")
         }
     }
 

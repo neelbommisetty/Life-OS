@@ -12,6 +12,7 @@ import {
   toastApiError,
   toastApiResponseError,
 } from "@/lib/api/error-toast";
+import { couldnt } from "@/lib/brand";
 
 type AuthViewPath =
   | "sign-in"
@@ -65,7 +66,7 @@ export function AuthClient({ path }: AuthClientProps) {
       });
 
       if (!response.ok) {
-        const message = await toastApiResponseError(response, "Sign in failed");
+        const message = await toastApiResponseError(response, couldnt("sign in"));
         setError(message);
         return;
       }
@@ -73,7 +74,7 @@ export function AuthClient({ path }: AuthClientProps) {
       router.replace(callbackURL);
       router.refresh();
     } catch (error) {
-      setError(toastApiError(error, "Sign in failed"));
+      setError(toastApiError(error, couldnt("sign in")));
     } finally {
       setLoading(false);
     }
@@ -106,7 +107,7 @@ export function AuthClient({ path }: AuthClientProps) {
       });
 
       if (!response.ok) {
-        const message = await toastApiResponseError(response, "Sign up failed");
+        const message = await toastApiResponseError(response, couldnt("create your account"));
         setError(message);
         return;
       }
@@ -114,7 +115,7 @@ export function AuthClient({ path }: AuthClientProps) {
       router.replace(callbackURL);
       router.refresh();
     } catch (error) {
-      setError(toastApiError(error, "Sign up failed"));
+      setError(toastApiError(error, couldnt("create your account")));
     } finally {
       setLoading(false);
     }
@@ -146,7 +147,7 @@ export function AuthClient({ path }: AuthClientProps) {
       if (!response.ok) {
         const message = await toastApiResponseError(
           response,
-          "Password reset request failed",
+          couldnt("send the reset link"),
         );
         setError(message);
         return;
@@ -156,7 +157,7 @@ export function AuthClient({ path }: AuthClientProps) {
         "If that email exists, a password reset link has been sent.",
       );
     } catch (error) {
-      setError(toastApiError(error, "Password reset request failed"));
+      setError(toastApiError(error, couldnt("send the reset link")));
     } finally {
       setLoading(false);
     }
@@ -169,12 +170,12 @@ export function AuthClient({ path }: AuthClientProps) {
     const confirmPassword = String(form.get("confirmPassword") ?? "");
 
     if (!resetToken) {
-      setError("Missing reset token");
+      setError("Missing reset token. Open the reset link again.");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Passwords don't match.");
       return;
     }
 
@@ -198,7 +199,7 @@ export function AuthClient({ path }: AuthClientProps) {
       if (!response.ok) {
         const message = await toastApiResponseError(
           response,
-          "Password reset failed",
+          couldnt("reset your password"),
         );
         setError(message);
         return;
@@ -207,7 +208,7 @@ export function AuthClient({ path }: AuthClientProps) {
       router.replace("/auth/sign-in");
       router.refresh();
     } catch (error) {
-      setError(toastApiError(error, "Password reset failed"));
+      setError(toastApiError(error, couldnt("reset your password")));
     } finally {
       setLoading(false);
     }

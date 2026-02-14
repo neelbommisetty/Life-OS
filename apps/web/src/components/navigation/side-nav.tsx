@@ -19,13 +19,14 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { brand } from "@/lib/brand";
 
 const navItems = [
   { icon: Home, label: "Home", href: "/" },
-  { icon: MessageSquare, label: "AI Chat", href: "/chat" },
+  { icon: MessageSquare, label: brand.terms.assistant, href: "/chat" },
   { icon: FolderKanban, label: "Projects", href: "/projects" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
-  { icon: FileText, label: "Notes", href: "/notes" },
+  { icon: FileText, label: brand.terms.library, href: "/notes" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
 ];
 

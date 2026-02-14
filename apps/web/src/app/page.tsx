@@ -9,10 +9,11 @@ import {
   UpcomingTasksSkeleton,
   RecentNotesSkeleton
 } from "@/components/home/home-skeletons";
+import { brand } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "Home",
-  description: "View your dashboard with recent projects, tasks, and notes.",
+  description: `Review what’s next across projects, tasks, and ${brand.terms.library.toLowerCase()}.`,
 };
 
 export default async function Page() {
@@ -22,9 +23,9 @@ export default async function Page() {
 
   const now = new Date();
   const hour = now.getHours();
-  let greeting = "Good Evening";
-  if (hour >= 5 && hour < 12) greeting = "Good Morning";
-  else if (hour >= 12 && hour < 17) greeting = "Good Afternoon";
+  let greeting = "Good evening";
+  if (hour >= 5 && hour < 12) greeting = "Good morning";
+  else if (hour >= 12 && hour < 17) greeting = "Good afternoon";
 
   const dateString = now.toLocaleDateString("en-US", {
     weekday: "short",
@@ -41,7 +42,7 @@ export default async function Page() {
               {greeting}, {firstName}
             </h1>
             <p className="text-lg text-muted-foreground">
-              Building what matters, one step at a time.
+              Here’s what’s next.
             </p>
           </div>
           <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-secondary/50 border border-border w-fit h-fit mt-2">

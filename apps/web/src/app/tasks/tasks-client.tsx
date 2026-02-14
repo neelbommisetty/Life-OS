@@ -44,6 +44,7 @@ import type { TaskStatus, Priority } from "@life-os/db";
 import { KanbanColumn } from "./kanban-column";
 import { type TaskWithProject } from "./task-card";
 import { selectDisplayedTasks } from "./tasks-utils";
+import { couldnt } from "@/lib/brand";
 
 type TaskDraft = {
   id?: string;
@@ -113,7 +114,7 @@ export function TasksClient({
         }
       } catch (error) {
         if (!cancelled) {
-          toastApiError(error, "Failed to load tasks");
+          toastApiError(error, couldnt("load tasks"));
         }
       }
     }
@@ -134,7 +135,7 @@ export function TasksClient({
       });
       setTasks(result);
     } catch (error) {
-      toastApiError(error, "Failed to load tasks");
+      toastApiError(error, couldnt("load tasks"));
     }
   }, [search, projectId]);
 
@@ -174,7 +175,7 @@ export function TasksClient({
           setSheetOpen(false);
           await loadTasks();
         } catch (error) {
-          toastApiError(error, "Failed to update task");
+          toastApiError(error, couldnt("update the task"));
         }
       });
     } else {
@@ -191,7 +192,7 @@ export function TasksClient({
           setSheetOpen(false);
           await loadTasks();
         } catch (error) {
-          toastApiError(error, "Failed to create task");
+          toastApiError(error, couldnt("create the task"));
         }
       });
     }
@@ -211,7 +212,7 @@ export function TasksClient({
         setTaskToDelete(null);
         await loadTasks();
       } catch (error) {
-        toastApiError(error, "Failed to delete task");
+        toastApiError(error, couldnt("delete the task"));
       }
     });
   };
@@ -228,7 +229,7 @@ export function TasksClient({
       // await loadTasks();
       // Actually, reloading might be jarring. We can stick with optimistic update if success.
     } catch (error) {
-      toastApiError(error, "Failed to move task");
+      toastApiError(error, couldnt("move the task"));
       // Revert on failure
       void loadTasks();
     }
@@ -242,7 +243,7 @@ export function TasksClient({
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
             <p className="text-muted-foreground mt-1">
-              Manage your tasks with the Kanban board
+              Keep tasks moving, with clear next steps.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -251,7 +252,7 @@ export function TasksClient({
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search..."
+                placeholder="Search tasks..."
                 className="pl-9 w-[200px]"
               />
             </div>
@@ -263,7 +264,7 @@ export function TasksClient({
             </Button>
             <Button onClick={handleCreate}>
               <Plus className="h-4 w-4 mr-2" />
-              New Task
+              Create task
             </Button>
           </div>
         </div>
@@ -301,11 +302,11 @@ export function TasksClient({
           <SheetContent className="w-full sm:max-w-md">
             <form onSubmit={handleSave} className="flex flex-col h-full">
               <SheetHeader>
-                <SheetTitle>{isEdit ? "Edit Task" : "Create Task"}</SheetTitle>
+                <SheetTitle>{isEdit ? "Edit task" : "Create task"}</SheetTitle>
                 <SheetDescription>
                   {isEdit
-                    ? "Update task details below"
-                    : "Fill in the details to create a new task"}
+                    ? "Update task details."
+                    : "Add details for the new task."}
                 </SheetDescription>
               </SheetHeader>
 
@@ -375,7 +376,7 @@ export function TasksClient({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Due Date</label>
+                  <label className="text-sm font-medium">Deadline</label>
                   <Input
                     type="date"
                     value={draft.dueDate}
@@ -401,8 +402,8 @@ export function TasksClient({
                   {isCreating || isUpdating
                     ? "Saving..."
                     : isEdit
-                      ? "Save Changes"
-                      : "Create Task"}
+                      ? "Save changes"
+                      : "Create task"}
                 </Button>
               </SheetFooter>
             </form>

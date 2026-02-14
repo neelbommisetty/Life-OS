@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { UnhandledErrorToaster } from "@/components/providers/unhandled-error-toaster";
 import { getApiSessionUser } from "@/lib/api/session";
+import { brand } from "@/lib/brand";
 import "@fontsource/fira-code";
 import "./globals.css";
 
@@ -28,8 +29,7 @@ export const metadata: Metadata = {
     default: "Life-OS",
     template: "%s | Life-OS",
   },
-  description:
-    "Your personal productivity platform to organize work, ideas, and tasks.",
+  description: brand.oneSentenceDescription,
 };
 
 export default async function RootLayout({

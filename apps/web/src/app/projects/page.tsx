@@ -4,7 +4,7 @@ import { ProjectsClient } from "./projects-client";
 
 export const metadata: Metadata = {
   title: "Projects",
-  description: "Browse and manage your projects.",
+  description: "Group related tasks and knowledge by project.",
 };
 
 export default async function ProjectsPage() {

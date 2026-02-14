@@ -22,7 +22,7 @@ struct AuthenticatedShellView: View {
             NotesTabView(appState: appState)
                 .tag(AppTab.notes)
                 .tabItem {
-                    Label("Notes", systemImage: "note.text")
+                    Label(Brand.Terms.library, systemImage: "note.text")
                 }
 
             AccountTabView(appState: appState)
@@ -50,9 +50,9 @@ struct HomeTabView: View {
                 Section {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Welcome")
+                            Text(greeting)
                                 .font(.headline)
-                            Text(appState.sessionUser?.name ?? appState.sessionUser?.email ?? "Authenticated User")
+                            Text(appState.sessionUser?.name ?? appState.sessionUser?.email ?? "there")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
                         }
@@ -82,28 +82,28 @@ struct HomeTabView: View {
                     HomeMetricRow(
                         title: "Recent projects",
                         count: appState.homeSnapshot.recentProjects.count,
-                        subtitle: appState.homeSnapshot.recentProjects.first?.name ?? "No projects yet",
+                        subtitle: appState.homeSnapshot.recentProjects.first?.name ?? "No projects yet.",
                         icon: "folder"
                     )
 
                     HomeMetricRow(
                         title: "Upcoming tasks",
                         count: appState.homeSnapshot.upcomingTasks.count,
-                        subtitle: appState.homeSnapshot.upcomingTasks.first?.title ?? "No tasks pending",
+                        subtitle: appState.homeSnapshot.upcomingTasks.first?.title ?? "No tasks due soon.",
                         icon: "checklist"
                     )
 
                     HomeMetricRow(
-                        title: "Recent notes",
+                        title: Brand.Terms.library,
                         count: appState.homeSnapshot.recentNotes.count,
-                        subtitle: appState.homeSnapshot.recentNotes.first?.title ?? "No notes yet",
+                        subtitle: appState.homeSnapshot.recentNotes.first?.title ?? "No notes here yet.",
                         icon: "note.text"
                     )
                 }
 
-                Section("Quick Capture") {
+                Section("Capture") {
                     Label(
-                        speechRecognizer.isRecording ? "Live" : "Ready",
+                        speechRecognizer.isRecording ? "Recording" : "Ready",
                         systemImage: speechRecognizer.isRecording ? "waveform.circle.fill" : "checkmark.circle.fill"
                     )
                     .foregroundStyle(speechRecognizer.isRecording ? .red : .secondary)
@@ -115,7 +115,7 @@ struct HomeTabView: View {
                             .background(Color.clear)
 
                         if noteText.isEmpty {
-                            Text("Type here or tap the mic to append speech...")
+                            Text("Type here, or use the mic to append speech…")
                                 .foregroundStyle(.tertiary)
                                 .padding(.top, 8)
                                 .padding(.leading, 6)
@@ -148,7 +148,7 @@ struct HomeTabView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Life-OS")
+            .navigationTitle(Brand.productName)
         }
     }
 
@@ -174,9 +174,16 @@ struct HomeTabView: View {
 
     private var statusText: String {
         if speechRecognizer.isRecording {
-            return speechRecognizer.liveTranscript.isEmpty ? "Listening..." : speechRecognizer.liveTranscript
+            return speechRecognizer.liveTranscript.isEmpty ? "Listening…" : speechRecognizer.liveTranscript
         }
-        return "Tap the mic to append speech"
+        return "Tap the mic to append speech."
+    }
+
+    private var greeting: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        if hour >= 5 && hour < 12 { return "Good morning" }
+        if hour >= 12 && hour < 17 { return "Good afternoon" }
+        return "Good evening"
     }
 }
 
@@ -216,7 +223,7 @@ struct NotesTabView: View {
         NavigationStack {
             List {
                 if appState.notes.isEmpty {
-                    Text("No notes yet")
+                    Text("No notes here yet.")
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(appState.notes) { note in
@@ -242,7 +249,7 @@ struct NotesTabView: View {
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Notes")
+            .navigationTitle(Brand.Terms.library)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if appState.isRefreshingProtectedData {
@@ -288,13 +295,13 @@ struct AccountTabView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Signed In") {
+                Section("Signed in") {
                     LabeledContent("Name") {
-                        Text(appState.sessionUser?.name ?? "No name")
+                        Text(appState.sessionUser?.name ?? "Not set")
                     }
 
                     LabeledContent("Email") {
-                        Text(appState.sessionUser?.email ?? "No email")
+                        Text(appState.sessionUser?.email ?? "Not set")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -372,7 +379,7 @@ struct AccountTabView: View {
     }
 
     private var profileSettingsSection: some View {
-        Section("Profile Settings") {
+        Section("Profile") {
             TextField("Name", text: $profileName)
                 .textContentType(.name)
                 .accessibilityIdentifier("account.profile.name")
@@ -397,7 +404,7 @@ struct AccountTabView: View {
     }
 
     private var securitySettingsSection: some View {
-        Section("Security Settings") {
+        Section("Security") {
             SecureField("Current password", text: $currentPassword)
                 .textContentType(.password)
                 .accessibilityIdentifier("account.security.currentPassword")

@@ -25,12 +25,12 @@ final class SpeechRecognizer: NSObject, ObservableObject {
             let hasMicAccess = await requestMicAuthorization()
 
             guard hasSpeechAccess else {
-                errorMessage = "Speech recognition permission is required."
+                errorMessage = "Enable Speech Recognition to use voice input."
                 return
             }
 
             guard hasMicAccess else {
-                errorMessage = "Microphone permission is required."
+                errorMessage = "Enable Microphone access to use voice input."
                 return
             }
 
@@ -52,7 +52,7 @@ final class SpeechRecognizer: NSObject, ObservableObject {
 
     private func beginRecognition() {
         guard let recognizer, recognizer.isAvailable else {
-            errorMessage = "Speech recognition is currently unavailable."
+            errorMessage = Brand.couldnt("start voice input")
             return
         }
 
@@ -83,14 +83,14 @@ final class SpeechRecognizer: NSObject, ObservableObject {
                 }
 
                 if error != nil, self.isRecording {
-                    self.errorMessage = "Could not transcribe audio."
+                    self.errorMessage = Brand.couldnt("transcribe audio")
                     self.stopRecording()
                 }
             }
 
             isRecording = true
         } catch {
-            errorMessage = "Failed to start recording."
+            errorMessage = Brand.couldnt("start voice input")
             stopRecording()
         }
     }

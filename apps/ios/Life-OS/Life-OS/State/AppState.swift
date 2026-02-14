@@ -13,13 +13,13 @@ enum AuthFlow: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .signIn:
-            return "Sign In"
+            return "Sign in"
         case .signUp:
-            return "Sign Up"
+            return "Create account"
         case .recover:
-            return "Recover"
+            return "Forgot password"
         case .resetPassword:
-            return "Reset"
+            return "Set new password"
         }
     }
 }
@@ -80,7 +80,7 @@ final class AppState: ObservableObject {
         resetToken = token
         authFlow = .resetPassword
         authError = nil
-        authSuccess = "Reset token received. Set a new password to continue."
+        authSuccess = "Reset link opened. Set a new password to continue."
     }
 
     func signIn(email: String, password: String) async {
@@ -88,11 +88,11 @@ final class AppState: ObservableObject {
 
         guard !isSubmittingAuth else { return }
         guard !normalizedEmail.isEmpty else {
-            authError = "Email is required"
+            authError = "Email required."
             return
         }
         guard !password.isEmpty else {
-            authError = "Password is required"
+            authError = "Password required."
             return
         }
 
@@ -118,15 +118,15 @@ final class AppState: ObservableObject {
 
         guard !isSubmittingAuth else { return }
         guard !trimmedName.isEmpty else {
-            authError = "Name is required"
+            authError = "Name required."
             return
         }
         guard !normalizedEmail.isEmpty else {
-            authError = "Email is required"
+            authError = "Email required."
             return
         }
         guard !password.isEmpty else {
-            authError = "Password is required"
+            authError = "Password required."
             return
         }
 
@@ -152,7 +152,7 @@ final class AppState: ObservableObject {
 
         guard !isSubmittingAuth else { return }
         guard !normalizedEmail.isEmpty else {
-            authError = "Email is required"
+            authError = "Email required."
             return
         }
 
@@ -173,17 +173,17 @@ final class AppState: ObservableObject {
 
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty else {
-            authError = "Missing reset token"
+            authError = "Missing reset token. Open the reset link again."
             return
         }
 
         guard newPassword == confirmPassword else {
-            authError = "Passwords do not match"
+            authError = "Passwords don't match."
             return
         }
 
         guard !newPassword.isEmpty else {
-            authError = "New password is required"
+            authError = "New password required."
             return
         }
 
@@ -194,7 +194,7 @@ final class AppState: ObservableObject {
         do {
             try await authService.resetPassword(token: trimmedToken, newPassword: newPassword)
             authFlow = .signIn
-            authSuccess = "Password updated. Please sign in."
+            authSuccess = "Password updated. Sign in."
         } catch {
             authError = error.userFacingMessage
         }
@@ -235,7 +235,7 @@ final class AppState: ObservableObject {
             if error.isUnauthorized {
                 sessionUser = nil
                 authFlow = .signIn
-                authError = "Session expired. Please sign in again."
+                authError = "Session expired. Sign in again."
             } else {
                 protectedError = error.userFacingMessage
             }
@@ -252,7 +252,7 @@ final class AppState: ObservableObject {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedName.isEmpty else {
-            accountError = "Name is required"
+            accountError = "Name required."
             return
         }
 
@@ -270,12 +270,12 @@ final class AppState: ObservableObject {
                 }
                 sessionUser = refreshedSession
             }
-            accountSuccess = "Profile updated"
+            accountSuccess = "Profile updated."
         } catch {
             if error.isUnauthorized {
                 sessionUser = nil
                 authFlow = .signIn
-                authError = "Session expired. Please sign in again."
+                authError = "Session expired. Sign in again."
             } else {
                 accountError = error.userFacingMessage
             }
@@ -286,17 +286,17 @@ final class AppState: ObservableObject {
         guard !isSubmittingAuth else { return }
 
         guard !currentPassword.isEmpty else {
-            accountError = "Current password is required"
+            accountError = "Current password required."
             return
         }
 
         guard !newPassword.isEmpty else {
-            accountError = "New password is required"
+            accountError = "New password required."
             return
         }
 
         guard newPassword == confirmPassword else {
-            accountError = "Passwords do not match"
+            accountError = "Passwords don't match."
             return
         }
 
@@ -309,12 +309,12 @@ final class AppState: ObservableObject {
                 currentPassword: currentPassword,
                 newPassword: newPassword
             )
-            accountSuccess = "Password updated"
+            accountSuccess = "Password updated."
         } catch {
             if error.isUnauthorized {
                 sessionUser = nil
                 authFlow = .signIn
-                authError = "Session expired. Please sign in again."
+                authError = "Session expired. Sign in again."
             } else {
                 accountError = error.userFacingMessage
             }

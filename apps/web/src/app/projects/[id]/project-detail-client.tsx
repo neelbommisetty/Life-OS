@@ -42,6 +42,7 @@ import type { Project, ChatThread, Task, Note } from "@life-os/db";
 import { TasksClient } from "@/app/tasks/tasks-client";
 import { NotesClient } from "@/app/notes/notes-client";
 import { ChatClient } from "@/app/chat/chat-client";
+import { brand, couldnt } from "@/lib/brand";
 
 interface ProjectDetailClientProps {
   project: Project & {
@@ -76,7 +77,7 @@ export function ProjectDetailClient({
       setIsEditOpen(false);
       router.refresh();
     } catch (error) {
-      toastApiError(error, "Failed to update project");
+      toastApiError(error, couldnt("update the project"));
     } finally {
       setIsEditing(false);
     }
@@ -119,7 +120,7 @@ export function ProjectDetailClient({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Edit Project</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Update project details and AI instructions.
+                    Update project details and assistant instructions.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <div className="space-y-4 py-4">
@@ -153,7 +154,7 @@ export function ProjectDetailClient({
                     />
                   </div>
                   <div>
-                    <Label htmlFor="edit-aiInstructions">AI Instructions</Label>
+                    <Label htmlFor="edit-aiInstructions">Assistant instructions</Label>
                     <Textarea
                       id="edit-aiInstructions"
                       value={editFormData.aiInstructions}
@@ -194,7 +195,7 @@ export function ProjectDetailClient({
             </TabsTrigger>
             <TabsTrigger value="chat" className="gap-2">
               <MessageSquareIcon className="h-4 w-4" />
-              Chat
+              {brand.terms.assistant}
             </TabsTrigger>
             <TabsTrigger value="tasks" className="gap-2">
               <CheckSquareIcon className="h-4 w-4" />
@@ -202,7 +203,7 @@ export function ProjectDetailClient({
             </TabsTrigger>
             <TabsTrigger value="notes" className="gap-2">
               <FileTextIcon className="h-4 w-4" />
-              Notes
+              {brand.terms.library}
             </TabsTrigger>
           </TabsList>
 
@@ -219,7 +220,7 @@ export function ProjectDetailClient({
                   <div>
                     <h3 className="font-medium mb-1">Description</h3>
                     <p className="text-sm text-muted-foreground">
-                      {project.description || "No description provided."}
+                      {project.description || "No description."}
                     </p>
                   </div>
                   <div>
@@ -235,13 +236,13 @@ export function ProjectDetailClient({
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Bot className="h-5 w-5" />
-                    AI Instructions
+                    Assistant instructions
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground whitespace-pre-wrap">
                     {project.aiInstructions ||
-                      "No specific AI instructions configured for this project."}
+                      "No assistant instructions set for this project."}
                   </p>
                 </CardContent>
               </Card>

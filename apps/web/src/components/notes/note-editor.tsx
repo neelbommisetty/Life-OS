@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toastApiError } from "@/lib/api/error-toast";
 import { toast } from "sonner";
+import { brand, couldnt } from "@/lib/brand";
 
 type NoteEditorProps = {
   noteId: string | null;
@@ -108,10 +109,10 @@ export function NoteEditor({
         contentRef.current === currentContent
       ) {
         setIsDirty(false);
-        toast.success("Note saved");
+        toast.success("Saved.");
       }
     } catch (error) {
-      toastApiError(error, "Failed to save note");
+      toastApiError(error, couldnt("save the note"));
     }
   }, [noteId, onSave]);
 
@@ -130,11 +131,11 @@ export function NoteEditor({
         void onSave(noteId, titleToSave, contentToSave)
           .then((didSave) => {
             if (didSave) {
-              toast.success("Note saved");
+              toast.success("Saved.");
             }
           })
           .catch((error) => {
-            toastApiError(error, "Failed to save note");
+            toastApiError(error, couldnt("save the note"));
           });
       }
     };
@@ -164,7 +165,7 @@ export function NoteEditor({
         <div className="max-w-md space-y-4">
           <p className="text-lg font-medium">No note selected</p>
           <p className="text-sm">
-            Select a note from the list or create a new one to get started.
+            Choose a note, or capture a new one.
           </p>
           {onMenuToggle && (
             <Button
@@ -172,7 +173,7 @@ export function NoteEditor({
               onClick={onMenuToggle}
               className="sm:hidden"
             >
-              Open Notes List
+              Open {brand.terms.library}
             </Button>
           )}
         </div>
@@ -207,7 +208,7 @@ export function NoteEditor({
                 if (e.key === "Enter") setIsEditingTitle(false);
               }}
               autoFocus
-              placeholder="Note Title"
+              placeholder="Title"
               className="text-lg font-semibold border-none shadow-none focus-visible:ring-0 px-0 h-auto bg-transparent placeholder:text-muted-foreground/50 w-[200px] sm:w-[300px] md:w-[400px]"
             />
           ) : (
@@ -216,14 +217,14 @@ export function NoteEditor({
                 className="text-lg font-semibold truncate max-w-[200px] sm:max-w-[300px] md:max-w-[400px] cursor-pointer hover:opacity-70"
                 onClick={() => setIsEditingTitle(true)}
               >
-                {title || "Untitled Note"}
+                {title || "Untitled note"}
               </span>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={() => setIsEditingTitle(true)}
-                title="Edit Title"
+                title="Edit title"
               >
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
@@ -254,7 +255,7 @@ export function NoteEditor({
             onClick={() => noteId && onDelete(noteId)}
             className="h-8 text-destructive hover:text-destructive"
             disabled={!noteId || isDeleting}
-            title="Delete Note"
+            title="Delete note"
           >
             <Trash2 className="h-4 w-4" />
             <span className="sr-only">Delete</span>
@@ -270,7 +271,7 @@ export function NoteEditor({
             )}
           >
             <Save className="h-4 w-4 mr-2" />
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? "Saving..." : "Save changes"}
           </Button>
         </div>
       </div>
@@ -287,7 +288,7 @@ export function NoteEditor({
           <Textarea
             value={content}
             onChange={handleContentChange}
-            placeholder="Write your note in Markdown..."
+            placeholder="Write in Markdown..."
             className="h-full w-full resize-none border-0 p-4 sm:p-8 focus-visible:ring-0 text-base font-mono leading-relaxed"
           />
         )}

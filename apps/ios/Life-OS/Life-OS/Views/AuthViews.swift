@@ -6,10 +6,10 @@ struct BootstrappingView: View {
             ProgressView()
                 .progressViewStyle(.circular)
 
-            Text("Checking session")
+            Text("Checking session…")
                 .font(.headline)
 
-            Text("Life-OS is validating your auth state")
+            Text("Confirming your session.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -86,13 +86,14 @@ struct AuthGatewayView: View {
                 }
                 .shadow(color: .black.opacity(0.16), radius: 20, y: 10)
 
-            Text("Life-OS")
+            Text(Brand.productName)
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
 
-            Text("YOUR DIGITAL WORKSPACE")
-                .font(.footnote.weight(.semibold))
-                .tracking(1)
+            Text(Brand.oneSentenceDescription)
+                .font(.footnote)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .textSelection(.enabled)
         }
         .accessibilityIdentifier("auth.hero")
     }
@@ -112,7 +113,7 @@ struct AuthGatewayView: View {
     }
 
     private var signInSection: some View {
-        authCard(title: "Sign In", subtitle: "Access your Life-OS account") {
+        authCard(title: "Sign in", subtitle: "Access your Life-OS account.") {
             VStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
                     fieldLabel("Email")
@@ -153,7 +154,7 @@ struct AuthGatewayView: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text(appState.isSubmittingAuth ? "Signing in" : "Sign in")
+                        Text(appState.isSubmittingAuth ? "Signing in…" : "Sign in")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
@@ -180,7 +181,7 @@ struct AuthGatewayView: View {
     }
 
     private var signUpSection: some View {
-        authCard(title: "Create Account", subtitle: "Set up your Life-OS profile") {
+        authCard(title: "Create account", subtitle: "Create your Life-OS account.") {
             VStack(spacing: 14) {
                 inputField(icon: "person.fill") {
                     TextField("Name", text: $signUpName)
@@ -213,7 +214,7 @@ struct AuthGatewayView: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text(appState.isSubmittingAuth ? "Creating account" : "Create account")
+                        Text(appState.isSubmittingAuth ? "Creating account…" : "Create account")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
@@ -234,7 +235,7 @@ struct AuthGatewayView: View {
     }
 
     private var recoverSection: some View {
-        authCard(title: "Recover Password", subtitle: "Send a reset link to your email") {
+        authCard(title: "Forgot password", subtitle: "Send a reset link to your email.") {
             VStack(spacing: 14) {
                 inputField(icon: "envelope.fill") {
                     TextField("Email", text: $recoverEmail)
@@ -255,7 +256,7 @@ struct AuthGatewayView: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text(appState.isSubmittingAuth ? "Sending" : "Send reset link")
+                        Text(appState.isSubmittingAuth ? "Sending…" : "Send reset link")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
@@ -283,7 +284,7 @@ struct AuthGatewayView: View {
     }
 
     private var resetSection: some View {
-        authCard(title: "Set New Password", subtitle: "Enter your token and a new password") {
+        authCard(title: "Set new password", subtitle: "Enter your token and a new password.") {
             VStack(spacing: 14) {
                 inputField(icon: "key.fill") {
                     TextField("Reset token", text: $resetToken)
@@ -318,7 +319,7 @@ struct AuthGatewayView: View {
                             ProgressView()
                                 .controlSize(.small)
                         }
-                        Text(appState.isSubmittingAuth ? "Updating" : "Update password")
+                        Text(appState.isSubmittingAuth ? "Updating…" : "Update password")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)

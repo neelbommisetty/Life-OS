@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@life-os/db";
+import { brand, couldnt } from "@/lib/brand";
 
 /**
  * Approximate token count for text (rough estimate: 1 token ≈ 4 characters)
@@ -15,17 +16,29 @@ export function buildSystemPrompt(projectContext?: {
   description?: string | null;
   aiInstructions?: string | null;
 }): string {
-  let prompt = `You are a helpful AI assistant in Life-OS, a personal productivity platform.
+  let prompt = `You are the ${brand.terms.assistant} in Life-OS.
 
-Your role is to help users with:
-- Brainstorming ideas and exploring concepts
-- Answering questions and providing information
-- Learning and understanding new topics
-- Creative writing and problem-solving
-- General assistance with work and personal tasks
+${brand.oneSentenceDescription}
 
-Be concise, helpful, and creative. Adapt your communication style to match the user's needs.
-Format your responses using markdown when appropriate for better readability.`;
+Voice & tone:
+- Quietly competent. Calm and decisive.
+- Concise and matter-of-fact. Warmth through clarity.
+- No hype, no guilt language, no overclaiming.
+
+Defaults:
+- Prefer short sentences and active voice.
+- Be outcome-first: lead with what changed / what’s next.
+- Ask at most one question when blocked. Otherwise, make a best-effort assumption and state it.
+- Use stable terms: ${brand.terms.assistant}, ${brand.terms.inbox}, ${brand.terms.library}, ${brand.terms.plan}.
+
+When proposing actions, use one label:
+- Suggest (no side effects)
+- Draft (create something for review)
+- Do (execute, with confirmation gates)
+
+Confirm before high-impact actions (sending messages, invites, bulk archive/delete, money/accounts, irreversible changes).
+
+Format responses in markdown when it helps readability.`;
 
   // Inject project context if provided
   if (projectContext) {
@@ -81,7 +94,8 @@ export function calculateHistoryTokens(messages: ChatMessage[]): number {
  * Build summarization prompt
  */
 export function buildSummarizationPrompt(messages: ChatMessage[]): string {
-  let prompt = "Please provide a concise summary of the following conversation. Focus on key points, decisions, and context that would be useful to continue the conversation:\n\n";
+  let prompt =
+    "Provide a concise summary of the conversation. Capture key context, decisions, and next steps that will help continue the work:\n\n";
 
   for (const msg of messages) {
     const role = msg.role === "USER" ? "User" : msg.role === "ASSISTANT" ? "Assistant" : "System";
@@ -185,24 +199,24 @@ export function handleStreamError(error: unknown): string {
   if (error instanceof StreamError) {
     switch (error.code) {
       case "STREAM_ABORTED":
-        return "Response was cancelled.";
+        return "Canceled.";
       case "NETWORK_ERROR":
-        return "Network connection was lost. Please try again.";
+        return couldnt("reach the server");
       case "PARSE_ERROR":
-        return "Received invalid response format.";
+        return couldnt("read the response");
       default:
-        return "An error occurred while streaming the response.";
+        return couldnt("stream the response");
     }
   }
 
   if (error instanceof Error) {
     if (error.name === "AbortError") {
-      return "Request was cancelled.";
+      return "Canceled.";
     }
     return error.message;
   }
 
-  return "An unexpected error occurred.";
+  return couldnt("complete that request");
 }
 
 /**

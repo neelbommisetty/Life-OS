@@ -13,6 +13,7 @@ import {
   toastApiResponseError,
 } from "@/lib/api/error-toast";
 import { cn } from "@/lib/utils";
+import { couldnt } from "@/lib/brand";
 
 type SessionUser = {
   id: string;
@@ -55,16 +56,16 @@ export function AccountClient({ path, user }: AccountClientProps) {
       if (!response.ok) {
         const message = await toastApiResponseError(
           response,
-          "Failed to update profile",
+          couldnt("update your profile"),
         );
         setError(message);
         return;
       }
 
-      setSuccess("Profile updated");
+      setSuccess("Profile updated.");
       router.refresh();
     } catch (error) {
-      setError(toastApiError(error, "Failed to update profile"));
+      setError(toastApiError(error, couldnt("update your profile")));
     } finally {
       setLoading(false);
     }
@@ -79,7 +80,7 @@ export function AccountClient({ path, user }: AccountClientProps) {
     const confirmPassword = String(form.get("confirmPassword") ?? "");
 
     if (newPassword !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Passwords don't match.");
       return;
     }
 
@@ -103,16 +104,16 @@ export function AccountClient({ path, user }: AccountClientProps) {
       if (!response.ok) {
         const message = await toastApiResponseError(
           response,
-          "Failed to change password",
+          couldnt("change your password"),
         );
         setError(message);
         return;
       }
 
-      setSuccess("Password updated");
+      setSuccess("Password updated.");
       formElement.reset();
     } catch (error) {
-      setError(toastApiError(error, "Failed to change password"));
+      setError(toastApiError(error, couldnt("change your password")));
     } finally {
       setLoading(false);
     }
@@ -130,7 +131,7 @@ export function AccountClient({ path, user }: AccountClientProps) {
       });
 
       if (!response.ok) {
-        const message = await toastApiResponseError(response, "Failed to sign out");
+        const message = await toastApiResponseError(response, couldnt("sign out"));
         setError(message);
         return;
       }
@@ -138,7 +139,7 @@ export function AccountClient({ path, user }: AccountClientProps) {
       router.replace("/auth/sign-in");
       router.refresh();
     } catch (error) {
-      setError(toastApiError(error, "Failed to sign out"));
+      setError(toastApiError(error, couldnt("sign out")));
     } finally {
       setLoading(false);
     }

@@ -4,6 +4,7 @@ import { FileText, Plus, MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatDistanceToNow } from "date-fns";
 import { getRecentNotes } from "@/lib/home/actions";
+import { brand } from "@/lib/brand";
 
 export async function RecentNotes() {
   const notes = await getRecentNotes();
@@ -11,7 +12,7 @@ export async function RecentNotes() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold tracking-tight">Recent Notes</h2>
+        <h2 className="text-xl font-semibold tracking-tight">{brand.terms.library}</h2>
         <Button variant="ghost" size="icon" asChild>
           <Link href="/notes">
             <MoreHorizontal className="h-4 w-4" />
@@ -30,7 +31,7 @@ export async function RecentNotes() {
               <div>
                 <h3 className="font-semibold text-sm line-clamp-1">{note.title}</h3>
                 <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                  {note.content?.slice(0, 100) || "No content"}
+                  {note.content?.slice(0, 100) || "Empty note"}
                 </p>
               </div>
               <div className="text-[10px] text-muted-foreground pt-2">
@@ -42,7 +43,7 @@ export async function RecentNotes() {
         <Link href="/notes">
           <Card className="h-full border-dashed flex flex-col items-center justify-center p-4 hover:bg-secondary/5 transition-colors cursor-pointer text-muted-foreground hover:text-primary min-h-[140px]">
             <Plus className="h-6 w-6 mb-2" />
-            <span className="text-sm font-medium">New Note</span>
+            <span className="text-sm font-medium">Capture note</span>
           </Card>
         </Link>
       </div>
