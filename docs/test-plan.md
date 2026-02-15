@@ -35,7 +35,7 @@ Required updates for feature work:
 | Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Assistant/Tasks/Library tabs | Edit success/error + tab content render |
 | Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
 | Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
-| Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture immutable inbox items, review details, mark processed, and archive from the inbox view | Create/list/detail plus process/archive action coverage |
+| Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture inbox items, review details, mark processed, and archive from the inbox view | Create/list/detail plus process/archive action coverage |
 | Inbox | Inbox archive experience | `/inbox/archive` | Archived inbox items load and can be searched and unarchived | Archived data load + search + unarchive coverage |
 | Notes | Note selection and URL sync | `/notes` | Selecting notes updates `noteId`; first note auto-selects on `/notes` when available | Selection behavior + URL state + default selection |
 | Notes | Note editor behavior | `/notes` | Preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S | Autosave and manual save shortcuts/edge cases |

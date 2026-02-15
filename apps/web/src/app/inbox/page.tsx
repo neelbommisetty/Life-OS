@@ -6,7 +6,7 @@ import { InboxClient } from "./inbox-client";
 
 export const metadata: Metadata = {
   title: "Inbox",
-  description: "Capture quick thoughts and process them later.",
+  description: "Capture a thought, review when ready.",
 };
 
 export default async function InboxPage() {

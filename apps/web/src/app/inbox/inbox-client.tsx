@@ -169,7 +169,7 @@ export function InboxClient({
               <Textarea
                 value={contentDraft}
                 onChange={(event) => setContentDraft(event.target.value)}
-                placeholder="Drop a quick thought, reminder, or rough plan..."
+                placeholder="Capture a thought, reminder, or draft plan."
                 rows={4}
               />
               <Button
@@ -177,7 +177,7 @@ export function InboxClient({
                 onClick={handleCreate}
                 disabled={isCreating || !contentDraft.trim()}
               >
-                {isCreating ? "Saving..." : "Save to Inbox"}
+                {isCreating ? "Capturing..." : "Capture"}
               </Button>
             </CardContent>
           </Card>
@@ -203,7 +203,7 @@ export function InboxClient({
             {items.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                  No inbox items yet.
+                  No inbox items yet. Capture a thought to get started.
                 </CardContent>
               </Card>
             ) : (
@@ -239,7 +239,7 @@ export function InboxClient({
         <Card className="h-full overflow-hidden">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
-              <CardTitle>Inbox Item</CardTitle>
+              <CardTitle>Item</CardTitle>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
@@ -265,7 +265,7 @@ export function InboxClient({
           <CardContent className="flex h-[calc(100%-76px)] flex-col gap-4 overflow-y-auto">
             {!selectedItem ? (
               <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                Select an inbox item to view details.
+                Pick an item to review details.
               </div>
             ) : (
               <>
@@ -287,7 +287,7 @@ export function InboxClient({
                 </div>
 
                 <p className="text-xs text-muted-foreground">
-                  Inbox content is immutable after save in V1.
+                  Inbox items are read-only after capture in V1.
                 </p>
               </>
             )}
