@@ -1,11 +1,76 @@
-# Inbox Capture Layer - Product and System Design
+# Inbox Capture Layer + iOS Companion App (MVP)
 
 Date: 2026-02-13
+Updated: 2026-02-15
 Owner: Life-OS
 
 ## Summary
 
-`Inbox` is a dedicated capture layer, not a project. Users save quick notes as `InboxItem`s. Each item is processed by agents that propose actions (for example, create a KB note or create todos). Users approve or decline each proposal output. After all outputs are resolved, the item becomes processed and is automatically archived after 7 days to reduce visual clutter.
+This document is the **current source of truth** for:
+
+- The product concept of `Inbox` as a capture layer, and
+- The **iOS companion app MVP** flow and screens for Capture + Inbox.
+
+It supersedes older iOS companion planning docs (notably `2026-02-03-ios-companion-inbox-design.md`).
+
+## iOS Companion App (MVP)
+
+### Launch flow
+
+1. App always starts on a Splash / bootstrapping screen.
+2. During splash, check whether a user session exists.
+3. If not logged in → show the existing login experience.
+4. If logged in → show a 3-tab app:
+   - Capture (default)
+   - Inbox
+   - Settings (keep existing screen)
+
+### Tabs
+
+#### 1) Capture (default)
+
+UI requirements:
+
+- A single “canvas” for typing.
+- A single primary mic button.
+- Real-time transcription should appear in the canvas while recording.
+- A **discoverable Save** action persists the capture as an Inbox item.
+- Ignore all other UI elements from reference screenshots.
+
+Behavior:
+
+- Tap mic → request Speech + Microphone permissions and begin transcription.
+- Tap mic again → stop transcription.
+- Save → creates a new `InboxItem` and clears the capture canvas.
+
+#### 2) Inbox
+
+UI requirements:
+
+- Shows all saved Inbox items (newest first).
+- Tap item → detail screen with full content.
+
+#### 3) Settings
+
+- Keep the existing settings/account UI and sign-out behavior.
+
+### MVP data model (iOS)
+
+- `InboxItem`
+  - `id`
+  - `created_at`
+  - `content` (plain text)
+
+### Persistence / sync
+
+- MVP is **local-first**: saving must work offline and be instant.
+- Server sync is a follow-up:
+  - best-effort upload on save when authenticated
+  - fetch + merge on app start / inbox open
+
+## Inbox (Product Concept)
+
+`Inbox` is a dedicated capture layer, not a project. Users save quick notes as `InboxItem`s.
 
 ## Goals
 
@@ -17,7 +82,7 @@ Owner: Life-OS
 ## Non-Goals (V1)
 
 - Inbox as a hidden project.
-- Editing or versioning `InboxItem`s after save.
+- Editing or versioning `InboxItem`s after save (beyond the initial MVP editor).
 - Multi-user or shared-workspace permissions.
 - Global search integration for Inbox content.
 - Automatic project assignment for created todos.
@@ -46,6 +111,8 @@ Owner: Life-OS
 
 ## Lifecycle and State Machine
 
+> Note: The state machine and agent processing below describe the **future platform capability**. The iOS MVP ships only the `saved` experience (Capture → Inbox list).
+
 ### Item States
 
 1. `saved`: initial state after user submits.
@@ -73,7 +140,7 @@ Owner: Life-OS
 
 ## User Experience
 
-### Capture
+### Capture (platform)
 
 - User writes content and clicks Save.
 - Item becomes immutable.

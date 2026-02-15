@@ -42,6 +42,7 @@ struct Life_OSApp: App {
     }
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
+            InboxItem.self,
             Item.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
