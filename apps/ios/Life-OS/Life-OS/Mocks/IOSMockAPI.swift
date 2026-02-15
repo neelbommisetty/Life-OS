@@ -13,6 +13,10 @@ actor IOSMockAPI {
     private var userName = "Demo User"
     private var userEmail = "demo@lifeos.dev"
     private var password = "demo12345"
+    private var inboxItems: [[String: Any]] = []
+    private var nextInboxSequence = 1
+    private var shouldFailInboxCreateOnce = false
+    private var hasConsumedInboxCreateFailure = false
 
     private let recentProjects: [[String: Any]] = [
         [
@@ -65,6 +69,10 @@ actor IOSMockAPI {
         userName = "Demo User"
         userEmail = "demo@lifeos.dev"
         password = "demo12345"
+        inboxItems = []
+        nextInboxSequence = 1
+        shouldFailInboxCreateOnce = ProcessInfo.processInfo.environment["LIFE_OS_MOCK_INBOX_CREATE_FAIL_ONCE"] == "1"
+        hasConsumedInboxCreateFailure = false
     }
 
     func request(path: String, method: String, body: [String: String]?) -> IOSMockAPIResponse {
@@ -195,6 +203,56 @@ actor IOSMockAPI {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
             return jsonResponse(statusCode: 200, object: notes)
+        }
+
+        if normalizedPath == "/api/inbox", normalizedMethod == "GET" {
+            guard isAuthenticated else {
+                return errorResponse(statusCode: 401, message: "Unauthorized")
+            }
+
+            let sortedItems = inboxItems.sorted { lhs, rhs in
+                let lhsValue = (lhs["createdAt"] as? String) ?? ""
+                let rhsValue = (rhs["createdAt"] as? String) ?? ""
+                return lhsValue > rhsValue
+            }
+            return jsonResponse(statusCode: 200, object: sortedItems)
+        }
+
+        if normalizedPath == "/api/inbox", normalizedMethod == "POST" {
+            guard isAuthenticated else {
+                return errorResponse(statusCode: 401, message: "Unauthorized")
+            }
+
+            if ProcessInfo.processInfo.environment["LIFE_OS_MOCK_INBOX_CREATE_FAIL"] == "1" {
+                return errorResponse(statusCode: 500, message: "Inbox save failed")
+            }
+
+            if shouldFailInboxCreateOnce, !hasConsumedInboxCreateFailure {
+                hasConsumedInboxCreateFailure = true
+                return errorResponse(statusCode: 500, message: "Inbox save failed")
+            }
+
+            let content = body?["content"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !content.isEmpty else {
+                return errorResponse(statusCode: 400, message: "Content is required")
+            }
+
+            let itemId = "inbox-ios-\(nextInboxSequence)"
+            nextInboxSequence += 1
+
+            let now = ISO8601DateFormatter().string(from: Date())
+            let newItem: [String: Any] = [
+                "id": itemId,
+                "content": content,
+                "state": "SAVED",
+                "createdAt": now,
+                "updatedAt": now,
+                "processedAt": NSNull(),
+                "archivedAt": NSNull(),
+            ]
+            inboxItems.append(newItem)
+
+            return jsonResponse(statusCode: 201, object: newItem)
         }
 
         return errorResponse(statusCode: 404, message: "Not found")

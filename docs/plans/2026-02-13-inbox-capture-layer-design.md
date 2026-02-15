@@ -57,16 +57,28 @@ UI requirements:
 ### MVP data model (iOS)
 
 - `InboxItem`
-  - `id`
+  - `local_id`
+  - `server_id` (nullable)
   - `created_at`
+  - `updated_at` (nullable)
+  - `state`
   - `content` (plain text)
+  - `sync_status` (`synced | pending_create | failed_create`)
+  - `last_sync_error` (nullable)
 
 ### Persistence / sync
 
-- MVP is **local-first**: saving must work offline and be instant.
-- Server sync is a follow-up:
-  - best-effort upload on save when authenticated
-  - fetch + merge on app start / inbox open
+- MVP is **API-first with local cache resilience**:
+  - signed-in save attempts `POST /api/inbox` first
+  - list reads are refreshed from `GET /api/inbox`
+  - successful API responses are mirrored into SwiftData cache
+- Failure behavior:
+  - if create fails, app stores a local unsynced item (`failed_create`) so data is not lost
+  - Inbox shows unsynced status and provides retry sync action
+- Cache merge rules:
+  - upsert by `server_id`
+  - remove stale synced cache entries not present in latest API list
+  - preserve unsynced local items until retry succeeds
 
 ## Inbox (Product Concept)
 

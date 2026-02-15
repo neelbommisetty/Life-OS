@@ -38,7 +38,7 @@ struct CaptureTabView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        CaptureView()
+        CaptureView(appState: appState)
     }
 }
 
@@ -47,7 +47,7 @@ struct InboxTabView: View {
 
     var body: some View {
         NavigationStack {
-            InboxView()
+            InboxView(appState: appState)
         }
     }
 }

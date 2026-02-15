@@ -2,7 +2,10 @@ import SwiftData
 import SwiftUI
 
 struct InboxView: View {
+    @ObservedObject var appState: AppState
+    @Environment(\.modelContext) private var modelContext
     @Query(sort: \InboxItem.createdAt, order: .reverse) private var items: [InboxItem]
+    @State private var didTriggerInitialRefresh = false
 
     var body: some View {
         Group {
@@ -23,9 +26,40 @@ struct InboxView: View {
                     }
                 }
                 .listStyle(.plain)
+                .refreshable {
+                    await appState.refreshInbox(modelContext: modelContext)
+                }
             }
         }
         .navigationTitle("Inbox")
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if appState.isRefreshingInbox || appState.isRetryingPendingInboxCreates {
+                    ProgressView()
+                } else if hasPendingCreates {
+                    Button("Retry all") {
+                        Task {
+                            await appState.retryPendingInboxCreates(modelContext: modelContext)
+                        }
+                    }
+                    .accessibilityIdentifier("inbox.retryAll")
+                }
+            }
+        }
+        .onAppear {
+            guard !didTriggerInitialRefresh else { return }
+            didTriggerInitialRefresh = true
+            Task {
+                await appState.refreshInbox(modelContext: modelContext)
+            }
+        }
+    }
+
+    private var hasPendingCreates: Bool {
+        items.contains {
+            $0.syncStatus == InboxItemSyncStatus.pendingCreate.rawValue
+                || $0.syncStatus == InboxItemSyncStatus.failedCreate.rawValue
+        }
     }
 }
 
@@ -34,13 +68,25 @@ private struct InboxRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(item.text)
+            Text(item.content)
                 .font(.body)
                 .lineLimit(2)
 
-            Text(item.createdAt, style: .date)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Text(item.createdAt, style: .date)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                if item.syncStatus != InboxItemSyncStatus.synced.rawValue {
+                    Text("Not synced")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.orange.opacity(0.18), in: Capsule())
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("inbox.row.unsynced")
+                }
+            }
         }
         .padding(.vertical, 6)
     }
@@ -56,9 +102,16 @@ private struct InboxItemDetailView: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                Text(item.text)
+                Text(item.content)
                     .font(.body)
                     .textSelection(.enabled)
+
+                if let syncError = item.lastSyncError,
+                   item.syncStatus == InboxItemSyncStatus.failedCreate.rawValue {
+                    Text(syncError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
 
                 Spacer(minLength: 0)
             }
@@ -68,4 +121,3 @@ private struct InboxItemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 }
-

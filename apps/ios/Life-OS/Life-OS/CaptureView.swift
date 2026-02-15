@@ -2,12 +2,14 @@ import SwiftData
 import SwiftUI
 
 struct CaptureView: View {
+    @ObservedObject var appState: AppState
     @Environment(\.modelContext) private var modelContext
     @StateObject private var speechRecognizer = SpeechRecognizer()
 
-    @State private var noteText = ""
+    @State private var noteText = CaptureView.initialNoteText()
     @State private var recordingBaseText: String?
     @State private var saveConfirmationTick = false
+    @State private var isSavingInbox = false
 
     var body: some View {
         ZStack {
@@ -52,6 +54,20 @@ struct CaptureView: View {
                 }
                 .transition(.opacity)
                 .accessibilityLabel("Saved to Inbox")
+            }
+
+            if let inboxError = appState.inboxError {
+                VStack {
+                    Spacer()
+                    Text(inboxError)
+                        .font(.footnote)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(.black.opacity(0.35), in: Capsule())
+                        .foregroundStyle(.white)
+                        .padding(.bottom, 62)
+                }
+                .accessibilityIdentifier("capture.inboxError")
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -104,6 +120,8 @@ struct CaptureView: View {
                 .font(.system(.body, design: .rounded))
                 .padding(12)
                 .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .accessibilityIdentifier("capture.editor")
+                .accessibilityLabel("Capture text")
 
             if noteText.isEmpty {
                 Text("Write or tap to\nspeak…")
@@ -114,8 +132,6 @@ struct CaptureView: View {
                     .allowsHitTesting(false)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Capture text")
     }
 
     private var micButton: some View {
@@ -156,7 +172,7 @@ struct CaptureView: View {
             }
         }
         .accessibilityLabel("Save to Inbox")
-        .disabled(!canSave)
+        .disabled(!canSave || isSavingInbox)
         .buttonStyle(.plain)
     }
 
@@ -169,24 +185,52 @@ struct CaptureView: View {
     }
 
     private var canSave: Bool {
-        !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if !noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
+
+        return !(CaptureView.testCapturePrefill()?.isEmpty ?? true)
     }
 
     private func save() {
+        guard !isSavingInbox else { return }
+
         if speechRecognizer.isRecording {
             speechRecognizer.stopRecording()
         }
 
         let trimmed = noteText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
+        let contentToSave = trimmed.isEmpty ? CaptureView.testCapturePrefill() : trimmed
+        guard let contentToSave, !contentToSave.isEmpty else { return }
 
-        modelContext.insert(InboxItem(text: trimmed))
-        noteText = ""
+        isSavingInbox = true
 
-        saveConfirmationTick = true
         Task { @MainActor in
+            let didSave = await appState.createInboxFromCapture(
+                content: contentToSave,
+                modelContext: modelContext
+            )
+            isSavingInbox = false
+
+            guard didSave else { return }
+
+            noteText = ""
+            saveConfirmationTick = true
             try? await Task.sleep(for: .seconds(0.9))
             saveConfirmationTick = false
         }
+    }
+
+    private static func initialNoteText() -> String {
+        testCapturePrefill() ?? ""
+    }
+
+    private static func testCapturePrefill() -> String? {
+        guard let prefilledText = ProcessInfo.processInfo.environment["LIFE_OS_UI_TEST_CAPTURE_TEXT"] else {
+            return nil
+        }
+
+        let trimmed = prefilledText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
