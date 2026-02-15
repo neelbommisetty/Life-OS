@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import SwiftData
 import SwiftUI
 
 enum AuthFlow: String, CaseIterable, Identifiable {
@@ -38,20 +39,29 @@ final class AppState: ObservableObject {
     @Published var notes: [NoteItem] = []
     @Published var isRefreshingProtectedData = false
     @Published var protectedError: String?
+    @Published var isRefreshingInbox = false
+    @Published var isRetryingPendingInboxCreates = false
+    @Published var inboxError: String?
     @Published var accountError: String?
     @Published var accountSuccess: String?
 
     private let authService = AuthService()
     private let appDataService = AppDataService()
     private var didBootstrap = false
+    private let inboxCacheResetMigrationKey = "ios.inbox.cache.reset.2026_02_15"
 
-    func bootstrapSessionIfNeeded() async {
+    func bootstrapSessionIfNeeded(modelContext: ModelContext) async {
         guard !didBootstrap else { return }
         didBootstrap = true
         defer { isBootstrapping = false }
 
+        resetInboxCacheIfNeeded(modelContext: modelContext)
+
         do {
             sessionUser = try await authService.getSession()
+            if sessionUser != nil {
+                await refreshInbox(modelContext: modelContext)
+            }
         } catch {
             authError = error.userFacingMessage
             sessionUser = nil
@@ -104,6 +114,7 @@ final class AppState: ObservableObject {
             )
             authFlow = .signIn
             await refreshProtectedData()
+            inboxError = nil
         } catch {
             authError = error.userFacingMessage
         }
@@ -139,6 +150,7 @@ final class AppState: ObservableObject {
             )
             authFlow = .signIn
             await refreshProtectedData()
+            inboxError = nil
         } catch {
             authError = error.userFacingMessage
         }
@@ -239,6 +251,111 @@ final class AppState: ObservableObject {
         }
     }
 
+    func refreshInbox(modelContext: ModelContext) async {
+        guard sessionUser != nil else { return }
+
+        isRefreshingInbox = true
+        inboxError = nil
+        defer { isRefreshingInbox = false }
+
+        do {
+            let remoteItems = try await appDataService.listInboxItems()
+            try mergeInboxCache(
+                with: remoteItems,
+                modelContext: modelContext
+            )
+            try modelContext.save()
+        } catch {
+            if error.isUnauthorized {
+                handleUnauthorizedSession()
+            } else {
+                inboxError = error.userFacingMessage
+            }
+        }
+    }
+
+    func createInboxFromCapture(content: String, modelContext: ModelContext) async -> Bool {
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+
+        do {
+            let remoteItem = try await appDataService.createInboxItem(content: trimmed)
+            try upsertInboxItem(
+                from: remoteItem,
+                modelContext: modelContext
+            )
+            try modelContext.save()
+            inboxError = nil
+            return true
+        } catch {
+            let unsyncedItem = InboxItem(
+                content: trimmed,
+                state: InboxItemState.saved.rawValue,
+                createdAt: Date(),
+                updatedAt: nil,
+                syncStatus: InboxItemSyncStatus.failedCreate.rawValue,
+                lastSyncError: error.userFacingMessage
+            )
+            modelContext.insert(unsyncedItem)
+            try? modelContext.save()
+
+            if error.isUnauthorized {
+                handleUnauthorizedSession()
+            } else {
+                inboxError = error.userFacingMessage
+            }
+            return true
+        }
+    }
+
+    func retryPendingInboxCreates(modelContext: ModelContext) async {
+        guard sessionUser != nil else { return }
+        guard !isRetryingPendingInboxCreates else { return }
+
+        isRetryingPendingInboxCreates = true
+        inboxError = nil
+        defer { isRetryingPendingInboxCreates = false }
+
+        do {
+            let descriptor = FetchDescriptor<InboxItem>(
+                sortBy: [SortDescriptor(\InboxItem.createdAt)]
+            )
+            let allItems = try modelContext.fetch(descriptor)
+            let pendingItems = allItems.filter {
+                $0.syncStatus == InboxItemSyncStatus.pendingCreate.rawValue
+                    || $0.syncStatus == InboxItemSyncStatus.failedCreate.rawValue
+            }
+
+            for item in pendingItems {
+                do {
+                    item.syncStatus = InboxItemSyncStatus.pendingCreate.rawValue
+                    let remoteItem = try await appDataService.createInboxItem(content: item.content)
+                    item.serverId = remoteItem.id
+                    item.content = remoteItem.content
+                    item.state = remoteItem.state
+                    item.createdAt = remoteItem.createdAt
+                    item.updatedAt = remoteItem.updatedAt
+                    item.syncStatus = InboxItemSyncStatus.synced.rawValue
+                    item.lastSyncError = nil
+                } catch {
+                    item.syncStatus = InboxItemSyncStatus.failedCreate.rawValue
+                    item.lastSyncError = error.userFacingMessage
+
+                    if error.isUnauthorized {
+                        try modelContext.save()
+                        handleUnauthorizedSession()
+                        return
+                    }
+                }
+            }
+
+            try modelContext.save()
+            await refreshInbox(modelContext: modelContext)
+        } catch {
+            inboxError = error.userFacingMessage
+        }
+    }
+
     func clearAccountFeedback() {
         accountError = nil
         accountSuccess = nil
@@ -316,5 +433,99 @@ final class AppState: ObservableObject {
                 accountError = error.userFacingMessage
             }
         }
+    }
+
+    private func handleUnauthorizedSession() {
+        sessionUser = nil
+        authFlow = .signIn
+        authError = "Session expired. Sign in again."
+    }
+
+    private func resetInboxCacheIfNeeded(modelContext: ModelContext) {
+        let defaults = UserDefaults.standard
+        guard !defaults.bool(forKey: inboxCacheResetMigrationKey) else { return }
+
+        let descriptor = FetchDescriptor<InboxItem>()
+        if let cachedItems = try? modelContext.fetch(descriptor) {
+            for item in cachedItems {
+                modelContext.delete(item)
+            }
+            try? modelContext.save()
+        }
+
+        defaults.set(true, forKey: inboxCacheResetMigrationKey)
+    }
+
+    private func mergeInboxCache(with remoteItems: [InboxAPIItem], modelContext: ModelContext) throws {
+        let descriptor = FetchDescriptor<InboxItem>()
+        let cachedItems = try modelContext.fetch(descriptor)
+
+        var cachedByServerId: [String: InboxItem] = [:]
+        for item in cachedItems {
+            if let serverId = item.serverId {
+                cachedByServerId[serverId] = item
+            }
+        }
+
+        var remoteServerIds: Set<String> = []
+
+        for remoteItem in remoteItems {
+            remoteServerIds.insert(remoteItem.id)
+
+            if let cached = cachedByServerId[remoteItem.id] {
+                cached.content = remoteItem.content
+                cached.state = remoteItem.state
+                cached.createdAt = remoteItem.createdAt
+                cached.updatedAt = remoteItem.updatedAt
+                cached.syncStatus = InboxItemSyncStatus.synced.rawValue
+                cached.lastSyncError = nil
+            } else {
+                let cacheItem = InboxItem(
+                    serverId: remoteItem.id,
+                    content: remoteItem.content,
+                    state: remoteItem.state,
+                    createdAt: remoteItem.createdAt,
+                    updatedAt: remoteItem.updatedAt,
+                    syncStatus: InboxItemSyncStatus.synced.rawValue,
+                    lastSyncError: nil
+                )
+                modelContext.insert(cacheItem)
+            }
+        }
+
+        for item in cachedItems {
+            guard item.syncStatus == InboxItemSyncStatus.synced.rawValue else { continue }
+            guard let serverId = item.serverId else { continue }
+
+            if !remoteServerIds.contains(serverId) {
+                modelContext.delete(item)
+            }
+        }
+    }
+
+    private func upsertInboxItem(from remoteItem: InboxAPIItem, modelContext: ModelContext) throws {
+        let descriptor = FetchDescriptor<InboxItem>()
+        let cachedItems = try modelContext.fetch(descriptor)
+
+        if let existing = cachedItems.first(where: { $0.serverId == remoteItem.id }) {
+            existing.content = remoteItem.content
+            existing.state = remoteItem.state
+            existing.createdAt = remoteItem.createdAt
+            existing.updatedAt = remoteItem.updatedAt
+            existing.syncStatus = InboxItemSyncStatus.synced.rawValue
+            existing.lastSyncError = nil
+            return
+        }
+
+        let newItem = InboxItem(
+            serverId: remoteItem.id,
+            content: remoteItem.content,
+            state: remoteItem.state,
+            createdAt: remoteItem.createdAt,
+            updatedAt: remoteItem.updatedAt,
+            syncStatus: InboxItemSyncStatus.synced.rawValue,
+            lastSyncError: nil
+        )
+        modelContext.insert(newItem)
     }
 }

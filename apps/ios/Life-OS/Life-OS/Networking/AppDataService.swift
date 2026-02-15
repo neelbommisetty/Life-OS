@@ -20,4 +20,20 @@ struct AppDataService {
         let data = try await api.request(path: "/api/notes")
         return try JSONDecoder().decode([NoteItem].self, from: data)
     }
+
+    func listInboxItems() async throws -> [InboxAPIItem] {
+        let data = try await api.request(path: "/api/inbox")
+        return try JSONDecoder().decode([InboxAPIItem].self, from: data)
+    }
+
+    func createInboxItem(content: String) async throws -> InboxAPIItem {
+        let data = try await api.request(
+            path: "/api/inbox",
+            method: "POST",
+            body: [
+                "content": content,
+            ]
+        )
+        return try JSONDecoder().decode(InboxAPIItem.self, from: data)
+    }
 }

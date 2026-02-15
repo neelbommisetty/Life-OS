@@ -37,9 +37,11 @@ final class Life_OSUITests: XCTestCase {
         emailField.clearAndTypeText("demo@lifeos.dev")
         passwordField.clearAndTypeText("demo12345")
         submitButton.tap()
+        dismissKeyboardIfVisible(in: app)
+        dismissSavePasswordPromptIfPresent(in: app)
 
-        XCTAssertTrue(app.tabBars.buttons["house.fill"].waitForExistence(timeout: 6))
-        XCTAssertTrue(app.tabBars.buttons["person.crop.circle"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Capture"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.tabBars.buttons["Settings"].exists)
     }
 
     @MainActor
@@ -61,8 +63,77 @@ final class Life_OSUITests: XCTestCase {
         passwordField.typeText("demo12345")
         submitButton.tap()
         dismissKeyboardIfVisible(in: app)
+        dismissSavePasswordPromptIfPresent(in: app)
 
-        XCTAssertTrue(app.tabBars.buttons["person.crop.circle"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 6))
+    }
+
+    @MainActor
+    func testCaptureSaveCreatesInboxItem() throws {
+        let app = makeApp(
+            extraEnvironment: [
+                "LIFE_OS_UI_TEST_CAPTURE_TEXT": "Remember the grocery list",
+            ]
+        )
+        app.launch()
+
+        signIn(app: app, email: "demo@lifeos.dev", password: "demo12345")
+
+        let saveButton = app.buttons["Save to Inbox"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 6))
+        XCTAssertTrue(waitForEnabled(saveButton, timeout: 6))
+        tapElementWhenHittable(saveButton, in: app)
+        settle(seconds: 1)
+
+        openInboxTab(in: app)
+        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 6))
+    }
+
+    @MainActor
+    func testCaptureSaveFailureStillShowsUnsyncedItem() throws {
+        let app = makeApp(
+            extraEnvironment: [
+                "LIFE_OS_MOCK_INBOX_CREATE_FAIL": "1",
+                "LIFE_OS_UI_TEST_CAPTURE_TEXT": "Retry this capture",
+            ]
+        )
+        app.launch()
+
+        signIn(app: app, email: "demo@lifeos.dev", password: "demo12345")
+        let saveButton = app.buttons["Save to Inbox"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 6))
+        XCTAssertTrue(waitForEnabled(saveButton, timeout: 6))
+        tapElementWhenHittable(saveButton, in: app)
+        settle(seconds: 1)
+
+        openInboxTab(in: app)
+        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 6))
+        XCTAssertTrue(app.buttons["inbox.retryAll"].waitForExistence(timeout: 6))
+    }
+
+    @MainActor
+    func testRetryPendingInboxCreateSucceedsAfterOneFailure() throws {
+        let app = makeApp(
+            extraEnvironment: [
+                "LIFE_OS_MOCK_INBOX_CREATE_FAIL_ONCE": "1",
+                "LIFE_OS_UI_TEST_CAPTURE_TEXT": "Fails once then retries",
+            ]
+        )
+        app.launch()
+
+        signIn(app: app, email: "demo@lifeos.dev", password: "demo12345")
+        let saveButton = app.buttons["Save to Inbox"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 6))
+        XCTAssertTrue(waitForEnabled(saveButton, timeout: 6))
+        tapElementWhenHittable(saveButton, in: app)
+        settle(seconds: 1)
+
+        openInboxTab(in: app)
+        let retryButton = app.buttons["inbox.retryAll"]
+        XCTAssertTrue(retryButton.waitForExistence(timeout: 6))
+        retryButton.tap()
+
+        XCTAssertTrue(waitForNonExistence(app.buttons["inbox.retryAll"], timeout: 6))
     }
 
     @MainActor
@@ -122,9 +193,12 @@ final class Life_OSUITests: XCTestCase {
         XCTAssertTrue(app.buttons["auth.signIn.submit"].waitForExistence(timeout: 6))
     }
 
-    private func makeApp() -> XCUIApplication {
+    private func makeApp(extraEnvironment: [String: String] = [:]) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["LIFE_OS_USE_MOCK_API"] = "1"
+        for (key, value) in extraEnvironment {
+            app.launchEnvironment[key] = value
+        }
         return app
     }
 
@@ -144,8 +218,19 @@ final class Life_OSUITests: XCTestCase {
         XCTAssertTrue(submitButton.exists)
         submitButton.tap()
         dismissKeyboardIfVisible(in: app)
+        dismissSavePasswordPromptIfPresent(in: app)
 
-        XCTAssertTrue(app.tabBars.buttons["person.crop.circle"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 6))
+        dismissSavePasswordPromptIfPresent(in: app)
+    }
+
+    private func openInboxTab(in app: XCUIApplication) {
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 6))
+
+        let inboxTab = tabBar.buttons["Inbox"]
+        XCTAssertTrue(inboxTab.waitForExistence(timeout: 6))
+        tapElementWhenHittable(inboxTab, in: app)
     }
 
     private func openAccountTab(in app: XCUIApplication) {
@@ -154,8 +239,8 @@ final class Life_OSUITests: XCTestCase {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 6))
 
-        let accountTabByLabel = tabBar.buttons["Account"]
-        let accountTabByIdentifier = tabBar.buttons["person.crop.circle"]
+        let accountTabByLabel = tabBar.buttons["Settings"]
+        let accountTabByIdentifier = tabBar.buttons["gearshape"]
         let fallbackAccountTab = tabBar.buttons.element(boundBy: max(tabBar.buttons.count - 1, 0))
 
         func accountScreenReady() -> Bool {
@@ -248,6 +333,79 @@ final class Life_OSUITests: XCTestCase {
         }
 
         app.tap()
+    }
+
+    private func dismissSavePasswordPromptIfPresent(in app: XCUIApplication) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let notNowLabels = [
+            "Not Now",
+            "Not now",
+            "Never for This App",
+            "Never",
+            "Cancel",
+        ]
+
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            var didDismiss = false
+
+            for label in notNowLabels {
+                let candidates: [XCUIElement] = [
+                    app.alerts.buttons[label],
+                    app.sheets.buttons[label],
+                    app.buttons[label],
+                    springboard.alerts.buttons[label],
+                    springboard.sheets.buttons[label],
+                    springboard.buttons[label],
+                ]
+
+                for button in candidates where button.exists && button.isHittable {
+                    button.tap()
+                    didDismiss = true
+                    break
+                }
+
+                if didDismiss {
+                    break
+                }
+            }
+
+            if !didDismiss {
+                return
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        }
+    }
+
+    private func waitForNonExistence(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if !element.exists {
+                return true
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        return !element.exists
+    }
+
+    private func waitForEnabled(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists, element.isEnabled {
+                return true
+            }
+
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        }
+
+        return element.exists && element.isEnabled
+    }
+
+    private func settle(seconds: TimeInterval) {
+        RunLoop.current.run(until: Date().addingTimeInterval(seconds))
     }
 }
 

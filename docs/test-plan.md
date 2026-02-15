@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-02-13
+Last updated: 2026-02-15
 
 ## Purpose
 This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
@@ -28,7 +28,8 @@ Required updates for feature work:
 | Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
 | iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in normalizes surrounding email whitespace; auth screens show success/error feedback across sign-in/sign-up/recover/reset | Unit + UI flow coverage for invalid + valid sign-in, whitespace-trimmed sign-in email, recover/reset validations, and gated app unlock |
 | iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
-| iOS Shell | Protected mobile tabs | `apps/ios` home/library/account tabs | Authenticated users can navigate tabs and load protected data; unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
+| iOS Shell | Protected mobile tabs | `apps/ios` capture/inbox/settings tabs | Authenticated users land on Capture by default, can navigate Inbox and Settings, and unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
+| iOS Inbox | API-backed capture + inbox resilience | `apps/ios` capture/inbox views + `/api/inbox` | Saving from Capture creates inbox items via API; API failures preserve unsynced local items with retry; Inbox refresh mirrors API results into local cache | Unit + UI coverage for create/list happy path, failed create local fallback, retry sync success, and unauthorized handling |
 | Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
 | Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/library render | Module rendering for empty/non-empty states |
 | Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
@@ -81,6 +82,7 @@ Required updates for feature work:
 | Build Platform | Dynamic rendering boundary | app layout + API-backed routes | `next build` succeeds without build-time API base URL while runtime checks still execute on request |
 | Build Platform | Monorepo runtime prep orchestration | root `postinstall` / `prebuild` / `vercel:install:*` scripts and app Vercel `installCommand` | Install/build flows deterministically run Prisma client generation plus DB/AI workspace runtime builds before API/web build and type steps |
 | iOS Platform | Auth/API client contract handling | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`APIClient`, `AuthService`, `AppState`) | iOS maps to `/api/auth/*` contracts, trims surrounding whitespace from auth email inputs before request submission, keeps an in-memory fallback cookie jar from auth `Set-Cookie` headers for subsequent API requests, treats empty/null session payloads as signed-out, enforces login gate, and transitions to auth on `401` responses |
+| iOS Platform | Inbox API cache + sync contract | `apps/ios/Life-OS/Life-OS/{Views,State,Networking}` | iOS uses `/api/inbox` as source of truth, mirrors results into SwiftData cache, preserves unsynced local captures when create fails, supports retry sync, and clears stale synced cache entries during refresh |
 | iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`IOSMockAPI`) | Deterministic auth/home/library/account responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests |
 
 ## Core Regression Checklist

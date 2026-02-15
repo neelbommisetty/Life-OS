@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
     @StateObject private var appState = AppState()
 
     var body: some View {
@@ -18,7 +19,7 @@ struct ContentView: View {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: appState.isBootstrapping)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: appState.sessionUser?.id)
         .task {
-            await appState.bootstrapSessionIfNeeded()
+            await appState.bootstrapSessionIfNeeded(modelContext: modelContext)
         }
         .onOpenURL { url in
             appState.captureResetToken(from: url)

@@ -6,6 +6,7 @@
 //
 
 import XCTest
+import SwiftData
 @testable import Life_OS
 
 final class Life_OSTests: XCTestCase {
@@ -158,6 +159,110 @@ final class Life_OSTests: XCTestCase {
         XCTAssertFalse(notesArray.isEmpty)
     }
 
+    func testAppDataServiceInboxRequiresAuth() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        defer { unsetenv("LIFE_OS_USE_MOCK_API") }
+        await IOSMockAPI.shared.reset()
+
+        let dataService = AppDataService()
+
+        await XCTAssertThrowsErrorAsync(
+            try await dataService.listInboxItems()
+        ) { error in
+            XCTAssertTrue(error.isUnauthorized)
+        }
+
+        await XCTAssertThrowsErrorAsync(
+            try await dataService.createInboxItem(content: "Unauthorized create")
+        ) { error in
+            XCTAssertTrue(error.isUnauthorized)
+        }
+    }
+
+    func testAppDataServiceInboxCreateAndListRoundTrip() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        defer { unsetenv("LIFE_OS_USE_MOCK_API") }
+        await IOSMockAPI.shared.reset()
+
+        _ = await IOSMockAPI.shared.request(
+            path: "/api/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "demo@lifeos.dev",
+                "password": "demo12345",
+            ]
+        )
+
+        let dataService = AppDataService()
+        let created = try await dataService.createInboxItem(content: "Capture this thought")
+        XCTAssertEqual(created.content, "Capture this thought")
+        XCTAssertEqual(created.state, "SAVED")
+
+        let items = try await dataService.listInboxItems()
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items.first?.content, "Capture this thought")
+        XCTAssertEqual(items.first?.id, created.id)
+    }
+
+    @MainActor
+    func testCreateInboxFromCaptureStoresUnsyncedItemOnFailure() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        setenv("LIFE_OS_MOCK_INBOX_CREATE_FAIL", "1", 1)
+        defer {
+            unsetenv("LIFE_OS_USE_MOCK_API")
+            unsetenv("LIFE_OS_MOCK_INBOX_CREATE_FAIL")
+        }
+        await IOSMockAPI.shared.reset()
+
+        let appState = AppState()
+        await appState.signIn(email: "demo@lifeos.dev", password: "demo12345")
+
+        let modelContext = try makeInMemoryModelContext()
+        let didSave = await appState.createInboxFromCapture(
+            content: "Persist this even on failure",
+            modelContext: modelContext
+        )
+        XCTAssertTrue(didSave)
+
+        let items = try modelContext.fetch(FetchDescriptor<InboxItem>())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].syncStatus, InboxItemSyncStatus.failedCreate.rawValue)
+        XCTAssertEqual(items[0].content, "Persist this even on failure")
+        XCTAssertNotNil(items[0].lastSyncError)
+    }
+
+    @MainActor
+    func testRetryPendingInboxCreatesSyncsFailedItem() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        setenv("LIFE_OS_MOCK_INBOX_CREATE_FAIL_ONCE", "1", 1)
+        defer {
+            unsetenv("LIFE_OS_USE_MOCK_API")
+            unsetenv("LIFE_OS_MOCK_INBOX_CREATE_FAIL_ONCE")
+        }
+        await IOSMockAPI.shared.reset()
+
+        let appState = AppState()
+        await appState.signIn(email: "demo@lifeos.dev", password: "demo12345")
+
+        let modelContext = try makeInMemoryModelContext()
+        _ = await appState.createInboxFromCapture(
+            content: "Retry me",
+            modelContext: modelContext
+        )
+
+        var items = try modelContext.fetch(FetchDescriptor<InboxItem>())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].syncStatus, InboxItemSyncStatus.failedCreate.rawValue)
+
+        await appState.retryPendingInboxCreates(modelContext: modelContext)
+
+        items = try modelContext.fetch(FetchDescriptor<InboxItem>())
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(items[0].syncStatus, InboxItemSyncStatus.synced.rawValue)
+        XCTAssertNotNil(items[0].serverId)
+        XCTAssertNil(items[0].lastSyncError)
+    }
+
     func testDecodeSessionUserHandlesEmptyAndNullPayloads() throws {
         let authService = AuthService()
 
@@ -258,5 +363,24 @@ final class Life_OSTests: XCTestCase {
         }
 
         return user
+    }
+
+    private func makeInMemoryModelContext() throws -> ModelContext {
+        let schema = Schema([InboxItem.self])
+        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: schema, configurations: [configuration])
+        return ModelContext(container)
+    }
+}
+
+private func XCTAssertThrowsErrorAsync<T>(
+    _ expression: @autoclosure () async throws -> T,
+    _ handler: (Error) -> Void
+) async {
+    do {
+        _ = try await expression()
+        XCTFail("Expected error to be thrown")
+    } catch {
+        handler(error)
     }
 }
