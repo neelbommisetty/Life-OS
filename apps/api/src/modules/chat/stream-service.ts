@@ -10,9 +10,13 @@ import {
   createSummaryTrackingContext,
   createTitleGenTrackingContext,
   wrapWithTracking,
-} from "@life-os/ai/tracking";
+} from "@life-os/ai/tracking/middleware";
 import type { ChatModelRegistry } from "./service.js";
 import { streamMessageSchema } from "./schemas.js";
+import {
+  captureSentryException,
+  withSentrySpan,
+} from "../common/sentry.js";
 import {
   buildSystemPrompt,
   formatMessagesForAI,
@@ -23,6 +27,13 @@ import {
   isPlaceholderThreadName,
   type StreamEvent,
 } from "./stream-utils.js";
+import {
+  appendMessageToContext,
+  formatPromptFromContext,
+  getOrCreateContext,
+  summarizeContextIfOverBudget,
+  type ContextMessageEntry,
+} from "./thread-context-service.js";
 
 const logger = createLogger("api:chat:stream");
 
@@ -54,23 +65,51 @@ type ThreadWithMessages = {
   project: ThreadProject;
 };
 
+type ThreadWithoutMessages = Omit<ThreadWithMessages, "messages">;
+
 type AssistantModelData = {
   modelKey: string | null;
   modelLabel: string | null;
   modelProvider: string | null;
 };
 
-export type ChatStreamDb = {
+type ChatThreadContextRow = {
+  threadId: string;
+  baseContext: string;
+  conversationContext: string;
+  conversationTokenCount: number;
+  messageCount: number;
+  lastMessageId: string | null;
+};
+
+type ChatStreamDbTransaction = {
   chatThread: {
     findMany: (args: unknown) => Promise<Array<{ name: string }>>;
-    findFirst: (args: unknown) => Promise<ThreadWithMessages | null>;
+    findFirst: (
+      args: unknown,
+    ) => Promise<ThreadWithMessages | ThreadWithoutMessages | null>;
     create: (args: unknown) => Promise<ThreadWithMessages>;
-    update: (args: unknown) => Promise<ThreadWithMessages>;
+    update: (
+      args: unknown,
+    ) => Promise<ThreadWithMessages | ThreadWithoutMessages>;
     updateMany: (args: unknown) => Promise<unknown>;
   };
   chatMessage: {
     create: (args: unknown) => Promise<ThreadMessage>;
+    findMany: (args: unknown) => Promise<ThreadMessage[]>;
   };
+  chatThreadContext: {
+    findUnique: (args: unknown) => Promise<ChatThreadContextRow | null>;
+    create: (args: unknown) => Promise<ChatThreadContextRow>;
+    update: (args: unknown) => Promise<ChatThreadContextRow>;
+    updateMany: (args: unknown) => Promise<{ count: number }>;
+  };
+};
+
+export type ChatStreamDb = ChatStreamDbTransaction & {
+  $transaction: <T>(
+    fn: (tx: ChatStreamDbTransaction) => Promise<T>,
+  ) => Promise<T>;
 };
 
 type StreamChatParams = {
@@ -79,6 +118,23 @@ type StreamChatParams = {
   db: ChatStreamDb;
   modelRegistry: ChatModelRegistry;
 };
+
+async function traceChatStep<T>(params: {
+  name: string;
+  mode: "legacy" | "context";
+  callback: () => Promise<T> | T;
+  attributes?: Record<string, string | number | boolean | undefined>;
+}): Promise<T> {
+  return withSentrySpan({
+    name: params.name,
+    op: "chat.stream.step",
+    attributes: {
+      "chat.mode": params.mode,
+      ...params.attributes,
+    },
+    callback: params.callback,
+  });
+}
 
 async function getUniqueThreadName(
   db: ChatStreamDb,
@@ -135,7 +191,10 @@ function queueThreadTitleGeneration(params: {
   void (async () => {
     try {
       const baseModel = getModelFor("project_chat_summary");
-      const trackingContext = createTitleGenTrackingContext({ userId, threadId });
+      const trackingContext = createTitleGenTrackingContext({
+        userId,
+        threadId,
+      });
       const model = wrapWithTracking(baseModel, trackingContext);
       const prompt = buildThreadTitlePrompt(firstMessage);
       const result = await model.call({ prompt, mode: "text" });
@@ -209,7 +268,7 @@ function toAssistantModelData(
   };
 }
 
-export async function streamChat(params: StreamChatParams): Promise<Response> {
+async function streamChatLegacy(params: StreamChatParams): Promise<Response> {
   const start = Date.now();
 
   try {
@@ -232,7 +291,7 @@ export async function streamChat(params: StreamChatParams): Promise<Response> {
       isRegenerate,
     });
 
-    let thread = threadId
+    let thread = (threadId
       ? await params.db.chatThread.findFirst({
           where: { id: threadId, userId: params.userId },
           include: {
@@ -247,7 +306,7 @@ export async function streamChat(params: StreamChatParams): Promise<Response> {
             messages: { orderBy: { createdAt: "asc" } },
             project: true,
           },
-        });
+        })) as ThreadWithMessages | null;
 
     if (threadId && !thread) {
       return Response.json({ error: "Thread not found" }, { status: 404 });
@@ -369,7 +428,7 @@ export async function streamChat(params: StreamChatParams): Promise<Response> {
       });
       const oldestSummarizedDate = oldMessages[oldMessages.length - 1]?.createdAt;
 
-      thread = await params.db.chatThread.update({
+      thread = (await params.db.chatThread.update({
         where: { id: thread.id },
         data: {
           summary: summaryResult?.text ?? "",
@@ -379,7 +438,11 @@ export async function streamChat(params: StreamChatParams): Promise<Response> {
           messages: { orderBy: { createdAt: "asc" } },
           project: true,
         },
-      });
+      })) as ThreadWithMessages;
+    }
+
+    if (!thread) {
+      return Response.json({ error: "Thread not found" }, { status: 404 });
     }
 
     const projectContext = thread.project
@@ -522,6 +585,15 @@ export async function streamChat(params: StreamChatParams): Promise<Response> {
           controller.enqueue(encoder.encode(encodeSSE({ type: "done" })));
           controller.close();
         } catch (error) {
+          captureSentryException(error, {
+            tags: {
+              mode: "context",
+              step: "chat_model_stream",
+            },
+            extras: {
+              threadId: activeThreadId,
+            },
+          });
           logger.error("Stream error", {
             error: error instanceof Error ? error.message : String(error),
             durationMs: Date.now() - start,
@@ -584,5 +656,475 @@ export async function streamChat(params: StreamChatParams): Promise<Response> {
     });
 
     return Response.json({ error: "Failed to process request" }, { status: 500 });
+  }
+}
+
+type ValidatedStreamInput = {
+  threadId?: string;
+  content?: string;
+  regenerateFromMessageId?: string;
+};
+
+function toChatMessagesFromContext(
+  messages: ContextMessageEntry[],
+  threadId: string,
+): ChatMessage[] {
+  return messages.map((message) => ({
+    id: message.id,
+    threadId,
+    role: message.role,
+    content: message.content,
+    modelKey: null,
+    modelLabel: null,
+    modelProvider: null,
+    tokenCount: message.tokenCount,
+    tokenCountSource: null,
+    savedNoteId: null,
+    createdAt: message.createdAt,
+  }));
+}
+
+async function persistAssistantMessageWithContext(params: {
+  db: ChatStreamDb;
+  threadId: string;
+  text: string;
+  assistantModelData: AssistantModelData;
+  usageOutputTokens?: number | null;
+}) {
+  const tokenData = resolveTokenCount(params.text, params.usageOutputTokens);
+
+  return params.db.$transaction(async (tx) => {
+    const assistantMessage = await tx.chatMessage.create({
+      data: {
+        threadId: params.threadId,
+        role: "ASSISTANT",
+        content: params.text,
+        ...tokenData,
+        ...params.assistantModelData,
+      },
+    });
+
+    await appendMessageToContext({
+      db: tx,
+      threadId: params.threadId,
+      message: {
+        id: assistantMessage.id,
+        role: assistantMessage.role,
+        content: assistantMessage.content,
+        tokenCount: tokenData.tokenCount,
+        createdAt: assistantMessage.createdAt,
+      },
+    });
+
+    await tx.chatThread.update({
+      where: { id: params.threadId },
+      data: { lastChattedAt: assistantMessage.createdAt },
+    });
+
+    return assistantMessage;
+  });
+}
+
+async function streamChatWithContextTable(
+  params: StreamChatParams,
+  input: ValidatedStreamInput,
+): Promise<Response> {
+  const start = Date.now();
+
+  try {
+    if (!input.content) {
+      return Response.json({ error: "Content is required" }, { status: 400 });
+    }
+
+    const { content, threadId } = input;
+
+    const thread = await traceChatStep({
+      name: "chat.context.thread.resolve",
+      mode: "context",
+      attributes: {
+        "chat.has_thread_id": Boolean(threadId),
+      },
+      callback: async () => {
+        let resolved = (threadId
+          ? await params.db.chatThread.findFirst({
+              where: { id: threadId, userId: params.userId },
+              include: { project: true },
+            })
+          : await params.db.chatThread.findFirst({
+              where: { userId: params.userId, archivedAt: null },
+              orderBy: THREAD_ORDER,
+              include: { project: true },
+            })) as ThreadWithoutMessages | null;
+
+        if (threadId && !resolved) {
+          return null;
+        }
+
+        if (!resolved) {
+          const name = await getUniqueThreadName(
+            params.db,
+            params.userId,
+            DEFAULT_THREAD_NAME,
+          );
+          resolved = (await params.db.chatThread.create({
+            data: {
+              userId: params.userId,
+              name,
+            },
+            include: { project: true },
+          })) as ThreadWithoutMessages;
+        }
+
+        return resolved;
+      },
+    });
+
+    if (!thread) {
+      return Response.json({ error: "Thread not found" }, { status: 404 });
+    }
+
+    const existingContext = await traceChatStep({
+      name: "chat.context.get_or_create",
+      mode: "context",
+      callback: async () =>
+        getOrCreateContext({
+          db: params.db,
+          thread,
+        }),
+    });
+
+    const shouldGenerateTitle =
+      existingContext.messageCount === 0 && isPlaceholderThreadName(thread.name);
+
+    const userTokenData = resolveTokenCount(content);
+    const { userMessage, updatedContext } = await traceChatStep({
+      name: "chat.context.append.user",
+      mode: "context",
+      callback: async () =>
+        params.db.$transaction(async (tx) => {
+          const created = await tx.chatMessage.create({
+            data: {
+              threadId: thread.id,
+              role: "USER",
+              content,
+              ...userTokenData,
+            },
+          });
+
+          const contextAfterAppend = await appendMessageToContext({
+            db: tx,
+            threadId: thread.id,
+            message: {
+              id: created.id,
+              role: created.role,
+              content: created.content,
+              tokenCount: userTokenData.tokenCount,
+              createdAt: created.createdAt,
+            },
+          });
+
+          await tx.chatThread.update({
+            where: { id: thread.id },
+            data: { lastChattedAt: created.createdAt },
+          });
+
+          return {
+            userMessage: created,
+            updatedContext: contextAfterAppend,
+          };
+        }),
+    });
+
+    if (shouldGenerateTitle) {
+      queueThreadTitleGeneration({
+        db: params.db,
+        threadId: thread.id,
+        userId: params.userId,
+        firstMessage: content,
+        currentName: thread.name,
+      });
+    }
+
+    const contextSummaryResult = await traceChatStep({
+      name: "chat.context.summarize_if_needed",
+      mode: "context",
+      attributes: {
+        "chat.context_token_count": updatedContext.conversationTokenCount,
+      },
+      callback: async () =>
+        summarizeContextIfOverBudget({
+          db: params.db,
+          context: updatedContext,
+          tokenCap: HISTORY_TOKEN_CAP,
+          summarize: async (messagesToSummarize) =>
+            traceChatStep({
+              name: "chat.context.summarize.model_call",
+              mode: "context",
+              callback: async () => {
+                const summaryPrompt = buildSummarizationPrompt(
+                  toChatMessagesFromContext(messagesToSummarize, thread.id),
+                );
+                const baseSummaryModel = getModelFor("project_chat_summary");
+                const summaryTrackingContext = createSummaryTrackingContext({
+                  userId: params.userId,
+                  threadId: thread.id,
+                });
+                const summaryModel = wrapWithTracking(
+                  baseSummaryModel,
+                  summaryTrackingContext,
+                );
+                const summaryResult = await summaryModel.call({
+                  prompt: summaryPrompt,
+                  mode: "text",
+                });
+                return summaryResult.text;
+              },
+            }),
+        }),
+    });
+
+    if (contextSummaryResult.summary !== null || contextSummaryResult.summaryUpTo !== null) {
+      await traceChatStep({
+        name: "chat.context.summary.dual_write_legacy",
+        mode: "context",
+        callback: async () => {
+          await params.db.chatThread.update({
+            where: { id: thread.id },
+            data: {
+              summary: contextSummaryResult.summary,
+              summaryUpTo: contextSummaryResult.summaryUpTo,
+            },
+          });
+        },
+      });
+    }
+
+    const fullPrompt = formatPromptFromContext({
+      baseContext: contextSummaryResult.context.baseContext,
+      conversationContext: contextSummaryResult.context.conversationContext,
+    });
+
+    const overrideKey =
+      thread.modelKey && params.modelRegistry.has(thread.modelKey as ModelKey)
+        ? (thread.modelKey as ModelKey)
+        : undefined;
+
+    const assistantModelData = toAssistantModelData(
+      params.modelRegistry,
+      overrideKey,
+    );
+
+    const baseChatModel = getModelFor("project_chat", overrideKey);
+    const chatTrackingContext = createChatTrackingContext({
+      userId: params.userId,
+      threadId: thread.id,
+      isStreaming: Boolean(baseChatModel.streamCall),
+    });
+    const chatModel = wrapWithTracking(baseChatModel, chatTrackingContext);
+
+    if (!chatModel.streamCall) {
+      const result = await traceChatStep({
+        name: "chat.model.call",
+        mode: "context",
+        callback: async () =>
+          chatModel.call({
+            prompt: fullPrompt,
+            mode: "text",
+          }),
+      });
+
+      const assistantMessage = await traceChatStep({
+        name: "chat.context.append.assistant",
+        mode: "context",
+        callback: async () =>
+          persistAssistantMessageWithContext({
+            db: params.db,
+            threadId: thread.id,
+            text: result.text,
+            usageOutputTokens: result.usage?.outputTokens,
+            assistantModelData,
+          }),
+      });
+
+      const payload = [
+        encodeSSE({ type: "chunk", text: result.text }),
+        encodeSSE({ type: "message_saved", messageId: assistantMessage.id }),
+        encodeSSE({ type: "done" }),
+      ].join("");
+
+      return new Response(new TextEncoder().encode(payload), {
+        headers: streamResponseHeaders(),
+      });
+    }
+
+    const activeThreadId = thread.id;
+    const encoder = new TextEncoder();
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        let accumulatedText = "";
+        let streamResult: ModelStreamResult | undefined;
+
+        try {
+          const streamGenerator = await traceChatStep({
+            name: "chat.model.stream.start",
+            mode: "context",
+            callback: async () =>
+              chatModel.streamCall!({
+                prompt: fullPrompt,
+                mode: "text",
+              }),
+          });
+
+          while (true) {
+            const { value, done } = await streamGenerator.next();
+            if (done) {
+              streamResult = value;
+              break;
+            }
+
+            if (value.text) {
+              accumulatedText += value.text;
+              const event: StreamEvent = { type: "chunk", text: value.text };
+              controller.enqueue(encoder.encode(encodeSSE(event)));
+            }
+          }
+
+          const finalText =
+            streamResult?.text?.length ? streamResult.text : accumulatedText;
+
+          const assistantMessage = await traceChatStep({
+            name: "chat.context.append.assistant",
+            mode: "context",
+            callback: async () =>
+              persistAssistantMessageWithContext({
+                db: params.db,
+                threadId: activeThreadId,
+                text: finalText,
+                usageOutputTokens: streamResult?.usage?.outputTokens,
+                assistantModelData,
+              }),
+          });
+
+          logger.info("Chat stream completed", {
+            userMessageId: userMessage?.id,
+            assistantMessageId: assistantMessage.id,
+            responseLength: finalText.length,
+            durationMs: Date.now() - start,
+          });
+
+          controller.enqueue(
+            encoder.encode(
+              encodeSSE({ type: "message_saved", messageId: assistantMessage.id }),
+            ),
+          );
+          controller.enqueue(encoder.encode(encodeSSE({ type: "done" })));
+          controller.close();
+        } catch (error) {
+          logger.error("Stream error", {
+            error: error instanceof Error ? error.message : String(error),
+            durationMs: Date.now() - start,
+          });
+
+          if (accumulatedText.length > 0) {
+            try {
+              const partialContent = `${accumulatedText}\n\n[Response interrupted]`;
+              const partialMessage = await traceChatStep({
+                name: "chat.context.append.assistant_partial",
+                mode: "context",
+                callback: async () =>
+                  persistAssistantMessageWithContext({
+                    db: params.db,
+                    threadId: activeThreadId,
+                    text: partialContent,
+                    assistantModelData,
+                  }),
+              });
+
+              controller.enqueue(
+                encoder.encode(
+                  encodeSSE({
+                    type: "message_saved",
+                    messageId: partialMessage.id,
+                  }),
+                ),
+              );
+            } catch {
+              // ignore save failures in stream error path
+            }
+          }
+
+          controller.enqueue(
+            encoder.encode(
+              encodeSSE({
+                type: "error",
+                error:
+                  error instanceof Error ? error.message : "Stream failed",
+              }),
+            ),
+          );
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, { headers: streamResponseHeaders() });
+  } catch (error) {
+    captureSentryException(error, {
+      tags: {
+        mode: "context",
+        step: "chat_stream_start",
+      },
+      extras: {
+        durationMs: Date.now() - start,
+      },
+    });
+    logger.error("Failed to start chat stream (context mode)", {
+      error: error instanceof Error ? error.message : String(error),
+      durationMs: Date.now() - start,
+    });
+
+    return Response.json({ error: "Failed to process request" }, { status: 500 });
+  }
+}
+
+export async function streamChat(params: StreamChatParams): Promise<Response> {
+  try {
+    const validation = await traceChatStep({
+      name: "chat.request.parse_and_validate",
+      mode: "context",
+      callback: async () => {
+        const cloned = params.request.clone();
+        const body = (await cloned.json()) as unknown;
+        return streamMessageSchema.safeParse(body);
+      },
+    });
+    if (!validation.success) {
+      await traceChatStep({
+        name: "chat.route.legacy_fallback.invalid_request",
+        mode: "legacy",
+        callback: async () => undefined,
+      });
+      return streamChatLegacy(params);
+    }
+
+    if (validation.data.regenerateFromMessageId) {
+      await traceChatStep({
+        name: "chat.route.legacy_fallback.regenerate",
+        mode: "legacy",
+        callback: async () => undefined,
+      });
+      return streamChatLegacy(params);
+    }
+
+    return streamChatWithContextTable(params, validation.data);
+  } catch (error) {
+    captureSentryException(error, {
+      tags: {
+        mode: "router",
+        step: "chat_request_parse",
+      },
+    });
+    return streamChatLegacy(params);
   }
 }

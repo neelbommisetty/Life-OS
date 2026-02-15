@@ -13,6 +13,10 @@ import { chatRoute } from "./modules/chat/route.js";
 import { analyticsRoute } from "./modules/analytics/route.js";
 import { resolveUserIdFromRequest } from "./modules/common/auth.js";
 import { toApiError, toErrorBody } from "./modules/common/errors.js";
+import {
+  captureSentryException,
+  withSentrySpan,
+} from "./modules/common/sentry.js";
 
 const appLogger = createLogger("api");
 const httpLogger = createLogger("api:http");
@@ -92,48 +96,69 @@ app.use("*", async (c, next) => {
   const requestId = getRequestId(c.req.raw);
   const start = Date.now();
   const requestUrl = new URL(c.req.url);
+  await withSentrySpan({
+    name: `${c.req.method} ${c.req.path}`,
+    op: "http.server",
+    attributes: {
+      "http.method": c.req.method,
+      "http.route": c.req.path,
+      "http.query": requestUrl.search || undefined,
+      "request.id": requestId,
+    },
+    callback: async () => {
+      httpLogger.info("Incoming request", {
+        requestId,
+        method: c.req.method,
+        path: c.req.path,
+        query: requestUrl.search || undefined,
+        ip: getClientIp(c.req.raw),
+        userAgent: c.req.header("user-agent") ?? undefined,
+      });
 
-  httpLogger.info("Incoming request", {
-    requestId,
-    method: c.req.method,
-    path: c.req.path,
-    query: requestUrl.search || undefined,
-    ip: getClientIp(c.req.raw),
-    userAgent: c.req.header("user-agent") ?? undefined,
+      try {
+        await next();
+      } catch (error) {
+        captureSentryException(error, {
+          tags: {
+            request_id: requestId,
+            method: c.req.method,
+            path: c.req.path,
+          },
+          extras: {
+            durationMs: Date.now() - start,
+          },
+        });
+        httpLogger.error("Unhandled request error", {
+          requestId,
+          method: c.req.method,
+          path: c.req.path,
+          durationMs: Date.now() - start,
+          error: getErrorMessage(error),
+        });
+        throw error;
+      } finally {
+        if (!c.res.headers.has(REQUEST_ID_HEADER)) {
+          c.res.headers.set(REQUEST_ID_HEADER, requestId);
+        }
+
+        const context = {
+          requestId,
+          method: c.req.method,
+          path: c.req.path,
+          status: c.res.status,
+          durationMs: Date.now() - start,
+        };
+
+        if (c.res.status >= 500) {
+          httpLogger.error("Request completed with server error", context);
+        } else if (c.res.status >= 400) {
+          httpLogger.warn("Request completed with client error", context);
+        } else {
+          httpLogger.info("Request completed", context);
+        }
+      }
+    },
   });
-
-  try {
-    await next();
-  } catch (error) {
-    httpLogger.error("Unhandled request error", {
-      requestId,
-      method: c.req.method,
-      path: c.req.path,
-      durationMs: Date.now() - start,
-      error: getErrorMessage(error),
-    });
-    throw error;
-  } finally {
-    if (!c.res.headers.has(REQUEST_ID_HEADER)) {
-      c.res.headers.set(REQUEST_ID_HEADER, requestId);
-    }
-
-    const context = {
-      requestId,
-      method: c.req.method,
-      path: c.req.path,
-      status: c.res.status,
-      durationMs: Date.now() - start,
-    };
-
-    if (c.res.status >= 500) {
-      httpLogger.error("Request completed with server error", context);
-    } else if (c.res.status >= 400) {
-      httpLogger.warn("Request completed with client error", context);
-    } else {
-      httpLogger.info("Request completed", context);
-    }
-  }
 });
 
 app.use("*", async (c, next) => {
@@ -143,9 +168,25 @@ app.use("*", async (c, next) => {
   }
 
   try {
-    await resolveUserIdFromRequest(c.req.raw);
+    await withSentrySpan({
+      name: "auth.resolve_user",
+      op: "auth.middleware",
+      attributes: {
+        "http.method": c.req.method,
+        "http.route": c.req.path,
+      },
+      callback: async () => {
+        await resolveUserIdFromRequest(c.req.raw);
+      },
+    });
     await next();
   } catch (error) {
+    captureSentryException(error, {
+      tags: {
+        method: c.req.method,
+        path: c.req.path,
+      },
+    });
     const apiError = toApiError(error);
     return c.json(toErrorBody(apiError), apiError.status);
   }
