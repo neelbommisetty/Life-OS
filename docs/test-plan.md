@@ -55,7 +55,7 @@ Required updates for feature work:
 | --- | --- | --- | --- |
 | API Platform | Root health response | `GET /` | Returns 200 and expected body |
 | API Platform | Request correlation | all API routes via middleware | Adds `x-request-id` when missing and preserves caller-provided `x-request-id`, including error responses |
-| API Platform | Sentry error + tracing instrumentation | API bootstrap (`instrument.ts`) + shared route error handling | Verifies 5xx errors are captured while 4xx errors are not, and tracing init is loaded from both Bun server and Vercel entrypoint |
+| API Platform | Sentry error + performance tracing instrumentation | API bootstrap (`instrument.ts`) + middleware + chat streaming path | Verifies 5xx errors are captured while 4xx errors are not; when `SENTRY_DSN` is configured, request-level and chat step-level spans are emitted (`request parse`, `thread resolve`, `context get/create`, `context append`, `summarization`, `model call/stream`, `assistant save`) |
 | API Platform | Readiness/status contract | `GET /status`, `GET /api/status` | DB not configured, DB ready, DB check failure, `STATUS_DEBUG=true` reason, AI status shape |
 | API Auth Proxy | Neon auth passthrough hardening | `ALL /api/auth`, `ALL /api/auth/*` | Proxies method/query/body/headers; strips host+forwarding headers; normalizes empty sign-out body to `{}` JSON; strips empty body headers on other non-GET auth routes; forwards upstream status/headers; rewrites upstream auth redirects to `/api/auth/*`; base URL missing error |
 | API Auth | User identity resolution | protected-route middleware (`resolveUserIdFromRequest`) | JWT verify path, session fallback path, invalid auth handling, per-request cache, non-GET session lookup header stripping, timeout behavior, same-origin/cross-origin `/api/auth` proxy misconfiguration fail-fast, upstream status surfaced in auth resolution errors |
@@ -69,6 +69,7 @@ Required updates for feature work:
 | API Data | Notes back-reference cleanup | `DELETE /notes/:id` (+ `/api/*`) | Deleting a note clears linked `chatMessage.savedNoteId` references |
 | API Data | Chat threads/messages/models contract | `/chat*`, `/api/chat*` | Thread lifecycle, default thread creation, model assignment/reset behavior, cursor pagination contract, text-model filtering |
 | API Streaming | Chat stream protocol | `POST /chat/stream`, `/api/chat/stream` | SSE event contract (`chunk`, `message_saved`, `done`, `error`), persistence, regenerate constraints |
+| API Streaming | Thread context cache for prompt assembly | `POST /chat/stream`, `/api/chat/stream` | Non-regenerate chat writes USER/ASSISTANT turns into `ChatThreadContext`, lazy-backfills legacy threads, and preserves SSE contract while keeping regenerate behavior unchanged |
 | API Analytics | Usage dashboard contract | `/analytics/dashboard`, `/api/analytics/dashboard` | Default params (`days=30`, `limit=10`), bounds/validation errors, summary + recent calls shape |
 | API Errors | Error classification/mapping | shared error utilities + route handlers | Invalid JSON -> 400, validation -> 400, auth -> 401, not found -> 404, generic -> 500, configuration/provider readiness errors -> 503 |
 | Web Platform | API auth proxy passthrough | `/api/auth/[...path]` | Preserves method/query/body/headers to API, propagates `x-request-id`, strips empty-body `content-type`/`content-length` before proxying |
@@ -110,6 +111,7 @@ Run this set before release and after large refactors:
   - `apps/api/src/modules/inbox/route.test.ts`
   - `apps/api/src/modules/notes/route.test.ts`
   - `apps/api/src/modules/chat/route.test.ts`
+  - `apps/api/src/modules/chat/thread-context-service.test.ts`
   - `apps/api/src/modules/analytics/route.test.ts`
 - Web unit tests (selected):
   - `apps/web/src/lib/api/base-url.test.ts`

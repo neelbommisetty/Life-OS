@@ -33,13 +33,18 @@
       "types": "./src/tracking/index.ts",
       "import": "./dist/tracking/index.js",
       "default": "./dist/tracking/index.js"
+    },
+    "./tracking/middleware": {
+      "types": "./src/tracking/middleware.ts",
+      "import": "./dist/tracking/middleware.js",
+      "default": "./dist/tracking/middleware.js"
     }
   },
   "scripts": {
     "build:clean": "rm -rf dist",
     "build:core": "bun build src/index.ts --target=node --format=esm --packages=external --outfile dist/index.js && bun build src/services.ts --target=node --format=esm --packages=external --outfile dist/services.js && bun build src/init.ts --target=node --format=esm --packages=external --outfile dist/init.js",
     "build:providers": "bun build src/providers/index.ts --target=node --format=esm --packages=external --outfile dist/providers/index.js && bun build src/providers/registry.ts --target=node --format=esm --packages=external --outfile dist/providers/registry.js",
-    "build:tracking": "bun build src/tracking/index.ts --target=node --format=esm --packages=external --outfile dist/tracking/index.js",
+    "build:tracking": "bun build src/tracking/index.ts --target=node --format=esm --packages=external --outfile dist/tracking/index.js && bun build src/tracking/middleware.ts --target=node --format=esm --packages=external --outfile dist/tracking/middleware.js",
     "build": "bun run build:clean && bun run build:core && bun run build:providers && bun run build:tracking",
     "test": "bun test",
     "lint": "tsc --noEmit -p tsconfig.json"

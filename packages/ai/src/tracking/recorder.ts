@@ -1,11 +1,18 @@
-import { Prisma } from "@life-os/db";
-import { prisma } from "@life-os/db";
+import type { Prisma } from "@life-os/db";
 import { createLogger } from "../logger";
 import { getModelPriceSnapshot } from "../pricing";
 import { calculateCallCost } from './cost';
 import type { TrackingContext, TrackingResult } from './types';
 
 const logger = createLogger('ai-tracking:recorder');
+let dbModulePromise: Promise<typeof import("@life-os/db")> | null = null;
+
+async function getDbModule() {
+  if (!dbModulePromise) {
+    dbModulePromise = import("@life-os/db");
+  }
+  return dbModulePromise;
+}
 
 /**
  * Asynchronously record an AI call to the database.
@@ -19,6 +26,8 @@ export async function recordAiCall(
   tracking: TrackingResult
 ): Promise<void> {
   try {
+    const { prisma, Prisma } = await getDbModule();
+
     // Get pricing snapshot for cost calculation
     const priceSnapshot = getModelPriceSnapshot({
       modelKey: tracking.telemetry?.modelKey ?? null,
@@ -97,6 +106,7 @@ export async function updateAiCall(
   data: Prisma.AiCallUpdateInput
 ): Promise<void> {
   try {
+    const { prisma } = await getDbModule();
     await prisma.aiCall.update({
       where: { id: aiCallId },
       data,

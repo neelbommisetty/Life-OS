@@ -83,12 +83,25 @@ model ChatThread {
   projectId     String?
   project       Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
   messages      ChatMessage[]
+  context       ChatThreadContext?
   aiCalls       AiCall[]
 
   @@unique([userId, name])
   @@index([userId])
   @@index([userId, archivedAt, lastChattedAt])
   @@index([projectId])
+}
+
+model ChatThreadContext {
+  threadId                String     @id
+  thread                  ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  baseContext             String     @default("")
+  conversationContext     String     @default("")
+  conversationTokenCount  Int        @default(0)
+  messageCount            Int        @default(0)
+  lastMessageId           String?
+  createdAt               DateTime   @default(now())
+  updatedAt               DateTime   @updatedAt
 }
 
 model ChatMessage {
