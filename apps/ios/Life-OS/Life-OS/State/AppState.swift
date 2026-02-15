@@ -52,9 +52,6 @@ final class AppState: ObservableObject {
 
         do {
             sessionUser = try await authService.getSession()
-            if sessionUser != nil {
-                await refreshProtectedData()
-            }
         } catch {
             authError = error.userFacingMessage
             sessionUser = nil

@@ -68,8 +68,8 @@ final class SpeechRecognizer: NSObject, ObservableObject {
             let inputNode = audioEngine.inputNode
             let format = inputNode.outputFormat(forBus: 0)
             inputNode.removeTap(onBus: 0)
-            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-                self?.request?.append(buffer)
+            inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                request.append(buffer)
             }
 
             audioEngine.prepare()
@@ -78,13 +78,15 @@ final class SpeechRecognizer: NSObject, ObservableObject {
             task = recognizer.recognitionTask(with: request) { [weak self] result, error in
                 guard let self else { return }
 
-                if let result {
-                    self.liveTranscript = result.bestTranscription.formattedString
-                }
+                Task { @MainActor in
+                    if let result {
+                        self.liveTranscript = result.bestTranscription.formattedString
+                    }
 
-                if error != nil, self.isRecording {
-                    self.errorMessage = Brand.couldnt("transcribe audio")
-                    self.stopRecording()
+                    if error != nil, self.isRecording {
+                        self.errorMessage = Brand.couldnt("transcribe audio")
+                        self.stopRecording()
+                    }
                 }
             }
 

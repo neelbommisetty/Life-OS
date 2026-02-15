@@ -4,266 +4,50 @@ struct AuthenticatedShellView: View {
     @ObservedObject var appState: AppState
 
     enum AppTab: Hashable {
-        case home
-        case notes
-        case account
+        case capture
+        case inbox
+        case settings
     }
 
-    @State private var selectedTab: AppTab = .home
+    @State private var selectedTab: AppTab = .capture
 
     var body: some View {
         TabView(selection: $selectedTab) {
-            HomeTabView(appState: appState)
-                .tag(AppTab.home)
+            CaptureTabView(appState: appState)
+                .tag(AppTab.capture)
                 .tabItem {
-                    Label("Home", systemImage: "house.fill")
+                    Label("Capture", systemImage: "mic.fill")
                 }
 
-            NotesTabView(appState: appState)
-                .tag(AppTab.notes)
+            InboxTabView(appState: appState)
+                .tag(AppTab.inbox)
                 .tabItem {
-                    Label(Brand.Terms.library, systemImage: "note.text")
+                    Label(Brand.Terms.inbox, systemImage: "tray.full")
                 }
 
             AccountTabView(appState: appState)
-                .tag(AppTab.account)
+                .tag(AppTab.settings)
                 .tabItem {
-                    Label("Account", systemImage: "person.crop.circle")
+                    Label("Settings", systemImage: "gearshape")
                 }
-        }
-        .task {
-            if appState.homeSnapshot.isEmpty && appState.notes.isEmpty {
-                await appState.refreshProtectedData()
-            }
         }
     }
 }
 
-struct HomeTabView: View {
+struct CaptureTabView: View {
     @ObservedObject var appState: AppState
-    @StateObject private var speechRecognizer = SpeechRecognizer()
-    @State private var noteText = ""
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(greeting)
-                                .font(.headline)
-                            Text(appState.sessionUser?.name ?? appState.sessionUser?.email ?? "there")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        if appState.isRefreshingProtectedData {
-                            ProgressView()
-                        } else {
-                            Button("Refresh", systemImage: "arrow.clockwise") {
-                                Task {
-                                    await appState.refreshProtectedData()
-                                }
-                            }
-                            .labelStyle(.iconOnly)
-                        }
-                    }
-                }
-
-                if let protectedError = appState.protectedError {
-                    Section {
-                        MessageBanner(text: protectedError, color: .red, identifier: "home.error")
-                    }
-                }
-
-                Section("Snapshot") {
-                    HomeMetricRow(
-                        title: "Recent projects",
-                        count: appState.homeSnapshot.recentProjects.count,
-                        subtitle: appState.homeSnapshot.recentProjects.first?.name ?? "No projects yet.",
-                        icon: "folder"
-                    )
-
-                    HomeMetricRow(
-                        title: "Upcoming tasks",
-                        count: appState.homeSnapshot.upcomingTasks.count,
-                        subtitle: appState.homeSnapshot.upcomingTasks.first?.title ?? "No tasks due soon.",
-                        icon: "checklist"
-                    )
-
-                    HomeMetricRow(
-                        title: Brand.Terms.library,
-                        count: appState.homeSnapshot.recentNotes.count,
-                        subtitle: appState.homeSnapshot.recentNotes.first?.title ?? "No notes here yet.",
-                        icon: "note.text"
-                    )
-                }
-
-                Section("Capture") {
-                    Label(
-                        speechRecognizer.isRecording ? "Recording" : "Ready",
-                        systemImage: speechRecognizer.isRecording ? "waveform.circle.fill" : "checkmark.circle.fill"
-                    )
-                    .foregroundStyle(speechRecognizer.isRecording ? .red : .secondary)
-
-                    ZStack(alignment: .topLeading) {
-                        TextEditor(text: $noteText)
-                            .frame(minHeight: 160)
-                            .scrollContentBackground(.hidden)
-                            .background(Color.clear)
-
-                        if noteText.isEmpty {
-                            Text("Type here, or use the mic to append speech…")
-                                .foregroundStyle(.tertiary)
-                                .padding(.top, 8)
-                                .padding(.leading, 6)
-                                .allowsHitTesting(false)
-                        }
-                    }
-
-                    Text(statusText)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-
-                    Button {
-                        toggleRecording()
-                    } label: {
-                        Label(
-                            speechRecognizer.isRecording ? "Stop voice input" : "Start voice input",
-                            systemImage: speechRecognizer.isRecording ? "stop.fill" : "mic.fill"
-                        )
-                        .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(speechRecognizer.isRecording ? .red : .accentColor)
-                    .accessibilityLabel(speechRecognizer.isRecording ? "Stop voice input" : "Start voice input")
-
-                    if let errorMessage = speechRecognizer.errorMessage {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle(Brand.productName)
-        }
-    }
-
-    private func toggleRecording() {
-        if speechRecognizer.isRecording {
-            speechRecognizer.stopRecording()
-            appendTranscript(speechRecognizer.liveTranscript)
-        } else {
-            speechRecognizer.startRecording()
-        }
-    }
-
-    private func appendTranscript(_ transcript: String) {
-        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-
-        if noteText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            noteText = trimmed
-        } else {
-            noteText += "\n\(trimmed)"
-        }
-    }
-
-    private var statusText: String {
-        if speechRecognizer.isRecording {
-            return speechRecognizer.liveTranscript.isEmpty ? "Listening…" : speechRecognizer.liveTranscript
-        }
-        return "Tap the mic to append speech."
-    }
-
-    private var greeting: String {
-        let hour = Calendar.current.component(.hour, from: Date())
-        if hour >= 5 && hour < 12 { return "Good morning" }
-        if hour >= 12 && hour < 17 { return "Good afternoon" }
-        return "Good evening"
+        CaptureView()
     }
 }
 
-struct HomeMetricRow: View {
-    let title: String
-    let count: Int
-    let subtitle: String
-    let icon: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .foregroundStyle(Color.accentColor)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-
-                Text(subtitle)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            Text("\(count)")
-                .font(.headline.monospacedDigit())
-        }
-    }
-}
-
-struct NotesTabView: View {
+struct InboxTabView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
         NavigationStack {
-            List {
-                if appState.notes.isEmpty {
-                    Text("No notes here yet.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(appState.notes) { note in
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(note.title)
-                                .font(.headline)
-
-                            if !note.content.isEmpty {
-                                Text(note.content)
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(3)
-                            }
-
-                            if let updatedAt = note.updatedAt {
-                                Text(updatedAt)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-            }
-            .listStyle(.insetGrouped)
-            .navigationTitle(Brand.Terms.library)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    if appState.isRefreshingProtectedData {
-                        ProgressView()
-                    } else {
-                        Button("Refresh", systemImage: "arrow.clockwise") {
-                            Task {
-                                await appState.refreshProtectedData()
-                            }
-                        }
-                        .labelStyle(.iconOnly)
-                    }
-                }
-            }
+            InboxView()
         }
     }
 }
