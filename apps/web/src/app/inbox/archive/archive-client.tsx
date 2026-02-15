@@ -88,7 +88,7 @@ export function InboxArchiveClient({
           </Button>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Inbox Archive</h1>
-            <p className="text-sm text-muted-foreground">Archived items remain available for reference.</p>
+            <p className="text-sm text-muted-foreground">Archived items stay available for review.</p>
           </div>
         </div>
 
@@ -107,7 +107,7 @@ export function InboxArchiveClient({
         {items.length === 0 ? (
           <Card>
             <CardContent className="py-10 text-center text-sm text-muted-foreground">
-              No archived inbox items found.
+              No archived items yet.
             </CardContent>
           </Card>
         ) : (

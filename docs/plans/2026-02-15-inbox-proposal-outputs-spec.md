@@ -17,8 +17,8 @@ This doc extends `docs/plans/2026-02-13-inbox-capture-layer-design.md` and assum
 ### Terminology
 
 - **InboxItem**: Immutable captured text, owned by a user.
-- **Proposal Output** (or **Proposal**): An agent-produced suggestion tied to an InboxItem. Proposals do not mutate user data until approved.
-- **Created Artifact**: A real record created as the side-effect of approving a proposal (e.g., Note, Task).
+- **Proposal Output** (or **Proposal**): An agent-produced suggestion tied to an InboxItem. Proposals do not change user data until approved.
+- **Created Artifact**: A real record created as the side effect of approving a proposal (e.g., Note, Task).
 
 ### Inbox Item State Gate (V1)
 
@@ -64,13 +64,20 @@ All reads and writes must enforce:
 - Proposal outputs are only accessible via their parent item’s ownership.
 - Created artifacts must be owned by the same user.
 
+### Proposal Review Copy (Required)
+
+When showing a proposal in review UI, include:
+- What will happen (the action).
+- Why it was suggested (brief reason).
+- How to change it (edit/undo/alternate).
+
 ---
 
 ## Spec A: Agent Proposal Generation
 
 ### Goal
 
-Generate proposal outputs for each `InboxItem` without mutating user data until explicit approval.
+Generate proposal outputs for each `InboxItem` without changing user data until explicit approval.
 
 ### Non-Goals (V1)
 
@@ -98,7 +105,7 @@ Agent output (one agent run may emit multiple proposals):
 V1 requirements:
 - Runs in background after InboxItem creation.
 - Must be time-bounded (timeout) and failure-tolerant (one agent failing does not invalidate the item).
-- Must be safe to retry (same item should not create duplicate proposal records).
+- Must be safe to retry; do not create duplicate proposal records for the same item.
 
 Recommended design:
 - Transition item to `PROCESSING`.
@@ -111,7 +118,7 @@ Recommended design:
 
 ### Handling Hung Processing (Required)
 
-If proposal generation “hangs” past a timeout:
+If proposal generation stalls past a timeout:
 - Item remains in `PROCESSING`.
 - UI exposes a manual recovery action (exact UX TBD) that allows:
   - Transition item to `REVIEW` with whatever proposals exist.
@@ -282,4 +289,3 @@ If execution fails:
   - Recommendation: optional.
 - Should bulk endpoints be async jobs if output count is large?
   - Recommendation: synchronous in V1 with a reasonable max outputs limit.
-
