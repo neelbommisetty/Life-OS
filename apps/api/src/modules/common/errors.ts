@@ -6,6 +6,7 @@ const NOT_FOUND_MESSAGES = new Set([
   "Task not found",
   "Thread not found",
   "Message not found",
+  "Inbox item not found",
 ]);
 
 const BAD_REQUEST_MESSAGES = new Set([
@@ -13,6 +14,7 @@ const BAD_REQUEST_MESSAGES = new Set([
   "Selected model is not available",
   "Can only regenerate assistant messages",
   "Can only regenerate the latest assistant message",
+  "Archived inbox items cannot be processed",
 ]);
 
 export class ApiError extends Error {

@@ -8,6 +8,7 @@ import { homeRoute } from "./modules/home/route.js";
 import { projectsRoute } from "./modules/projects/route.js";
 import { notesRoute } from "./modules/notes/route.js";
 import { tasksRoute } from "./modules/tasks/route.js";
+import { inboxRoute } from "./modules/inbox/route.js";
 import { chatRoute } from "./modules/chat/route.js";
 import { analyticsRoute } from "./modules/analytics/route.js";
 import { resolveUserIdFromRequest } from "./modules/common/auth.js";
@@ -162,6 +163,7 @@ app.route("/", homeRoute);
 app.route("/", projectsRoute);
 app.route("/", notesRoute);
 app.route("/", tasksRoute);
+app.route("/", inboxRoute);
 app.route("/", chatRoute);
 app.route("/", analyticsRoute);
 

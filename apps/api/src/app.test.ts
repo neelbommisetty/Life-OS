@@ -1,12 +1,16 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { requestJson, withEnv } from "./test/harness.js";
 
-if (!process.env.DATABASE_URL) {
-  process.env.DATABASE_URL =
-    "postgresql://life_os_test:life_os_test@localhost:5432/life_os_test";
-}
+let app: typeof import("./app.js").app;
 
-const { app } = await import("./app.js");
+beforeAll(async () => {
+  if (!process.env.DATABASE_URL) {
+    process.env.DATABASE_URL =
+      "postgresql://life_os_test:life_os_test@localhost:5432/life_os_test";
+  }
+
+  ({ app } = await import("./app.js"));
+});
 
 describe("api app integration", () => {
   test("adds x-request-id header when request id is missing", async () => {

@@ -9,6 +9,7 @@ import {
   FolderKanban,
   CheckSquare,
   FileText,
+  Inbox,
   MessageSquare,
   BarChart3,
 } from "lucide-react";
@@ -27,6 +28,7 @@ const navItems = [
   { icon: FolderKanban, label: "Projects", href: "/projects" },
   { icon: CheckSquare, label: "Tasks", href: "/tasks" },
   { icon: FileText, label: brand.terms.library, href: "/notes" },
+  { icon: Inbox, label: "Inbox", href: "/inbox" },
   { icon: BarChart3, label: "Analytics", href: "/analytics" },
 ];
 

@@ -24,7 +24,7 @@ Required updates for feature work:
 | Auth | Sign in/sign up/forgot/reset password | `/auth/sign-in`, `/auth/sign-up`, `/auth/forget-password`, `/auth/reset-password` | Forms show success and error states; redirects happen correctly | Submit success/error paths for each flow |
 | Auth | Legacy recover alias | `/auth/recover` | Route renders forgot-password experience (normalized to recover flow UI) | Route resolves and can submit password reset request path |
 | Auth | Signed-in redirect on auth pages | `/auth/sign-in`, `/auth/sign-up` | Authenticated users are redirected to `/` | Redirect occurs when session exists |
-| Auth | Session-gated app access | `/`, `/chat`, `/projects`, `/projects/[id]`, `/tasks`, `/tasks/archive`, `/notes`, `/analytics`, `/account/*` | Unauthenticated users are redirected to `/auth/sign-in`; authenticated users load pages | Redirect and authenticated load success |
+| Auth | Session-gated app access | `/`, `/chat`, `/projects`, `/projects/[id]`, `/tasks`, `/tasks/archive`, `/inbox`, `/inbox/archive`, `/notes`, `/analytics`, `/account/*` | Unauthenticated users are redirected to `/auth/sign-in`; authenticated users load pages | Redirect and authenticated load success |
 | Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
 | iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in normalizes surrounding email whitespace; auth screens show success/error feedback across sign-in/sign-up/recover/reset | Unit + UI flow coverage for invalid + valid sign-in, whitespace-trimmed sign-in email, recover/reset validations, and gated app unlock |
 | iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
@@ -35,6 +35,8 @@ Required updates for feature work:
 | Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Assistant/Tasks/Library tabs | Edit success/error + tab content render |
 | Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
 | Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
+| Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture immutable inbox items, review details, mark processed, and archive from the inbox view | Create/list/detail plus process/archive action coverage |
+| Inbox | Inbox archive experience | `/inbox/archive` | Archived inbox items load and can be searched and unarchived | Archived data load + search + unarchive coverage |
 | Notes | Note selection and URL sync | `/notes` | Selecting notes updates `noteId`; first note auto-selects on `/notes` when available | Selection behavior + URL state + default selection |
 | Notes | Note editor behavior | `/notes` | Preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S | Autosave and manual save shortcuts/edge cases |
 | Chat | Thread management UI | `/chat` and project chat tab | Users can create/archive/select threads with URL sync and grouped/searchable list | Thread lifecycle + URL sync + filtering |
@@ -44,7 +46,7 @@ Required updates for feature work:
 | Chat | Assistant message actions | `/chat` | Users can copy output, regenerate latest assistant response, save assistant message as note | Action availability + state transitions |
 | Analytics | Usage dashboard rendering | `/analytics` | Summary cards, breakdown sections, recent activity render for empty/non-empty states | Dashboard shape and render coverage |
 | Pricing | Model pricing catalog | `/pricing` | Pricing catalog loads grouped models with key pricing fields | Catalog render and key labels/values |
-| SEO | Route metadata titles and descriptions | `/`, `/chat`, `/notes`, `/tasks`, `/tasks/archive`, `/projects`, `/projects/[id]`, `/analytics`, `/pricing`, `/auth/*`, `/account/*` | Each route exposes page-specific metadata for title/description (including dynamic auth/account/project paths) | Static metadata assertions + dynamic metadata resolution for known and fallback paths |
+| SEO | Route metadata titles and descriptions | `/`, `/chat`, `/notes`, `/tasks`, `/tasks/archive`, `/inbox`, `/inbox/archive`, `/projects`, `/projects/[id]`, `/analytics`, `/pricing`, `/auth/*`, `/account/*` | Each route exposes page-specific metadata for title/description (including dynamic auth/account/project paths) | Static metadata assertions + dynamic metadata resolution for known and fallback paths |
 | Errors | Client error feedback | all interactive routes calling `/api/*` | API/runtime failures show toasts or fallback error UI instead of silent failure | API error toast + unhandled rejection + route error fallback |
 
 ## Platform Capabilities
@@ -61,6 +63,8 @@ Required updates for feature work:
 | API Data | Projects API contract | `/projects*`, `/api/projects*` | List/search/includeArchived, get by id, project+items payload shape/order, create/update/archive/unarchive/delete behavior |
 | API Data | Tasks API contract | `/tasks*`, `/api/tasks*` | List/filter, archived list, CRUD semantics, due-date coercion, soft delete behavior |
 | API Data | Auto-archive stale done tasks | implicit during task list queries | `DONE` tasks older than 7 days are archived (`deletedAt`) during list and archived-list reads |
+| API Data | Inbox API contract | `/inbox*`, `/api/inbox*` | List/get/create plus process/archive/unarchive actions; immutable content after save |
+| API Data | Inbox auto-archive policy | implicit during inbox reads | `PROCESSED` items older than 7 days transition to `ARCHIVED` during list/get operations |
 | API Data | Notes API contract | `/notes*`, `/api/notes*` | List/filter/get/create/update/delete behavior, ownership checks, assistant-message save semantics |
 | API Data | Notes back-reference cleanup | `DELETE /notes/:id` (+ `/api/*`) | Deleting a note clears linked `chatMessage.savedNoteId` references |
 | API Data | Chat threads/messages/models contract | `/chat*`, `/api/chat*` | Thread lifecycle, default thread creation, model assignment/reset behavior, cursor pagination contract, text-model filtering |
@@ -85,11 +89,12 @@ Run this set before release and after large refactors:
 2. Auth smoke: sign in, authenticated access, sign out.
 3. Projects: create, edit, open detail page.
 4. Tasks: create, move across columns, archive visibility.
-5. Notes: create/edit/delete and autosave behavior.
-6. Chat: send prompt, stream response, regenerate, save assistant message as note.
-7. Analytics: dashboard loads with non-empty and empty usage states.
-8. Pricing page: catalog renders without runtime errors.
-9. iOS smoke: invalid + valid sign-in, account profile/password updates, and sign-out returns to auth gate.
+5. Inbox: capture item, mark processed, archive/unarchive, and archive search.
+6. Notes: create/edit/delete and autosave behavior.
+7. Chat: send prompt, stream response, regenerate, save assistant message as note.
+8. Analytics: dashboard loads with non-empty and empty usage states.
+9. Pricing page: catalog renders without runtime errors.
+10. iOS smoke: invalid + valid sign-in, account profile/password updates, and sign-out returns to auth gate.
 
 ## Current Test File Index
 - API route and module tests:
@@ -102,6 +107,7 @@ Run this set before release and after large refactors:
   - `apps/api/src/modules/home/route.test.ts`
   - `apps/api/src/modules/projects/route.test.ts`
   - `apps/api/src/modules/tasks/route.test.ts`
+  - `apps/api/src/modules/inbox/route.test.ts`
   - `apps/api/src/modules/notes/route.test.ts`
   - `apps/api/src/modules/chat/route.test.ts`
   - `apps/api/src/modules/analytics/route.test.ts`
@@ -110,6 +116,7 @@ Run this set before release and after large refactors:
   - `apps/web/src/lib/api/error-message.test.ts`
   - `apps/web/src/lib/api/proxy-request.test.ts`
   - `apps/web/src/lib/chat/validations.test.ts`
+  - `apps/web/src/lib/inbox/validations.test.ts`
   - `apps/web/src/lib/chat-utils.test.ts`
   - `apps/web/src/lib/notes/note-save.test.ts`
   - `apps/web/src/lib/notes/note-utils.test.ts`
