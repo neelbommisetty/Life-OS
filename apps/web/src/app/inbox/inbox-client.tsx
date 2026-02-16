@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toastApiError } from "@/lib/api/error-toast";
+import { inboxTodoPreviewPayloadSchema } from "@/lib/inbox/validations";
 import {
   approveAllInboxOutputs,
   approveInboxOutput,
@@ -76,6 +77,19 @@ function getArtifactHref(artifact: { type: "note" | "task"; id: string }) {
   }
 
   return "/tasks";
+}
+
+function formatDueDate(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleDateString();
 }
 
 export function InboxClient({
@@ -325,6 +339,23 @@ export function InboxClient({
     return Date.now() - startedAt.getTime() >= PROCESSING_RECOVERY_WINDOW_MS;
   }, [selectedItem]);
 
+  const hasUnresolvedOutputs = useMemo(
+    () => outputs.some((output) => output.state === "PENDING" || output.state === "FAILED"),
+    [outputs],
+  );
+
+  const canResolveAllAsNo = useMemo(() => {
+    if (!selectedItem) {
+      return false;
+    }
+
+    if (selectedItem.state === "PROCESSED" || selectedItem.state === "ARCHIVED") {
+      return false;
+    }
+
+    return hasUnresolvedOutputs;
+  }, [hasUnresolvedOutputs, selectedItem]);
+
   return (
     <div className="h-full overflow-hidden p-6">
       <div className="grid h-full gap-6 lg:grid-cols-[340px_1fr]">
@@ -409,15 +440,19 @@ export function InboxClient({
             <div className="flex items-center justify-between gap-3">
               <CardTitle>Item</CardTitle>
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleResolveAllAsNo}
-                  disabled={isMutating || !selectedItem || selectedItem.state === "ARCHIVED"}
-                >
-                  <CheckCircle2 className="mr-2 size-4" />
-                  Resolve All as No
-                </Button>
+                {selectedItem &&
+                selectedItem.state !== "PROCESSED" &&
+                selectedItem.state !== "ARCHIVED" ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleResolveAllAsNo}
+                    disabled={isMutating || !canResolveAllAsNo}
+                  >
+                    <CheckCircle2 className="mr-2 size-4" />
+                    Resolve All as No
+                  </Button>
+                ) : null}
                 {canRecover ? (
                   <Button
                     size="sm"
@@ -520,6 +555,43 @@ export function InboxClient({
                           </div>
 
                           <p className="text-sm">{output.payloadPreview}</p>
+
+                          {output.agentKey === "todo_list" ? (
+                            (() => {
+                              const parsed = inboxTodoPreviewPayloadSchema.safeParse(output.payload);
+                              if (!parsed.success) {
+                                return null;
+                              }
+
+                              return (
+                                <div className="mt-3 space-y-2 rounded-md border bg-muted/20 p-3">
+                                  {parsed.data.tasks.map((task, taskIndex) => (
+                                    <div key={`${output.id}-task-${taskIndex}`} className="space-y-1">
+                                      <p className="text-sm font-medium">{task.title}</p>
+                                      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                        {task.status ? (
+                                          <span className="rounded bg-muted px-1.5 py-0.5">{task.status}</span>
+                                        ) : null}
+                                        {task.priority ? (
+                                          <span className="rounded bg-muted px-1.5 py-0.5">
+                                            {task.priority}
+                                          </span>
+                                        ) : null}
+                                        {task.dueDate ? (
+                                          <span className="rounded bg-muted px-1.5 py-0.5">
+                                            Due {formatDueDate(task.dueDate)}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                      {task.description ? (
+                                        <p className="text-xs text-muted-foreground">{task.description}</p>
+                                      ) : null}
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()
+                          ) : null}
 
                           {output.errorMessage ? (
                             <p className="mt-2 text-xs text-destructive">{output.errorMessage}</p>

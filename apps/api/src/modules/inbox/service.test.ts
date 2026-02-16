@@ -86,6 +86,11 @@ describe("inbox service", () => {
     expect(parsed?.find((agent) => agent.key === "todo_list")?.enabled).toBe(true);
   });
 
+  test("substantive text helper rejects whitespace-only text", () => {
+    expect(_private.hasSubstantiveText("Valid")).toBe(true);
+    expect(_private.hasSubstantiveText("  ")).toBe(false);
+  });
+
   test("processInboxItem resolves pending + failed and computes processed", async () => {
     let pendingResolved = false;
     let failedResolved = false;

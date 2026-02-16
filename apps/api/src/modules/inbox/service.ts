@@ -564,6 +564,10 @@ Inbox Capture:
 ${content}`;
 }
 
+function hasSubstantiveText(value: string) {
+  return value.trim().length > 0;
+}
+
 async function runKbNoteAgent(params: {
   content: string;
   agent: AgentConfig;
@@ -576,12 +580,20 @@ async function runKbNoteAgent(params: {
       timeoutMs: AGENT_TIMEOUT_MS,
     });
 
-    if (!response.shouldCreate || !response.note) {
+    if (
+      !response.shouldCreate ||
+      !response.note ||
+      !hasSubstantiveText(response.note.title) ||
+      !hasSubstantiveText(response.note.content)
+    ) {
       return {
         agentKey: params.agent.dbKey,
         outputs: [],
       };
     }
+
+    const title = response.note.title.trim();
+    const content = response.note.content.trim();
 
     return {
       agentKey: params.agent.dbKey,
@@ -590,10 +602,10 @@ async function runKbNoteAgent(params: {
           outputIndex: 0,
           payloadVersion: params.agent.payloadVersion,
           payload: {
-            title: response.note.title,
-            content: response.note.content,
+            title,
+            content,
           },
-          payloadPreview: `${response.reason} (Create note: ${response.note.title})`,
+          payloadPreview: `${response.reason} (Create note: ${title})`,
         },
       ],
     };
@@ -1781,4 +1793,5 @@ export const _private = {
   parseSnapshotConfig,
   buildAgentConfigSnapshot,
   getAgentByDbKey,
+  hasSubstantiveText,
 };

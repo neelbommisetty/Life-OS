@@ -79,6 +79,18 @@ export const inboxCreatedArtifactSchema = z.object({
   id: z.string().cuid(),
 });
 
+export const inboxTodoPreviewTaskSchema = z.object({
+  title: z.string().min(1).max(500),
+  description: z.string().max(5000).optional(),
+  status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
+  dueDate: z.union([z.string(), z.null()]).optional(),
+});
+
+export const inboxTodoPreviewPayloadSchema = z.object({
+  tasks: z.array(inboxTodoPreviewTaskSchema).min(1).max(100),
+});
+
 export type InboxItemState = z.infer<typeof inboxItemStateEnum>;
 export type InboxProposalOutputState = z.infer<typeof inboxProposalOutputStateEnum>;
 export type InboxAgentKey = z.infer<typeof inboxAgentKeyEnum>;
@@ -95,3 +107,5 @@ export type ResolveInboxOutputInput = z.infer<typeof resolveInboxOutputSchema>;
 export type SkipInboxOutputInput = z.infer<typeof skipInboxOutputSchema>;
 export type BulkResolveInboxOutputsInput = z.infer<typeof bulkResolveInboxOutputsSchema>;
 export type InboxCreatedArtifact = z.infer<typeof inboxCreatedArtifactSchema>;
+export type InboxTodoPreviewTask = z.infer<typeof inboxTodoPreviewTaskSchema>;
+export type InboxTodoPreviewPayload = z.infer<typeof inboxTodoPreviewPayloadSchema>;
