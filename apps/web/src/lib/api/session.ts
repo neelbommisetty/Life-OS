@@ -75,7 +75,7 @@ async function getApiSessionUserUncached(cookieHeader?: string | null) {
 
   let response: Response;
   try {
-    response = await fetch(buildApiUrl("/api/auth/get-session"), {
+    response = await fetch(buildApiUrl("/auth/get-session"), {
       method: "GET",
       headers: requestHeaders,
       cache: "no-store",

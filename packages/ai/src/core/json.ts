@@ -1,4 +1,4 @@
-import type { z } from 'zod';
+import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import { createLogger } from "../logger";
@@ -27,8 +27,11 @@ export async function callJson<TSchema extends z.ZodTypeAny>(
   }
 
   const { prompt, schema, ...rest } = params;
-  // @ts-expect-error zod-to-json-schema types lag behind zod@4; safe at runtime
-  const jsonSchema = zodToJsonSchema(schema);
+  const jsonSchema =
+    typeof z.toJSONSchema === 'function'
+      ? z.toJSONSchema(schema)
+      : // @ts-expect-error zod-to-json-schema types lag behind zod@4; runtime fallback
+        zodToJsonSchema(schema);
 
   const start = Date.now();
 

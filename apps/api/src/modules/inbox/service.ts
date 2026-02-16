@@ -179,12 +179,13 @@ const AGENT_DEFAULTS: AgentConfig[] = [
 const kbNoteAgentSchema = z.object({
   shouldCreate: z.boolean(),
   reason: z.string().min(1).max(500),
-  note: z
-    .object({
+  note: z.union([
+    z.object({
       title: z.string().min(1).max(500),
       content: z.string().min(1).max(100000),
-    })
-    .optional(),
+    }),
+    z.null(),
+  ]),
 });
 
 const todoListAgentSchema = z.object({
@@ -194,14 +195,13 @@ const todoListAgentSchema = z.object({
     .array(
       z.object({
         title: z.string().min(1).max(500),
-        description: z.string().max(5000).optional(),
-        status: z.enum(["TODO", "IN_PROGRESS", "DONE"]).optional(),
-        priority: z.enum(["LOW", "MEDIUM", "HIGH"]).optional(),
-        dueDate: z.union([z.string(), z.null()]).optional(),
+        description: z.union([z.string().max(5000), z.null()]),
+        status: z.union([z.enum(["TODO", "IN_PROGRESS", "DONE"]), z.null()]),
+        priority: z.union([z.enum(["LOW", "MEDIUM", "HIGH"]), z.null()]),
+        dueDate: z.union([z.string(), z.null()]),
       }),
     )
-    .max(100)
-    .optional(),
+    .max(100),
 });
 
 function toDbAgentKey(key: ClientAgentKey): DbAgentKey {
@@ -619,7 +619,15 @@ async function runTodoListAgent(params: {
     });
 
     const tasks = response.tasks ?? [];
-    if (!response.shouldCreate || tasks.length === 0) {
+    const normalizedTasks = tasks.map((task) => ({
+      title: task.title,
+      description: task.description ?? undefined,
+      status: task.status ?? undefined,
+      priority: task.priority ?? undefined,
+      dueDate: task.dueDate ?? undefined,
+    }));
+
+    if (!response.shouldCreate || normalizedTasks.length === 0) {
       return {
         agentKey: params.agent.dbKey,
         outputs: [],
@@ -633,9 +641,9 @@ async function runTodoListAgent(params: {
           outputIndex: 0,
           payloadVersion: params.agent.payloadVersion,
           payload: {
-            tasks,
+            tasks: normalizedTasks,
           },
-          payloadPreview: `${response.reason} (Create ${tasks.length} task${tasks.length === 1 ? "" : "s"})`,
+          payloadPreview: `${response.reason} (Create ${normalizedTasks.length} task${normalizedTasks.length === 1 ? "" : "s"})`,
         },
       ],
     };
@@ -1734,11 +1742,36 @@ export function queueInboxProposalGeneration(params: {
   inboxItemId: string;
 }) {
   void startInboxProposalGeneration(params).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+
     logger.warn("Failed to generate inbox proposals", {
       inboxItemId: params.inboxItemId,
       userId: params.userId,
-      error: error instanceof Error ? error.message : String(error),
+      error: message,
     });
+
+    void params
+      .getDb()
+      .then((db) =>
+        db.inboxItem.updateMany({
+          where: {
+            id: params.inboxItemId,
+            userId: params.userId,
+            state: "PROCESSING",
+          },
+          data: {
+            state: "REVIEW",
+            processingError: `generation_failed: ${message}`,
+          },
+        }),
+      )
+      .catch((updateError) => {
+        logger.warn("Failed to persist inbox proposal generation error", {
+          inboxItemId: params.inboxItemId,
+          userId: params.userId,
+          error: updateError instanceof Error ? updateError.message : String(updateError),
+        });
+      });
   });
 }
 
