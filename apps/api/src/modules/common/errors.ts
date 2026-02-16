@@ -7,6 +7,7 @@ const NOT_FOUND_MESSAGES = new Set([
   "Thread not found",
   "Message not found",
   "Inbox item not found",
+  "Inbox proposal output not found",
 ]);
 
 const BAD_REQUEST_MESSAGES = new Set([
@@ -15,6 +16,12 @@ const BAD_REQUEST_MESSAGES = new Set([
   "Can only regenerate assistant messages",
   "Can only regenerate the latest assistant message",
   "Archived inbox items cannot be processed",
+  "Only pending outputs can be approved",
+  "Only pending outputs can be declined",
+  "Only failed outputs can be retried",
+  "Only failed outputs can be skipped",
+  "Only processing inbox items can be recovered",
+  "Inbox item is not eligible for recovery yet",
 ]);
 
 export class ApiError extends Error {

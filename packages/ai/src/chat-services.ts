@@ -64,6 +64,34 @@ export function initializeChatServices(): void {
 
     logger.info("Registered project_chat_summary service route");
 
+    // Register inbox_kb_note service route
+    // Prefer balanced text quality for markdown note generation.
+    registerServiceRoute("inbox_kb_note", {
+      strategy: ServiceRouteStrategy.Failover,
+      models: [
+        ModelKeyName.OpenAIGpt5Mini,
+        ModelKeyName.AnthropicClaudeHaiku45,
+      ],
+      retry: { retries: 2, delayMs: 500 },
+      logging: {},
+    });
+
+    logger.info("Registered inbox_kb_note service route");
+
+    // Register inbox_todo_list service route
+    // Prefer economical extraction for structured task proposals.
+    registerServiceRoute("inbox_todo_list", {
+      strategy: ServiceRouteStrategy.Failover,
+      models: [
+        ModelKeyName.OpenAIGpt5Nano,
+        ModelKeyName.AnthropicClaudeHaiku45,
+      ],
+      retry: { retries: 2, delayMs: 500 },
+      logging: {},
+    });
+
+    logger.info("Registered inbox_todo_list service route");
+
     initialized = true;
     logger.info("Chat services initialized successfully");
   } catch (error) {
