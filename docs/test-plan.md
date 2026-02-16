@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-02-15
+Last updated: 2026-02-16
 
 ## Purpose
 This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
@@ -37,6 +37,7 @@ Required updates for feature work:
 | Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
 | Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
 | Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture inbox items, review details, mark processed, and archive from the inbox view | Create/list/detail plus process/archive action coverage |
+| Inbox | Inbox proposal output review UX | `/inbox` | `Resolve All as No` is unavailable for `PROCESSED`/`ARCHIVED` items and disabled when no unresolved outputs remain; todo proposals render structured full task previews from payload with safe fallback on malformed payloads | Web unit coverage for todo payload validation + API/unit coverage for proposal processing safety; manual UI check for button availability and preview rendering |
 | Inbox | Inbox archive experience | `/inbox/archive` | Archived inbox items load and can be searched and unarchived | Archived data load + search + unarchive coverage |
 | Notes | Note selection and URL sync | `/notes` | Selecting notes updates `noteId`; first note auto-selects on `/notes` when available | Selection behavior + URL state + default selection |
 | Notes | Note editor behavior | `/notes` | Preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S | Autosave and manual save shortcuts/edge cases |
@@ -65,6 +66,7 @@ Required updates for feature work:
 | API Data | Tasks API contract | `/tasks*` | List/filter, archived list, CRUD semantics, due-date coercion, soft delete behavior |
 | API Data | Auto-archive stale done tasks | implicit during task list queries | `DONE` tasks older than 7 days are archived (`deletedAt`) during list and archived-list reads |
 | API Data | Inbox API contract | `/inbox*`, `/inbox/:itemId/outputs`, `/inbox/outputs/:outputId/*`, `/inbox/:itemId/outputs/*`, `/inbox/:id/recover` | List/get/create, processing lifecycle, proposal output CRUD + approval workflow, idempotent output mutations, and archive/unarchive actions |
+| API Data | Inbox proposal generation guardrails | inbox generation pipeline (`inbox_kb_note`, `inbox_todo_list`) | Note proposals are omitted when non-actionable (including whitespace-only note fields), and inbox agent routing stays OpenAI-only to avoid Anthropic long non-streaming JSON request failures | Unit coverage for non-substantive text guard and service initialization logs/verifications in integration smoke |
 | API Data | Inbox agent settings API contract | `/settings/inbox-agents` | Returns effective inbox agent defaults + user overrides and supports per-user enable/disable updates |
 | API Data | Inbox auto-archive policy | implicit during inbox reads | `PROCESSED` items older than 7 days transition to `ARCHIVED` during list/get operations |
 | API Data | Notes API contract | `/notes*` | List/filter/get/create/update/delete behavior, ownership checks, assistant-message save semantics |

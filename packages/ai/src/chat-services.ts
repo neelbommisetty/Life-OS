@@ -70,7 +70,7 @@ export function initializeChatServices(): void {
       strategy: ServiceRouteStrategy.Failover,
       models: [
         ModelKeyName.OpenAIGpt5Mini,
-        ModelKeyName.AnthropicClaudeHaiku45,
+        ModelKeyName.OpenAIGpt5Nano,
       ],
       retry: { retries: 2, delayMs: 500 },
       logging: {},
@@ -84,7 +84,7 @@ export function initializeChatServices(): void {
       strategy: ServiceRouteStrategy.Failover,
       models: [
         ModelKeyName.OpenAIGpt5Nano,
-        ModelKeyName.AnthropicClaudeHaiku45,
+        ModelKeyName.OpenAIGpt5Mini,
       ],
       retry: { retries: 2, delayMs: 500 },
       logging: {},

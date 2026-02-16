@@ -3,6 +3,7 @@ import {
   bulkResolveInboxOutputsSchema,
   createInboxItemSchema,
   getInboxItemByIdSchema,
+  inboxTodoPreviewPayloadSchema,
   listInboxItemsSchema,
   processInboxItemSchema,
   recoverInboxItemSchema,
@@ -68,5 +69,33 @@ describe("inbox validation schemas", () => {
 
     const bad = bulkResolveInboxOutputsSchema.safeParse({ itemId: "bad" });
     expect(bad.success).toBe(false);
+  });
+
+  test("todo preview payload schema accepts task list payload", () => {
+    const result = inboxTodoPreviewPayloadSchema.safeParse({
+      tasks: [
+        {
+          title: "Ship inbox tweaks",
+          description: "Finalize and verify web behavior",
+          status: "IN_PROGRESS",
+          priority: "HIGH",
+          dueDate: "2026-02-20",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  test("todo preview payload schema rejects malformed payload", () => {
+    const result = inboxTodoPreviewPayloadSchema.safeParse({
+      tasks: [
+        {
+          title: "",
+        },
+      ],
+    });
+
+    expect(result.success).toBe(false);
   });
 });
