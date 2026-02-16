@@ -11,8 +11,6 @@ This document is the **current source of truth** for:
 - The product concept of `Inbox` as a capture layer, and
 - The **iOS companion app MVP** flow and screens for Capture + Inbox.
 
-It supersedes older iOS companion planning docs (notably `2026-02-03-ios-companion-inbox-design.md`).
-
 ## iOS Companion App (MVP)
 
 ### Launch flow

@@ -11,6 +11,10 @@ if ! command -v bun >/dev/null 2>&1; then
   exit 1
 fi
 
+if [ "${LIFE_OS_SKIP_RUNTIME_PREP:-}" != "1" ]; then
+  bun run prepare:runtime
+fi
+
 MODE="${1:-all}"
 TMP_BASE="${TMPDIR:-/tmp}"
 TMP_BASE="${TMP_BASE%/}"
