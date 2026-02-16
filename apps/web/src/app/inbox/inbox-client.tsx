@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Archive, CheckCircle2, Search } from "lucide-react";
+import { Archive, CheckCircle2, Search, Wrench } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,14 +10,25 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toastApiError } from "@/lib/api/error-toast";
 import {
+  approveAllInboxOutputs,
+  approveInboxOutput,
   archiveInboxItem,
   createInboxItem,
+  declineAllInboxOutputs,
+  declineInboxOutput,
   listInboxItems,
+  listInboxOutputs,
   processInboxItem,
+  recoverInboxItem,
+  retryInboxOutput,
+  skipInboxOutput,
   type InboxItem,
   type InboxItemState,
+  type InboxProposalOutput,
 } from "@/lib/inbox/actions";
 import { cn } from "@/lib/utils";
+
+const PROCESSING_RECOVERY_WINDOW_MS = 2 * 60 * 1000;
 
 function formatDate(date: Date | null) {
   if (!date) {
@@ -48,6 +59,25 @@ function summarize(content: string) {
   return `${compact.slice(0, 87)}...`;
 }
 
+function outputBadgeVariant(state: InboxProposalOutput["state"]): "default" | "secondary" | "outline" {
+  switch (state) {
+    case "APPROVED":
+      return "default";
+    case "FAILED":
+      return "secondary";
+    default:
+      return "outline";
+  }
+}
+
+function getArtifactHref(artifact: { type: "note" | "task"; id: string }) {
+  if (artifact.type === "note") {
+    return `/notes?noteId=${artifact.id}`;
+  }
+
+  return "/tasks";
+}
+
 export function InboxClient({
   initialItems,
 }: {
@@ -57,6 +87,8 @@ export function InboxClient({
   const [selectedId, setSelectedId] = useState<string | null>(initialItems[0]?.id ?? null);
   const [contentDraft, setContentDraft] = useState("");
   const [search, setSearch] = useState("");
+  const [outputs, setOutputs] = useState<InboxProposalOutput[]>([]);
+  const [isLoadingOutputs, setIsLoadingOutputs] = useState(false);
   const [isCreating, startCreateTransition] = useTransition();
   const [isMutating, startMutatingTransition] = useTransition();
 
@@ -66,10 +98,29 @@ export function InboxClient({
         search: search || undefined,
       });
       setItems(nextItems);
+      return nextItems;
     } catch (error) {
       toastApiError(error, "Failed to load inbox items");
+      return null;
     }
   }, [search]);
+
+  const loadOutputs = useCallback(async (itemId: string | null) => {
+    if (!itemId) {
+      setOutputs([]);
+      return;
+    }
+
+    setIsLoadingOutputs(true);
+    try {
+      const nextOutputs = await listInboxOutputs({ itemId });
+      setOutputs(nextOutputs);
+    } catch (error) {
+      toastApiError(error, "Failed to load proposal outputs");
+    } finally {
+      setIsLoadingOutputs(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +159,21 @@ export function InboxClient({
     [effectiveSelectedId, items],
   );
 
+  useEffect(() => {
+    void loadOutputs(effectiveSelectedId);
+  }, [effectiveSelectedId, loadOutputs]);
+
+  const refreshAfterMutation = useCallback(
+    async (itemId: string | null) => {
+      const nextItems = await loadItems();
+      if (!nextItems) return;
+
+      const stillExists = itemId && nextItems.some((item) => item.id === itemId);
+      await loadOutputs(stillExists ? itemId : nextItems[0]?.id ?? null);
+    },
+    [loadItems, loadOutputs],
+  );
+
   const handleCreate = () => {
     if (!contentDraft.trim()) {
       return;
@@ -120,14 +186,14 @@ export function InboxClient({
         });
         setContentDraft("");
         setSelectedId(created.id);
-        await loadItems();
+        await refreshAfterMutation(created.id);
       } catch (error) {
         toastApiError(error, "Failed to capture inbox item");
       }
     });
   };
 
-  const handleProcess = () => {
+  const handleResolveAllAsNo = () => {
     if (!selectedItem) {
       return;
     }
@@ -135,9 +201,24 @@ export function InboxClient({
     startMutatingTransition(async () => {
       try {
         await processInboxItem({ id: selectedItem.id });
-        await loadItems();
+        await refreshAfterMutation(selectedItem.id);
       } catch (error) {
-        toastApiError(error, "Failed to mark inbox item as processed");
+        toastApiError(error, "Failed to resolve item");
+      }
+    });
+  };
+
+  const handleRecover = () => {
+    if (!selectedItem) {
+      return;
+    }
+
+    startMutatingTransition(async () => {
+      try {
+        await recoverInboxItem({ id: selectedItem.id });
+        await refreshAfterMutation(selectedItem.id);
+      } catch (error) {
+        toastApiError(error, "Failed to recover processing item");
       }
     });
   };
@@ -150,12 +231,99 @@ export function InboxClient({
     startMutatingTransition(async () => {
       try {
         await archiveInboxItem({ id: selectedItem.id });
-        await loadItems();
+        await refreshAfterMutation(selectedItem.id);
       } catch (error) {
         toastApiError(error, "Failed to archive inbox item");
       }
     });
   };
+
+  const handleApproveOutput = (outputId: string) => {
+    const itemId = selectedItem?.id ?? null;
+    startMutatingTransition(async () => {
+      try {
+        await approveInboxOutput({ outputId });
+        await refreshAfterMutation(itemId);
+      } catch (error) {
+        toastApiError(error, "Failed to approve proposal");
+      }
+    });
+  };
+
+  const handleDeclineOutput = (outputId: string) => {
+    const itemId = selectedItem?.id ?? null;
+    startMutatingTransition(async () => {
+      try {
+        await declineInboxOutput({ outputId });
+        await refreshAfterMutation(itemId);
+      } catch (error) {
+        toastApiError(error, "Failed to decline proposal");
+      }
+    });
+  };
+
+  const handleRetryOutput = (outputId: string) => {
+    const itemId = selectedItem?.id ?? null;
+    startMutatingTransition(async () => {
+      try {
+        await retryInboxOutput({ outputId });
+        await refreshAfterMutation(itemId);
+      } catch (error) {
+        toastApiError(error, "Failed to retry proposal");
+      }
+    });
+  };
+
+  const handleSkipOutput = (outputId: string) => {
+    const itemId = selectedItem?.id ?? null;
+    startMutatingTransition(async () => {
+      try {
+        await skipInboxOutput({ outputId });
+        await refreshAfterMutation(itemId);
+      } catch (error) {
+        toastApiError(error, "Failed to skip proposal");
+      }
+    });
+  };
+
+  const handleApproveAll = () => {
+    if (!selectedItem) {
+      return;
+    }
+
+    startMutatingTransition(async () => {
+      try {
+        await approveAllInboxOutputs({ itemId: selectedItem.id });
+        await refreshAfterMutation(selectedItem.id);
+      } catch (error) {
+        toastApiError(error, "Failed to approve all proposals");
+      }
+    });
+  };
+
+  const handleDeclineAll = () => {
+    if (!selectedItem) {
+      return;
+    }
+
+    startMutatingTransition(async () => {
+      try {
+        await declineAllInboxOutputs({ itemId: selectedItem.id });
+        await refreshAfterMutation(selectedItem.id);
+      } catch (error) {
+        toastApiError(error, "Failed to decline all proposals");
+      }
+    });
+  };
+
+  const canRecover = useMemo(() => {
+    if (!selectedItem || selectedItem.state !== "PROCESSING") {
+      return false;
+    }
+
+    const startedAt = selectedItem.processingStartedAt ?? selectedItem.createdAt;
+    return Date.now() - startedAt.getTime() >= PROCESSING_RECOVERY_WINDOW_MS;
+  }, [selectedItem]);
 
   return (
     <div className="h-full overflow-hidden p-6">
@@ -240,16 +408,27 @@ export function InboxClient({
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
               <CardTitle>Item</CardTitle>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={handleProcess}
-                  disabled={isMutating || !selectedItem || selectedItem.state === "PROCESSED"}
+                  onClick={handleResolveAllAsNo}
+                  disabled={isMutating || !selectedItem || selectedItem.state === "ARCHIVED"}
                 >
                   <CheckCircle2 className="mr-2 size-4" />
-                  Mark Processed
+                  Resolve All as No
                 </Button>
+                {canRecover ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleRecover}
+                    disabled={isMutating || !selectedItem}
+                  >
+                    <Wrench className="mr-2 size-4" />
+                    Recover Processing
+                  </Button>
+                ) : null}
                 <Button
                   size="sm"
                   variant="outline"
@@ -280,15 +459,134 @@ export function InboxClient({
                   {selectedItem.content}
                 </div>
 
-                <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                {selectedItem.processingError ? (
+                  <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    {selectedItem.processingError}
+                  </p>
+                ) : null}
+
+                <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">
+                  <div>Processing Started: {formatDate(selectedItem.processingStartedAt)}</div>
                   <div>Processed At: {formatDate(selectedItem.processedAt)}</div>
                   <div>Archived At: {formatDate(selectedItem.archivedAt)}</div>
                   <div>Updated At: {formatDate(selectedItem.updatedAt)}</div>
                 </div>
 
-                <p className="text-xs text-muted-foreground">
-                  Inbox items are read-only after capture in V1.
-                </p>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-semibold">Proposal Outputs</h3>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleApproveAll}
+                        disabled={isMutating || !outputs.length}
+                      >
+                        Approve All
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={handleDeclineAll}
+                        disabled={isMutating || !outputs.length}
+                      >
+                        Decline All
+                      </Button>
+                    </div>
+                  </div>
+
+                  {isLoadingOutputs ? (
+                    <p className="text-xs text-muted-foreground">Loading proposal outputs...</p>
+                  ) : outputs.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      {selectedItem.state === "PROCESSING"
+                        ? "Agents are still processing this item."
+                        : "No proposal outputs for this item."}
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {outputs.map((output) => (
+                        <div key={output.id} className="rounded-md border p-3">
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <Badge variant={outputBadgeVariant(output.state)}>{output.state}</Badge>
+                              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {output.agentKey}
+                              </span>
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              #{output.outputIndex + 1}
+                            </span>
+                          </div>
+
+                          <p className="text-sm">{output.payloadPreview}</p>
+
+                          {output.errorMessage ? (
+                            <p className="mt-2 text-xs text-destructive">{output.errorMessage}</p>
+                          ) : null}
+
+                          {output.createdArtifacts && output.createdArtifacts.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {output.createdArtifacts.map((artifact) => (
+                                <Link
+                                  key={`${artifact.type}-${artifact.id}`}
+                                  href={getArtifactHref(artifact)}
+                                  className="text-xs text-primary underline-offset-4 hover:underline"
+                                >
+                                  Open {artifact.type} ({artifact.id.slice(0, 8)})
+                                </Link>
+                              ))}
+                            </div>
+                          ) : null}
+
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {output.state === "PENDING" ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleApproveOutput(output.id)}
+                                  disabled={isMutating}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleDeclineOutput(output.id)}
+                                  disabled={isMutating}
+                                >
+                                  Decline
+                                </Button>
+                              </>
+                            ) : null}
+
+                            {output.state === "FAILED" ? (
+                              <>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRetryOutput(output.id)}
+                                  disabled={isMutating}
+                                >
+                                  Retry
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleSkipOutput(output.id)}
+                                  disabled={isMutating}
+                                >
+                                  Skip
+                                </Button>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </CardContent>

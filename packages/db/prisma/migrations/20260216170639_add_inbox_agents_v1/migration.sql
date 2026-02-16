@@ -1,0 +1,5 @@
+-- RenameIndex
+ALTER INDEX "InboxProposalActionIdempotency_proposalOutputId_action_idempote" RENAME TO "InboxProposalActionIdempotency_proposalOutputId_action_idem_key";
+
+-- RenameIndex
+ALTER INDEX "InboxProposalActionIdempotency_userId_proposalOutputId_action_i" RENAME TO "InboxProposalActionIdempotency_userId_proposalOutputId_acti_idx";

@@ -36,7 +36,7 @@ Required updates for feature work:
 | Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Assistant/Tasks/Library tabs | Edit success/error + tab content render |
 | Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
 | Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
-| Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture inbox items, review details, mark processed, and archive from the inbox view | Create/list/detail plus process/archive action coverage |
+| Inbox | Inbox capture and proposal review controls | `/inbox` | Users can capture inbox items, review deterministic agent proposals, approve/decline/retry/skip outputs, bulk approve/decline, resolve all as no, and recover stalled processing after threshold | Create/list/detail plus proposal action, bulk action, recover, and resolve-all coverage |
 | Inbox | Inbox archive experience | `/inbox/archive` | Archived inbox items load and can be searched and unarchived | Archived data load + search + unarchive coverage |
 | Notes | Note selection and URL sync | `/notes` | Selecting notes updates `noteId`; first note auto-selects on `/notes` when available | Selection behavior + URL state + default selection |
 | Notes | Note editor behavior | `/notes` | Preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S | Autosave and manual save shortcuts/edge cases |
@@ -64,7 +64,8 @@ Required updates for feature work:
 | API Data | Projects API contract | `/projects*`, `/api/projects*` | List/search/includeArchived, get by id, project+items payload shape/order, create/update/archive/unarchive/delete behavior |
 | API Data | Tasks API contract | `/tasks*`, `/api/tasks*` | List/filter, archived list, CRUD semantics, due-date coercion, soft delete behavior |
 | API Data | Auto-archive stale done tasks | implicit during task list queries | `DONE` tasks older than 7 days are archived (`deletedAt`) during list and archived-list reads |
-| API Data | Inbox API contract | `/inbox*`, `/api/inbox*` | List/get/create plus process/archive/unarchive actions; immutable content after save |
+| API Data | Inbox API contract | Existing `/api/inbox*` plus new `/inbox/:itemId/outputs`, `/inbox/outputs/:outputId/*`, `/inbox/:itemId/outputs/*`, `/inbox/:id/recover` | List/get/create, processing lifecycle, proposal output CRUD + approval workflow, idempotent output mutations, and archive/unarchive actions |
+| API Data | Inbox agent settings API contract | `/settings/inbox-agents` | Returns effective inbox agent defaults + user overrides and supports per-user enable/disable updates |
 | API Data | Inbox auto-archive policy | implicit during inbox reads | `PROCESSED` items older than 7 days transition to `ARCHIVED` during list/get operations |
 | API Data | Notes API contract | `/notes*`, `/api/notes*` | List/filter/get/create/update/delete behavior, ownership checks, assistant-message save semantics |
 | API Data | Notes back-reference cleanup | `DELETE /notes/:id` (+ `/api/*`) | Deleting a note clears linked `chatMessage.savedNoteId` references |

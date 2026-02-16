@@ -51,6 +51,26 @@ enum InboxItemState {
   ARCHIVED
 }
 
+enum InboxProposalOutputState {
+  PENDING
+  APPROVED
+  DECLINED
+  FAILED
+  SKIPPED
+}
+
+enum InboxProposalAction {
+  APPROVE
+  DECLINE
+  RETRY
+  SKIP
+}
+
+enum InboxAgentKey {
+  KB_NOTE
+  TODO_LIST
+}
+
 model Project {
   id             String      @id @default(cuid())
   userId         String
@@ -219,17 +239,70 @@ model Note {
 }
 
 model InboxItem {
-  id         String         @id @default(cuid())
-  userId     String
-  content    String
-  state      InboxItemState @default(SAVED)
-  processedAt DateTime?
-  archivedAt DateTime?
-  createdAt  DateTime       @default(now())
-  updatedAt  DateTime       @updatedAt
+  id                  String              @id @default(cuid())
+  userId              String
+  content             String
+  state               InboxItemState      @default(SAVED)
+  processedAt         DateTime?
+  archivedAt          DateTime?
+  processingStartedAt DateTime?
+  processingError     String?
+  agentConfigSnapshot Json?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  proposalOutputs     InboxProposalOutput[]
 
   @@index([userId])
   @@index([userId, state, createdAt])
   @@index([userId, archivedAt])
   @@index([userId, processedAt])
+}
+
+model InboxProposalOutput {
+  id               String                  @id @default(cuid())
+  userId           String
+  inboxItemId      String
+  inboxItem        InboxItem               @relation(fields: [inboxItemId], references: [id], onDelete: Cascade)
+  agentKey         InboxAgentKey
+  outputIndex      Int
+  payloadVersion   Int
+  payload          Json
+  payloadPreview   String
+  state            InboxProposalOutputState @default(PENDING)
+  errorMessage     String?
+  resolvedAt       DateTime?
+  createdArtifacts Json?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  idempotencyKeys  InboxProposalActionIdempotency[]
+
+  @@unique([inboxItemId, agentKey, outputIndex])
+  @@index([userId, inboxItemId])
+  @@index([userId, state, createdAt])
+}
+
+model InboxProposalActionIdempotency {
+  id               String            @id @default(cuid())
+  userId           String
+  proposalOutputId String
+  proposalOutput   InboxProposalOutput @relation(fields: [proposalOutputId], references: [id], onDelete: Cascade)
+  action           InboxProposalAction
+  idempotencyKey   String
+  responseJson     Json
+  createdAt        DateTime          @default(now())
+
+  @@unique([proposalOutputId, action, idempotencyKey])
+  @@index([userId, proposalOutputId, action])
+}
+
+model InboxAgentUserSetting {
+  id        String       @id @default(cuid())
+  userId    String
+  agentKey  InboxAgentKey
+  enabled   Boolean
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@unique([userId, agentKey])
+  @@index([userId])
 }
