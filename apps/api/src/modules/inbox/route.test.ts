@@ -101,7 +101,7 @@ function createMockDb(overrides: Record<string, unknown> = {}) {
 }
 
 describe("inboxRoute", () => {
-  test("GET /api/inbox lists non-archived items", async () => {
+  test("GET /inbox lists non-archived items", async () => {
     let findManyArgs: unknown;
 
     const db = createMockDb({
@@ -121,7 +121,7 @@ describe("inboxRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/inbox?search=idea");
+    const { response, body } = await requestJson(app, "/inbox?search=idea");
 
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: ITEM_ID, state: "SAVED" }]);
@@ -133,7 +133,7 @@ describe("inboxRoute", () => {
     });
   });
 
-  test("POST /api/inbox creates processing inbox item and queues generation", async () => {
+  test("POST /inbox creates processing inbox item and queues generation", async () => {
     let queuedItemId: string | null = null;
 
     const app = createTestApp(
@@ -146,7 +146,7 @@ describe("inboxRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/inbox", {
+    const { response, body } = await requestJson(app, "/inbox", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ content: "Remember this idea" }),
@@ -157,7 +157,7 @@ describe("inboxRoute", () => {
     expect(queuedItemId).toBe(ITEM_ID);
   });
 
-  test("POST /api/inbox/:id/process resolves pending outputs and returns processed item", async () => {
+  test("POST /inbox/:id/process resolves pending outputs and returns processed item", async () => {
     let pendingResolved = false;
     let failedResolved = false;
 
@@ -184,7 +184,7 @@ describe("inboxRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/inbox/${ITEM_ID}/process`, {
+    const { response, body } = await requestJson(app, `/inbox/${ITEM_ID}/process`, {
       method: "POST",
     });
 

@@ -99,7 +99,6 @@ export function createProjectsRoute(
     const [db, userId] = await Promise.all([getDb(), getUserId(request)]);
     return deleteProject({ db, userId, input: { id } });
   };
-
   projectsRoute.get("/projects", async (c) => {
     try {
       return c.json(await listHandler(c.req.raw));
@@ -107,15 +106,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.get("/api/projects", async (c) => {
-    try {
-      return c.json(await listHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   projectsRoute.get("/projects/:id", async (c) => {
     try {
       return c.json(await getByIdHandler(c.req.raw, c.req.param("id")));
@@ -123,15 +113,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.get("/api/projects/:id", async (c) => {
-    try {
-      return c.json(await getByIdHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   projectsRoute.get("/projects/:id/items", async (c) => {
     try {
       return c.json(await getWithItemsHandler(c.req.raw, c.req.param("id")));
@@ -139,15 +120,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.get("/api/projects/:id/items", async (c) => {
-    try {
-      return c.json(await getWithItemsHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   projectsRoute.post("/projects", async (c) => {
     try {
       return c.json(await createHandler(c.req.raw), 201);
@@ -155,15 +127,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.post("/api/projects", async (c) => {
-    try {
-      return c.json(await createHandler(c.req.raw), 201);
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   projectsRoute.patch("/projects/:id", async (c) => {
     try {
       return c.json(await updateHandler(c.req.raw, c.req.param("id")));
@@ -171,15 +134,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.patch("/api/projects/:id", async (c) => {
-    try {
-      return c.json(await updateHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   projectsRoute.post("/projects/:id/archive", async (c) => {
     try {
       return c.json(await archiveHandler(c.req.raw, c.req.param("id")));
@@ -187,15 +141,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.post("/api/projects/:id/archive", async (c) => {
-    try {
-      return c.json(await archiveHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   projectsRoute.post("/projects/:id/unarchive", async (c) => {
     try {
       return c.json(await unarchiveHandler(c.req.raw, c.req.param("id")));
@@ -203,15 +148,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.post("/api/projects/:id/unarchive", async (c) => {
-    try {
-      return c.json(await unarchiveHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   projectsRoute.delete("/projects/:id", async (c) => {
     try {
       return c.json(await deleteHandler(c.req.raw, c.req.param("id")));
@@ -219,15 +155,6 @@ export function createProjectsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  projectsRoute.delete("/api/projects/:id", async (c) => {
-    try {
-      return c.json(await deleteHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   return projectsRoute;
 }
 

@@ -5,7 +5,7 @@ struct AuthService {
 
     func getSession() async throws -> SessionUser? {
         do {
-            let data = try await api.request(path: "/api/auth/get-session", method: "GET")
+            let data = try await api.request(path: "/auth/get-session", method: "GET")
             return try decodeSessionUser(from: data)
         } catch {
             if error.isUnauthorized {
@@ -34,7 +34,7 @@ struct AuthService {
 
     func signIn(email: String, password: String) async throws -> SessionUser {
         _ = try await api.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": email,
@@ -52,7 +52,7 @@ struct AuthService {
 
     func signUp(name: String, email: String, password: String) async throws -> SessionUser {
         _ = try await api.request(
-            path: "/api/auth/sign-up/email",
+            path: "/auth/sign-up/email",
             method: "POST",
             body: [
                 "name": name,
@@ -72,7 +72,7 @@ struct AuthService {
     func requestPasswordReset(email: String) async throws {
         let origin = APIEnvironment.baseURL.absoluteString.replacingOccurrences(of: "/+$", with: "", options: .regularExpression)
         _ = try await api.request(
-            path: "/api/auth/request-password-reset",
+            path: "/auth/request-password-reset",
             method: "POST",
             body: [
                 "email": email,
@@ -83,7 +83,7 @@ struct AuthService {
 
     func resetPassword(token: String, newPassword: String) async throws {
         _ = try await api.request(
-            path: "/api/auth/reset-password",
+            path: "/auth/reset-password",
             method: "POST",
             body: [
                 "token": token,
@@ -94,7 +94,7 @@ struct AuthService {
 
     func updateProfile(name: String) async throws -> SessionUser? {
         let data = try await api.request(
-            path: "/api/auth/update-user",
+            path: "/auth/update-user",
             method: "POST",
             body: [
                 "name": name
@@ -111,7 +111,7 @@ struct AuthService {
 
     func changePassword(currentPassword: String, newPassword: String) async throws {
         _ = try await api.request(
-            path: "/api/auth/change-password",
+            path: "/auth/change-password",
             method: "POST",
             body: [
                 "currentPassword": currentPassword,
@@ -121,7 +121,7 @@ struct AuthService {
     }
 
     func signOut() async throws {
-        _ = try await api.request(path: "/api/auth/sign-out", method: "POST", body: [:])
+        _ = try await api.request(path: "/auth/sign-out", method: "POST", body: [:])
         api.clearAllCookies()
     }
 }

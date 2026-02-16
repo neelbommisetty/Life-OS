@@ -6,7 +6,7 @@ const USER_ID = "ckz1q2w3e4r5t6y7u8i9o0p1a";
 const PROJECT_ID = "ckz1q2w3e4r5t6y7u8i9o0p1b";
 
 describe("projectsRoute", () => {
-  test("GET /api/projects lists projects", async () => {
+  test("GET /projects lists projects", async () => {
     let capturedArgs: unknown;
 
     const app = createTestApp(
@@ -29,7 +29,7 @@ describe("projectsRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      "/api/projects?search=Alpha&includeArchived=true",
+      "/projects?search=Alpha&includeArchived=true",
     );
 
     expect(response.status).toBe(200);
@@ -45,7 +45,7 @@ describe("projectsRoute", () => {
     });
   });
 
-  test("GET /api/projects/:id returns project", async () => {
+  test("GET /projects/:id returns project", async () => {
     const app = createTestApp(
       createProjectsRoute({
         getUserId: async () => USER_ID,
@@ -61,12 +61,12 @@ describe("projectsRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/projects/${PROJECT_ID}`);
+    const { response, body } = await requestJson(app, `/projects/${PROJECT_ID}`);
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ id: PROJECT_ID, name: "Demo" });
   });
 
-  test("GET /api/projects/:id/items returns project with related items", async () => {
+  test("GET /projects/:id/items returns project with related items", async () => {
     const app = createTestApp(
       createProjectsRoute({
         getUserId: async () => USER_ID,
@@ -101,14 +101,14 @@ describe("projectsRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      `/api/projects/${PROJECT_ID}/items`,
+      `/projects/${PROJECT_ID}/items`,
     );
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ id: PROJECT_ID, chatThreads: [], tasks: [], notes: [] });
   });
 
-  test("POST /api/projects creates a project", async () => {
+  test("POST /projects creates a project", async () => {
     let capturedCreateArgs: unknown;
 
     const app = createTestApp(
@@ -129,7 +129,7 @@ describe("projectsRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/projects", {
+    const { response, body } = await requestJson(app, "/projects", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Created", description: "New" }),
@@ -146,7 +146,7 @@ describe("projectsRoute", () => {
     });
   });
 
-  test("PATCH /api/projects/:id updates project", async () => {
+  test("PATCH /projects/:id updates project", async () => {
     let capturedUpdateArgs: unknown;
 
     const app = createTestApp(
@@ -167,7 +167,7 @@ describe("projectsRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/projects/${PROJECT_ID}`, {
+    const { response, body } = await requestJson(app, `/projects/${PROJECT_ID}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Renamed" }),
@@ -181,7 +181,7 @@ describe("projectsRoute", () => {
     });
   });
 
-  test("POST /api/projects/:id/archive archives project", async () => {
+  test("POST /projects/:id/archive archives project", async () => {
     let capturedUpdateArgs: unknown;
 
     const app = createTestApp(
@@ -202,7 +202,7 @@ describe("projectsRoute", () => {
       }),
     );
 
-    const { response } = await requestJson(app, `/api/projects/${PROJECT_ID}/archive`, {
+    const { response } = await requestJson(app, `/projects/${PROJECT_ID}/archive`, {
       method: "POST",
     });
 
@@ -210,7 +210,7 @@ describe("projectsRoute", () => {
     expect(capturedUpdateArgs).toMatchObject({ where: { id: PROJECT_ID } });
   });
 
-  test("POST /api/projects/:id/unarchive unarchives project", async () => {
+  test("POST /projects/:id/unarchive unarchives project", async () => {
     let capturedUpdateArgs: unknown;
 
     const app = createTestApp(
@@ -231,7 +231,7 @@ describe("projectsRoute", () => {
       }),
     );
 
-    const { response } = await requestJson(app, `/api/projects/${PROJECT_ID}/unarchive`, {
+    const { response } = await requestJson(app, `/projects/${PROJECT_ID}/unarchive`, {
       method: "POST",
     });
 
@@ -242,7 +242,7 @@ describe("projectsRoute", () => {
     });
   });
 
-  test("DELETE /api/projects/:id deletes project", async () => {
+  test("DELETE /projects/:id deletes project", async () => {
     let deleteCalled = false;
 
     const app = createTestApp(
@@ -263,7 +263,7 @@ describe("projectsRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/projects/${PROJECT_ID}`, {
+    const { response, body } = await requestJson(app, `/projects/${PROJECT_ID}`, {
       method: "DELETE",
     });
 

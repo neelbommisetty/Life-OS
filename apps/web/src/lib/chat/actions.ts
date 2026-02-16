@@ -102,7 +102,7 @@ export async function listThreads(input?: ListThreadsInput) {
     params.set("projectId", parsed.projectId);
   }
 
-  const path = params.size ? `/api/chat/threads?${params.toString()}` : "/api/chat/threads";
+  const path = params.size ? `/chat/threads?${params.toString()}` : "/chat/threads";
   const threads = await apiFetchJson<ChatThreadResponse[]>(path);
 
   return threads.map(hydrateThread);
@@ -110,7 +110,7 @@ export async function listThreads(input?: ListThreadsInput) {
 
 export async function createThread(input?: CreateThreadInput) {
   const parsed = createThreadSchema.parse(input ?? {});
-  const thread = await apiFetchJson<ChatThreadResponse>("/api/chat/threads", {
+  const thread = await apiFetchJson<ChatThreadResponse>("/chat/threads", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -124,7 +124,7 @@ export async function createThread(input?: CreateThreadInput) {
 export async function archiveThread(input: ArchiveThreadInput) {
   const parsed = archiveThreadSchema.parse(input);
   const thread = await apiFetchJson<ChatThreadResponse>(
-    `/api/chat/threads/${parsed.threadId}/archive`,
+    `/chat/threads/${parsed.threadId}/archive`,
     {
       method: "POST",
     },
@@ -134,14 +134,14 @@ export async function archiveThread(input: ArchiveThreadInput) {
 }
 
 export async function getThread(threadId: string) {
-  const thread = await apiFetchJson<ChatThreadResponse>(`/api/chat/threads/${threadId}`);
+  const thread = await apiFetchJson<ChatThreadResponse>(`/chat/threads/${threadId}`);
   return hydrateThread(thread);
 }
 
 export async function setThreadModel(input: SetThreadModelInput) {
   const parsed = setThreadModelSchema.parse(input);
   const thread = await apiFetchJson<ChatThreadResponse>(
-    `/api/chat/threads/${parsed.threadId}/model`,
+    `/chat/threads/${parsed.threadId}/model`,
     {
       method: "POST",
       headers: {
@@ -167,8 +167,8 @@ export async function listMessages(input: ListMessagesInput) {
   }
 
   const path = params.size
-    ? `/api/chat/threads/${parsed.threadId}/messages?${params.toString()}`
-    : `/api/chat/threads/${parsed.threadId}/messages`;
+    ? `/chat/threads/${parsed.threadId}/messages?${params.toString()}`
+    : `/chat/threads/${parsed.threadId}/messages`;
   const page = await apiFetchJson<ListMessagesResponse>(path);
 
   return {
@@ -184,7 +184,7 @@ export async function listMessages(input: ListMessagesInput) {
 }
 
 export async function listModels() {
-  return apiFetchJson<ModelOptionResponse[]>("/api/chat/models");
+  return apiFetchJson<ModelOptionResponse[]>("/chat/models");
 }
 
 export type ModelOption = Awaited<ReturnType<typeof listModels>>[number];

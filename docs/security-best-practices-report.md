@@ -174,7 +174,7 @@ This review found one **Critical**, four **High**, five **Medium**, and three **
 - Severity: Small
 - Location: `apps/api/src/routes/status.ts:42`, `apps/api/src/routes/status.ts:49`
 - Evidence:
-  - `/status` and `/api/status` include DB and AI provider readiness details.
+  - `/status` includes DB and AI provider readiness details.
 - Impact: Assists reconnaissance about deployed stack and provider posture.
 - Fix:
   - Return minimal health (`ok`/`not_ready`) publicly; move detailed diagnostics behind authenticated/internal endpoint.

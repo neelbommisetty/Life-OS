@@ -69,12 +69,6 @@ export function createStatusRoute(dependencies: StatusRouteDependencies = {}) {
     const { code, body } = await getStatus();
     return c.json(body, code);
   });
-
-  statusRoute.get("/api/status", async (c) => {
-    const { code, body } = await getStatus();
-    return c.json(body, code);
-  });
-
   return statusRoute;
 }
 

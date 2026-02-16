@@ -113,7 +113,7 @@ export async function listProjects(input?: ListProjectsInput) {
     params.set("includeArchived", "true");
   }
 
-  const path = params.size ? `/api/projects?${params.toString()}` : "/api/projects";
+  const path = params.size ? `/projects?${params.toString()}` : "/projects";
   const projects = await apiFetchJson<ProjectResponse[]>(path);
 
   return projects.map(hydrateProject);
@@ -121,14 +121,14 @@ export async function listProjects(input?: ListProjectsInput) {
 
 export async function getProjectById(input: GetProjectByIdInput) {
   const parsed = getProjectByIdSchema.parse(input);
-  const project = await apiFetchJson<ProjectResponse>(`/api/projects/${parsed.id}`);
+  const project = await apiFetchJson<ProjectResponse>(`/projects/${parsed.id}`);
   return hydrateProject(project);
 }
 
 export async function getProjectWithItems(input: GetProjectByIdInput) {
   const parsed = getProjectByIdSchema.parse(input);
   const project = await apiFetchJson<ProjectWithItemsResponse>(
-    `/api/projects/${parsed.id}/items`,
+    `/projects/${parsed.id}/items`,
   );
 
   return {
@@ -141,7 +141,7 @@ export async function getProjectWithItems(input: GetProjectByIdInput) {
 
 export async function createProject(input: CreateProjectInput) {
   const parsed = createProjectSchema.parse(input);
-  const project = await apiFetchJson<ProjectResponse>("/api/projects", {
+  const project = await apiFetchJson<ProjectResponse>("/projects", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -155,7 +155,7 @@ export async function createProject(input: CreateProjectInput) {
 export async function updateProject(input: UpdateProjectInput) {
   const parsed = updateProjectSchema.parse(input);
   const { id, ...payload } = parsed;
-  const project = await apiFetchJson<ProjectResponse>(`/api/projects/${id}`, {
+  const project = await apiFetchJson<ProjectResponse>(`/projects/${id}`, {
     method: "PATCH",
     headers: {
       "content-type": "application/json",
@@ -169,7 +169,7 @@ export async function updateProject(input: UpdateProjectInput) {
 export async function archiveProject(input: ArchiveProjectInput) {
   const parsed = archiveProjectSchema.parse(input);
   const project = await apiFetchJson<ProjectResponse>(
-    `/api/projects/${parsed.id}/archive`,
+    `/projects/${parsed.id}/archive`,
     {
       method: "POST",
     },
@@ -181,7 +181,7 @@ export async function archiveProject(input: ArchiveProjectInput) {
 export async function unarchiveProject(input: UnarchiveProjectInput) {
   const parsed = unarchiveProjectSchema.parse(input);
   const project = await apiFetchJson<ProjectResponse>(
-    `/api/projects/${parsed.id}/unarchive`,
+    `/projects/${parsed.id}/unarchive`,
     {
       method: "POST",
     },
@@ -192,7 +192,7 @@ export async function unarchiveProject(input: UnarchiveProjectInput) {
 
 export async function deleteProject(input: DeleteProjectInput) {
   const parsed = deleteProjectSchema.parse(input);
-  return apiFetchJson<{ success: boolean }>(`/api/projects/${parsed.id}`, {
+  return apiFetchJson<{ success: boolean }>(`/projects/${parsed.id}`, {
     method: "DELETE",
   });
 }

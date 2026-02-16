@@ -149,7 +149,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       modelRegistry,
     });
   };
-
   chatRoute.get("/chat/threads", async (c) => {
     try {
       return c.json(await listThreadsHandler(c.req.raw));
@@ -157,15 +156,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.get("/api/chat/threads", async (c) => {
-    try {
-      return c.json(await listThreadsHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   chatRoute.post("/chat/threads", async (c) => {
     try {
       return c.json(await createThreadHandler(c.req.raw), 201);
@@ -173,15 +163,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.post("/api/chat/threads", async (c) => {
-    try {
-      return c.json(await createThreadHandler(c.req.raw), 201);
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   chatRoute.post("/chat/threads/:threadId/archive", async (c) => {
     try {
       return c.json(
@@ -191,17 +172,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.post("/api/chat/threads/:threadId/archive", async (c) => {
-    try {
-      return c.json(
-        await archiveThreadHandler(c.req.raw, c.req.param("threadId")),
-      );
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   chatRoute.get("/chat/threads/:threadId", async (c) => {
     try {
       return c.json(await getThreadHandler(c.req.raw, c.req.param("threadId")));
@@ -209,15 +179,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.get("/api/chat/threads/:threadId", async (c) => {
-    try {
-      return c.json(await getThreadHandler(c.req.raw, c.req.param("threadId")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   chatRoute.post("/chat/threads/:threadId/model", async (c) => {
     try {
       return c.json(await setModelHandler(c.req.raw, c.req.param("threadId")));
@@ -225,15 +186,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.post("/api/chat/threads/:threadId/model", async (c) => {
-    try {
-      return c.json(await setModelHandler(c.req.raw, c.req.param("threadId")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   chatRoute.get("/chat/threads/:threadId/messages", async (c) => {
     try {
       return c.json(
@@ -243,17 +195,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.get("/api/chat/threads/:threadId/messages", async (c) => {
-    try {
-      return c.json(
-        await listMessagesHandler(c.req.raw, c.req.param("threadId")),
-      );
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   chatRoute.get("/chat/models", async (c) => {
     try {
       return c.json(await listModelsHandler());
@@ -261,15 +202,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.get("/api/chat/models", async (c) => {
-    try {
-      return c.json(await listModelsHandler());
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   chatRoute.post("/chat/stream", async (c) => {
     try {
       return await streamHandler(c.req.raw);
@@ -277,15 +209,6 @@ export function createChatRoute(dependencies: ChatRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  chatRoute.post("/api/chat/stream", async (c) => {
-    try {
-      return await streamHandler(c.req.raw);
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   return chatRoute;
 }
 

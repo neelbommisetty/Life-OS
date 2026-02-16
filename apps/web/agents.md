@@ -20,6 +20,9 @@
 - Do not import or use `@life-os/db`, Prisma clients, or app-local DB wrappers from `apps/web`.
 - Do not perform direct DB reads/writes in web server components, route handlers, or server actions.
 - Use API calls to `apps/api` for all data reads/mutations (from client components and server-side web code).
+- Canonical backend resource routes are no-prefix (for example: `/inbox*`, `/tasks*`, `/notes*`, `/projects*`, `/home/*`, `/chat/*`, `/analytics/*`).
+- Canonical backend auth routes are `/auth/*`.
+- Keep `apps/web/src/app/api/*` as Next-internal proxy/stream routes (for example: browser-facing `/api/auth/*` proxying to backend `/auth/*`, and `/api/chat/stream`).
 - Keep client bundles free of Node-only APIs.
 - Neon Auth config lives in:
   - `apps/web/src/lib/auth/server.ts`

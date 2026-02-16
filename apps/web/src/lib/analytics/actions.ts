@@ -90,8 +90,8 @@ export async function getAnalyticsDashboard(
   }
 
   const path = params.size
-    ? `/api/analytics/dashboard?${params.toString()}`
-    : "/api/analytics/dashboard";
+    ? `/analytics/dashboard?${params.toString()}`
+    : "/analytics/dashboard";
 
   const response = await apiFetchJson<AnalyticsDashboardResponse>(path);
 

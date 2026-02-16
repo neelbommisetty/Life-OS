@@ -174,7 +174,7 @@ function isSessionAuthenticated(request: Request) {
 }
 
 function handleNotesById(pathname: string, method: string, request: Request) {
-  const id = pathname.replace("/api/notes/", "");
+  const id = pathname.replace(/^\/notes\//, "");
   const existing = mockNotes.find((note) => note.id === id);
 
   if (!existing) {
@@ -233,7 +233,7 @@ const server = Bun.serve({
       return jsonResponse({ ok: true });
     }
 
-    if (pathname === "/api/auth/get-session" && method === "GET") {
+    if (pathname === "/auth/get-session" && method === "GET") {
       if (!isSessionAuthenticated(request)) {
         return jsonResponse(
           {
@@ -257,7 +257,7 @@ const server = Bun.serve({
       });
     }
 
-    if (pathname === "/api/auth/sign-in/email" && method === "POST") {
+    if (pathname === "/auth/sign-in/email" && method === "POST") {
       return request
         .json()
         .catch(() => ({}))
@@ -292,7 +292,7 @@ const server = Bun.serve({
         });
     }
 
-    if (pathname === "/api/auth/sign-up/email" && method === "POST") {
+    if (pathname === "/auth/sign-up/email" && method === "POST") {
       return request
         .json()
         .catch(() => ({}))
@@ -323,7 +323,7 @@ const server = Bun.serve({
         });
     }
 
-    if (pathname === "/api/auth/request-password-reset" && method === "POST") {
+    if (pathname === "/auth/request-password-reset" && method === "POST") {
       return request
         .json()
         .catch(() => ({}))
@@ -348,7 +348,7 @@ const server = Bun.serve({
         });
     }
 
-    if (pathname === "/api/auth/reset-password" && method === "POST") {
+    if (pathname === "/auth/reset-password" && method === "POST") {
       return request
         .json()
         .catch(() => ({}))
@@ -377,7 +377,7 @@ const server = Bun.serve({
         });
     }
 
-    if (pathname === "/api/auth/sign-out" && method === "POST") {
+    if (pathname === "/auth/sign-out" && method === "POST") {
       return jsonResponse(
         {
           success: true,
@@ -389,23 +389,23 @@ const server = Bun.serve({
       );
     }
 
-    if (pathname === "/api/home/recent-projects" && method === "GET") {
+    if (pathname === "/home/recent-projects" && method === "GET") {
       return jsonResponse([]);
     }
 
-    if (pathname === "/api/home/upcoming-tasks" && method === "GET") {
+    if (pathname === "/home/upcoming-tasks" && method === "GET") {
       return jsonResponse([]);
     }
 
-    if (pathname === "/api/home/recent-notes" && method === "GET") {
+    if (pathname === "/home/recent-notes" && method === "GET") {
       return jsonResponse([]);
     }
 
-    if (pathname === "/api/notes" && method === "GET") {
+    if (pathname === "/notes" && method === "GET") {
       return jsonResponse(mockNotes);
     }
 
-    if (pathname === "/api/notes" && method === "POST") {
+    if (pathname === "/notes" && method === "POST") {
       return request
         .json()
         .catch(() => ({}))
@@ -431,7 +431,7 @@ const server = Bun.serve({
         });
     }
 
-    if (pathname === "/api/chat/models" && method === "GET") {
+    if (pathname === "/chat/models" && method === "GET") {
       return jsonResponse([
         {
           key: "openai.gpt-5-mini",
@@ -452,11 +452,11 @@ const server = Bun.serve({
       ]);
     }
 
-    if (pathname === "/api/chat/threads" && method === "GET") {
+    if (pathname === "/chat/threads" && method === "GET") {
       return jsonResponse(mockChatThreads);
     }
 
-    const messagesMatch = pathname.match(/^\/api\/chat\/threads\/([^/]+)\/messages$/);
+    const messagesMatch = pathname.match(/^\/chat\/threads\/([^/]+)\/messages$/);
     if (messagesMatch && method === "GET") {
       const threadId = messagesMatch[1];
       const messages = mockChatMessagesByThread[threadId];
@@ -473,7 +473,7 @@ const server = Bun.serve({
       });
     }
 
-    const modelMatch = pathname.match(/^\/api\/chat\/threads\/([^/]+)\/model$/);
+    const modelMatch = pathname.match(/^\/chat\/threads\/([^/]+)\/model$/);
     if (modelMatch && method === "POST") {
       const threadId = modelMatch[1];
       const threadIndex = mockChatThreads.findIndex((thread) => thread.id === threadId);
@@ -512,7 +512,7 @@ const server = Bun.serve({
         });
     }
 
-    if (pathname.startsWith("/api/notes/")) {
+    if (/^\/notes\//.test(pathname)) {
       return handleNotesById(pathname, method, request);
     }
 

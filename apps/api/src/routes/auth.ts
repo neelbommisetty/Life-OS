@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
 
-const AUTH_PROXY_PREFIX = "/api/auth";
+const AUTH_PROXY_PREFIX = "/auth";
 const PROXY_HEADER_DENYLIST = [
   "host",
   "forwarded",
@@ -37,10 +37,7 @@ function isAuthUpstreamPath(pathname: string, authBasePath: string) {
   return pathname === authBasePath || pathname.startsWith(`${authBasePath}/`);
 }
 
-function rewriteUpstreamRedirectLocation(
-  location: string | null,
-  getAuthBaseUrl: () => string,
-) {
+function rewriteUpstreamRedirectLocation(location: string | null, getAuthBaseUrl: () => string) {
   if (!location) {
     return null;
   }
@@ -101,11 +98,14 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
 
   async function proxyAuthRequest(request: Request) {
     const requestPath = new URL(request.url).pathname;
-    const targetUrl = buildProxyUrl(
-      request.url,
-      requestPath,
-      getAuthBaseUrl,
-    );
+    if (
+      requestPath !== AUTH_PROXY_PREFIX &&
+      !requestPath.startsWith(`${AUTH_PROXY_PREFIX}/`)
+    ) {
+      throw new Error("Invalid auth proxy path");
+    }
+
+    const targetUrl = buildProxyUrl(request.url, requestPath, getAuthBaseUrl);
 
     const headers = new Headers(request.headers);
     for (const name of PROXY_HEADER_DENYLIST) {
@@ -122,10 +122,7 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
     });
 
     const responseHeaders = new Headers(upstreamResponse.headers);
-    const rewrittenLocation = rewriteUpstreamRedirectLocation(
-      responseHeaders.get("location"),
-      getAuthBaseUrl,
-    );
+    const rewrittenLocation = rewriteUpstreamRedirectLocation(responseHeaders.get("location"), getAuthBaseUrl);
 
     if (rewrittenLocation) {
       responseHeaders.set("location", rewrittenLocation);
@@ -154,8 +151,8 @@ export function createAuthRoute(dependencies: AuthRouteDependencies = {}) {
     }
   };
 
-  authRoute.all("/api/auth", handler);
-  authRoute.all("/api/auth/*", handler);
+  authRoute.all("/auth", handler);
+  authRoute.all("/auth/*", handler);
 
   return authRoute;
 }

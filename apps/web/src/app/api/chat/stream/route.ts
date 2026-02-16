@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { createLogger } from "@life-os/logger";
 import { getApiBaseUrl } from "@/lib/api/base-url";
 
-const STREAM_PATH = "/api/chat/stream";
+const STREAM_PATH = "/chat/stream";
 const REQUEST_ID_HEADER = "x-request-id";
 const logger = createLogger("web:api-proxy:chat-stream");
 

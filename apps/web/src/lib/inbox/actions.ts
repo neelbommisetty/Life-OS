@@ -156,7 +156,7 @@ export async function listInboxItems(input?: ListInboxItemsInput) {
     params.set("state", parsed.state);
   }
 
-  const path = params.size ? `/api/inbox?${params.toString()}` : "/api/inbox";
+  const path = params.size ? `/inbox?${params.toString()}` : "/inbox";
   const items = await apiFetchJson<InboxItemResponse[]>(path);
 
   return items.map(hydrateInboxItem);
@@ -171,8 +171,8 @@ export async function listArchivedInboxItems(input?: ListArchivedInboxItemsInput
   }
 
   const path = params.size
-    ? `/api/inbox/archived?${params.toString()}`
-    : "/api/inbox/archived";
+    ? `/inbox/archived?${params.toString()}`
+    : "/inbox/archived";
   const items = await apiFetchJson<InboxItemResponse[]>(path);
 
   return items.map(hydrateInboxItem);
@@ -180,14 +180,14 @@ export async function listArchivedInboxItems(input?: ListArchivedInboxItemsInput
 
 export async function getInboxItemById(input: GetInboxItemByIdInput) {
   const parsed = getInboxItemByIdSchema.parse(input);
-  const item = await apiFetchJson<InboxItemResponse>(`/api/inbox/${parsed.id}`);
+  const item = await apiFetchJson<InboxItemResponse>(`/inbox/${parsed.id}`);
 
   return hydrateInboxItem(item);
 }
 
 export async function createInboxItem(input: CreateInboxItemInput) {
   const parsed = createInboxItemSchema.parse(input);
-  const item = await apiFetchJson<InboxItemResponse>("/api/inbox", {
+  const item = await apiFetchJson<InboxItemResponse>("/inbox", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -200,7 +200,7 @@ export async function createInboxItem(input: CreateInboxItemInput) {
 
 export async function processInboxItem(input: ProcessInboxItemInput) {
   const parsed = processInboxItemSchema.parse(input);
-  const item = await apiFetchJson<InboxItemResponse>(`/api/inbox/${parsed.id}/process`, {
+  const item = await apiFetchJson<InboxItemResponse>(`/inbox/${parsed.id}/process`, {
     method: "POST",
   });
 
@@ -218,7 +218,7 @@ export async function recoverInboxItem(input: RecoverInboxItemInput) {
 
 export async function archiveInboxItem(input: ArchiveInboxItemInput) {
   const parsed = archiveInboxItemSchema.parse(input);
-  const item = await apiFetchJson<InboxItemResponse>(`/api/inbox/${parsed.id}/archive`, {
+  const item = await apiFetchJson<InboxItemResponse>(`/inbox/${parsed.id}/archive`, {
     method: "POST",
   });
 
@@ -227,7 +227,7 @@ export async function archiveInboxItem(input: ArchiveInboxItemInput) {
 
 export async function unarchiveInboxItem(input: UnarchiveInboxItemInput) {
   const parsed = unarchiveInboxItemSchema.parse(input);
-  const item = await apiFetchJson<InboxItemResponse>(`/api/inbox/${parsed.id}/unarchive`, {
+  const item = await apiFetchJson<InboxItemResponse>(`/inbox/${parsed.id}/unarchive`, {
     method: "POST",
   });
 

@@ -69,8 +69,8 @@ UI requirements:
 ### Persistence / sync
 
 - MVP is **API-first with local cache resilience**:
-  - signed-in save attempts `POST /api/inbox` first
-  - list reads are refreshed from `GET /api/inbox`
+  - signed-in save attempts `POST /inbox` first
+  - list reads are refreshed from `GET /inbox`
   - successful API responses are mirrored into SwiftData cache
 - Failure behavior:
   - if create fails, app stores a local unsynced item (`failed_create`) so data is not lost

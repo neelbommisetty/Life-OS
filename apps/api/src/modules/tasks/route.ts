@@ -87,7 +87,6 @@ export function createTasksRoute(dependencies: TasksRouteDependencies = {}) {
     const [db, userId] = await Promise.all([getDb(), getUserId(request)]);
     return deleteTask({ db, userId, input: { id } });
   };
-
   tasksRoute.get("/tasks", async (c) => {
     try {
       return c.json(await listHandler(c.req.raw));
@@ -95,15 +94,6 @@ export function createTasksRoute(dependencies: TasksRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  tasksRoute.get("/api/tasks", async (c) => {
-    try {
-      return c.json(await listHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   tasksRoute.get("/tasks/archived", async (c) => {
     try {
       return c.json(await listArchivedHandler(c.req.raw));
@@ -111,15 +101,6 @@ export function createTasksRoute(dependencies: TasksRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  tasksRoute.get("/api/tasks/archived", async (c) => {
-    try {
-      return c.json(await listArchivedHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   tasksRoute.post("/tasks", async (c) => {
     try {
       return c.json(await createHandler(c.req.raw), 201);
@@ -127,15 +108,6 @@ export function createTasksRoute(dependencies: TasksRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  tasksRoute.post("/api/tasks", async (c) => {
-    try {
-      return c.json(await createHandler(c.req.raw), 201);
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   tasksRoute.patch("/tasks/:id", async (c) => {
     try {
       return c.json(await updateHandler(c.req.raw, c.req.param("id")));
@@ -143,15 +115,6 @@ export function createTasksRoute(dependencies: TasksRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  tasksRoute.patch("/api/tasks/:id", async (c) => {
-    try {
-      return c.json(await updateHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   tasksRoute.delete("/tasks/:id", async (c) => {
     try {
       return c.json(await deleteHandler(c.req.raw, c.req.param("id")));
@@ -159,15 +122,6 @@ export function createTasksRoute(dependencies: TasksRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  tasksRoute.delete("/api/tasks/:id", async (c) => {
-    try {
-      return c.json(await deleteHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   return tasksRoute;
 }
 

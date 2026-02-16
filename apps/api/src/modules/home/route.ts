@@ -33,7 +33,6 @@ export function createHomeRoute(dependencies: HomeRouteDependencies = {}) {
     const [db, userId] = await Promise.all([getDb(), getUserId(request)]);
     return getRecentNotes({ db, userId });
   };
-
   homeRoute.get("/home/recent-projects", async (c) => {
     try {
       return c.json(await recentProjectsHandler(c.req.raw));
@@ -41,15 +40,6 @@ export function createHomeRoute(dependencies: HomeRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  homeRoute.get("/api/home/recent-projects", async (c) => {
-    try {
-      return c.json(await recentProjectsHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   homeRoute.get("/home/upcoming-tasks", async (c) => {
     try {
       return c.json(await upcomingTasksHandler(c.req.raw));
@@ -57,15 +47,6 @@ export function createHomeRoute(dependencies: HomeRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  homeRoute.get("/api/home/upcoming-tasks", async (c) => {
-    try {
-      return c.json(await upcomingTasksHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   homeRoute.get("/home/recent-notes", async (c) => {
     try {
       return c.json(await recentNotesHandler(c.req.raw));
@@ -73,15 +54,6 @@ export function createHomeRoute(dependencies: HomeRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  homeRoute.get("/api/home/recent-notes", async (c) => {
-    try {
-      return c.json(await recentNotesHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   return homeRoute;
 }
 

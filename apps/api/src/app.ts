@@ -79,14 +79,14 @@ app.onError((error, c) => {
   return c.json(toErrorBody(apiError), apiError.status);
 });
 
-const PUBLIC_PATHS = new Set(["/", "/status", "/api/status"]);
+const PUBLIC_PATHS = new Set(["/", "/status"]);
 
 function isPublicPath(path: string) {
   if (PUBLIC_PATHS.has(path)) {
     return true;
   }
 
-  if (path === "/api/auth" || path.startsWith("/api/auth/")) {
+  if (path === "/auth" || path.startsWith("/auth/")) {
     return true;
   }
 
