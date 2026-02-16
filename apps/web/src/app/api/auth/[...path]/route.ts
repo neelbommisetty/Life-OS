@@ -13,7 +13,7 @@ const logger = createLogger("web:api-proxy:auth");
 function buildTargetUrl(path: string[], search: string) {
   const apiBaseUrl = getApiBaseUrl();
   const encodedPath = path.map(encodeURIComponent).join("/");
-  return `${apiBaseUrl}/api/auth/${encodedPath}${search}`;
+  return `${apiBaseUrl}/auth/${encodedPath}${search}`;
 }
 
 function getRequestId(request: NextRequest) {

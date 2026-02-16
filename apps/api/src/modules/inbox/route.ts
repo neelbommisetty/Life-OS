@@ -256,15 +256,6 @@ export function createInboxRoute(dependencies: InboxRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  inboxRoute.get("/api/inbox", async (c) => {
-    try {
-      return c.json(await listHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   inboxRoute.get("/inbox/archived", async (c) => {
     try {
       return c.json(await listArchivedHandler(c.req.raw));
@@ -272,15 +263,6 @@ export function createInboxRoute(dependencies: InboxRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  inboxRoute.get("/api/inbox/archived", async (c) => {
-    try {
-      return c.json(await listArchivedHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   inboxRoute.get("/inbox/:id", async (c) => {
     try {
       return c.json(await getByIdHandler(c.req.raw, c.req.param("id")));
@@ -288,15 +270,6 @@ export function createInboxRoute(dependencies: InboxRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  inboxRoute.get("/api/inbox/:id", async (c) => {
-    try {
-      return c.json(await getByIdHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   inboxRoute.post("/inbox", async (c) => {
     try {
       return c.json(await createHandler(c.req.raw), 201);
@@ -304,15 +277,6 @@ export function createInboxRoute(dependencies: InboxRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  inboxRoute.post("/api/inbox", async (c) => {
-    try {
-      return c.json(await createHandler(c.req.raw), 201);
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   inboxRoute.post("/inbox/:id/process", async (c) => {
     try {
       return c.json(await processHandler(c.req.raw, c.req.param("id")));
@@ -320,15 +284,6 @@ export function createInboxRoute(dependencies: InboxRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  inboxRoute.post("/api/inbox/:id/process", async (c) => {
-    try {
-      return c.json(await processHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   inboxRoute.post("/inbox/:id/recover", async (c) => {
     try {
       return c.json(await recoverHandler(c.req.raw, c.req.param("id")));
@@ -344,15 +299,6 @@ export function createInboxRoute(dependencies: InboxRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  inboxRoute.post("/api/inbox/:id/archive", async (c) => {
-    try {
-      return c.json(await archiveHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   inboxRoute.post("/inbox/:id/unarchive", async (c) => {
     try {
       return c.json(await unarchiveHandler(c.req.raw, c.req.param("id")));
@@ -360,15 +306,6 @@ export function createInboxRoute(dependencies: InboxRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  inboxRoute.post("/api/inbox/:id/unarchive", async (c) => {
-    try {
-      return c.json(await unarchiveHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   inboxRoute.get("/inbox/:itemId/outputs", async (c) => {
     try {
       return c.json(await listOutputsHandler(c.req.raw, c.req.param("itemId")));

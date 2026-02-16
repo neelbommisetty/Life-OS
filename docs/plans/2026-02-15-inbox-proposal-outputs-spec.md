@@ -199,32 +199,32 @@ Notes:
 
 ### API Contract (V1)
 
-All routes exist in both `/...` and `/api/...` forms following existing patterns.
+All routes exist in routes use canonical no-prefix backend paths.
 
 #### Read
 
-- `GET /api/inbox/:itemId/outputs`
+- `GET /inbox/:itemId/outputs`
   - Returns ordered proposal outputs for item.
   - Ordering: `(agent_key, output_index, created_at)`.
 
 #### Resolve (Per Output)
 
-- `POST /api/inbox/outputs/:outputId/approve`
+- `POST /inbox/outputs/:outputId/approve`
   - Header: `Idempotency-Key: <uuid>` (required)
   - Side effect: create artifacts based on payload, update output state, set `resolved_at`, populate `created_artifacts`.
   - If already approved with same idempotency key: return prior success result.
   - If already approved with a different key: return current approved state and artifacts (no new side effects).
 
-- `POST /api/inbox/outputs/:outputId/decline`
+- `POST /inbox/outputs/:outputId/decline`
   - Header: `Idempotency-Key` required
   - Side effect: set state to `DECLINED`, set `resolved_at`.
 
-- `POST /api/inbox/outputs/:outputId/retry`
+- `POST /inbox/outputs/:outputId/retry`
   - Only valid when state is `FAILED`.
   - Header: `Idempotency-Key` required
   - Side effect: rerun *execution* step (not the agent) using stored payload.
 
-- `POST /api/inbox/outputs/:outputId/skip`
+- `POST /inbox/outputs/:outputId/skip`
   - Only valid when state is `FAILED`.
   - Header: `Idempotency-Key` required
   - Body: `{ reason?: string }` optional in V1.
@@ -232,8 +232,8 @@ All routes exist in both `/...` and `/api/...` forms following existing patterns
 
 #### Bulk Resolve
 
-- `POST /api/inbox/:itemId/outputs/approve-all`
-- `POST /api/inbox/:itemId/outputs/decline-all`
+- `POST /inbox/:itemId/outputs/approve-all`
+- `POST /inbox/:itemId/outputs/decline-all`
 
 Rules:
 - Bulk actions apply output-by-output under the hood.

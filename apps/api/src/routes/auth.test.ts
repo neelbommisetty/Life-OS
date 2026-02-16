@@ -27,7 +27,7 @@ describe("authRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      "/api/auth/get-session?force=true",
+      "/auth/get-session?force=true",
       {
         headers: {
           host: "localhost:3001",
@@ -69,7 +69,7 @@ describe("authRoute", () => {
       }),
     );
 
-    const response = await app.request("/api/auth", {
+    const response = await app.request("/auth", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: "user@example.com" }),
@@ -97,7 +97,7 @@ describe("authRoute", () => {
       }),
     );
 
-    const response = await app.request("/api/auth/sign-out", {
+    const response = await app.request("/auth/sign-out", {
       method: "POST",
       headers: {
         "content-type": "text/plain;charset=UTF-8",
@@ -126,7 +126,7 @@ describe("authRoute", () => {
       }),
     );
 
-    const response = await app.request("/api/auth/request-password-reset", {
+    const response = await app.request("/auth/request-password-reset", {
       method: "POST",
       headers: {
         "content-type": "text/plain;charset=UTF-8",
@@ -149,7 +149,7 @@ describe("authRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/auth/get-session");
+    const { response, body } = await requestJson(app, "/auth/get-session");
     expect(response.status).toBe(500);
     expect(body).toEqual({
       error: "auth_proxy_error",
@@ -172,14 +172,14 @@ describe("authRoute", () => {
       }),
     );
 
-    const response = await app.request("/api/auth/sign-out", {
+    const response = await app.request("/auth/sign-out", {
       method: "POST",
       redirect: "manual",
     });
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe(
-      "/api/auth/sign-in?callbackURL=%2Fchat",
+      "/auth/sign-in?callbackURL=%2Fchat",
     );
   });
 });

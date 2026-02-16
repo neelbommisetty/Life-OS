@@ -82,7 +82,7 @@ export async function listNotes(input?: ListNotesInput) {
     params.set("projectId", parsed.projectId);
   }
 
-  const path = params.size ? `/api/notes?${params.toString()}` : "/api/notes";
+  const path = params.size ? `/notes?${params.toString()}` : "/notes";
   const notes = await apiFetchJson<NoteWithProjectResponse[]>(path);
 
   return notes.map(hydrateNoteWithProject);
@@ -90,13 +90,13 @@ export async function listNotes(input?: ListNotesInput) {
 
 export async function getNoteById(input: GetNoteByIdInput) {
   const parsed = getNoteByIdSchema.parse(input);
-  const note = await apiFetchJson<NoteResponse>(`/api/notes/${parsed.id}`);
+  const note = await apiFetchJson<NoteResponse>(`/notes/${parsed.id}`);
   return hydrateNote(note);
 }
 
 export async function createNote(input?: CreateNoteInput) {
   const parsed = createNoteSchema.parse(input ?? {});
-  const note = await apiFetchJson<NoteResponse>("/api/notes", {
+  const note = await apiFetchJson<NoteResponse>("/notes", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -110,7 +110,7 @@ export async function createNote(input?: CreateNoteInput) {
 export async function saveMessageAsNote(input: SaveMessageAsNoteInput) {
   const parsed = saveMessageAsNoteSchema.parse(input);
   const result = await apiFetchJson<SaveMessageAsNoteResponse>(
-    "/api/notes/save-from-message",
+    "/notes/save-from-message",
     {
       method: "POST",
       headers: {
@@ -129,7 +129,7 @@ export async function saveMessageAsNote(input: SaveMessageAsNoteInput) {
 export async function updateNote(input: UpdateNoteInput) {
   const parsed = updateNoteSchema.parse(input);
   const { id, ...payload } = parsed;
-  const note = await apiFetchJson<NoteResponse>(`/api/notes/${id}`, {
+  const note = await apiFetchJson<NoteResponse>(`/notes/${id}`, {
     method: "PATCH",
     headers: {
       "content-type": "application/json",
@@ -142,7 +142,7 @@ export async function updateNote(input: UpdateNoteInput) {
 
 export async function deleteNote(input: DeleteNoteInput) {
   const parsed = deleteNoteSchema.parse(input);
-  return apiFetchJson<{ success: boolean }>(`/api/notes/${parsed.id}`, {
+  return apiFetchJson<{ success: boolean }>(`/notes/${parsed.id}`, {
     method: "DELETE",
   });
 }

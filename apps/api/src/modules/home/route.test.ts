@@ -5,7 +5,7 @@ import { createTestApp, requestJson } from "../../test/harness.js";
 const USER_ID = "ckz1q2w3e4r5t6y7u8i9o0p1a";
 
 describe("homeRoute", () => {
-  test("GET /api/home/recent-projects returns recent projects", async () => {
+  test("GET /home/recent-projects returns recent projects", async () => {
     let capturedArgs: unknown;
 
     const app = createTestApp(
@@ -28,7 +28,7 @@ describe("homeRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/home/recent-projects");
+    const { response, body } = await requestJson(app, "/home/recent-projects");
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: "p1" }]);
     expect(capturedArgs).toMatchObject({
@@ -37,7 +37,7 @@ describe("homeRoute", () => {
     });
   });
 
-  test("GET /api/home/upcoming-tasks returns upcoming tasks", async () => {
+  test("GET /home/upcoming-tasks returns upcoming tasks", async () => {
     let capturedArgs: unknown;
 
     const app = createTestApp(
@@ -60,7 +60,7 @@ describe("homeRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/home/upcoming-tasks");
+    const { response, body } = await requestJson(app, "/home/upcoming-tasks");
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: "t1" }]);
     expect(capturedArgs).toMatchObject({
@@ -73,7 +73,7 @@ describe("homeRoute", () => {
     });
   });
 
-  test("GET /api/home/recent-notes returns recent notes", async () => {
+  test("GET /home/recent-notes returns recent notes", async () => {
     let capturedArgs: unknown;
 
     const app = createTestApp(
@@ -96,7 +96,7 @@ describe("homeRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/home/recent-notes");
+    const { response, body } = await requestJson(app, "/home/recent-notes");
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: "n1" }]);
     expect(capturedArgs).toMatchObject({

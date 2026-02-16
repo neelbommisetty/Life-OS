@@ -33,7 +33,7 @@ function createModelRegistry() {
 }
 
 describe("chatRoute", () => {
-  test("GET /api/chat/threads creates a default thread when none exist", async () => {
+  test("GET /chat/threads creates a default thread when none exist", async () => {
     let createCalled = false;
 
     const app = createTestApp(
@@ -57,13 +57,13 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/chat/threads");
+    const { response, body } = await requestJson(app, "/chat/threads");
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: THREAD_ID, name: "New thread" }]);
     expect(createCalled).toBe(true);
   });
 
-  test("GET /api/chat/threads lists threads", async () => {
+  test("GET /chat/threads lists threads", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -82,12 +82,12 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/chat/threads");
+    const { response, body } = await requestJson(app, "/chat/threads");
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: THREAD_ID, name: "Main" }]);
   });
 
-  test("POST /api/chat/threads creates thread", async () => {
+  test("POST /chat/threads creates thread", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -106,7 +106,7 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/chat/threads", {
+    const { response, body } = await requestJson(app, "/chat/threads", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name: "Created" }),
@@ -116,7 +116,7 @@ describe("chatRoute", () => {
     expect(body).toMatchObject({ id: THREAD_ID, name: "Created" });
   });
 
-  test("POST /api/chat/threads/:id/archive archives thread", async () => {
+  test("POST /chat/threads/:id/archive archives thread", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -135,14 +135,14 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response } = await requestJson(app, `/api/chat/threads/${THREAD_ID}/archive`, {
+    const { response } = await requestJson(app, `/chat/threads/${THREAD_ID}/archive`, {
       method: "POST",
     });
 
     expect(response.status).toBe(200);
   });
 
-  test("GET /api/chat/threads/:id returns thread", async () => {
+  test("GET /chat/threads/:id returns thread", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -161,12 +161,12 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/chat/threads/${THREAD_ID}`);
+    const { response, body } = await requestJson(app, `/chat/threads/${THREAD_ID}`);
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ id: THREAD_ID, modelKey: null });
   });
 
-  test("GET /api/chat/threads/:id resets invalid model assignments", async () => {
+  test("GET /chat/threads/:id resets invalid model assignments", async () => {
     let updateCalled = false;
 
     const app = createTestApp(
@@ -190,14 +190,14 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/chat/threads/${THREAD_ID}`);
+    const { response, body } = await requestJson(app, `/chat/threads/${THREAD_ID}`);
 
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ id: THREAD_ID, modelKey: null });
     expect(updateCalled).toBe(true);
   });
 
-  test("POST /api/chat/threads/:id/model sets thread model", async () => {
+  test("POST /chat/threads/:id/model sets thread model", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -218,7 +218,7 @@ describe("chatRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      `/api/chat/threads/${THREAD_ID}/model`,
+      `/chat/threads/${THREAD_ID}/model`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -230,7 +230,7 @@ describe("chatRoute", () => {
     expect(body).toMatchObject({ id: THREAD_ID, modelKey: "openai:gpt-4.1-mini" });
   });
 
-  test("POST /api/chat/threads/:id/model returns 400 when model is unavailable", async () => {
+  test("POST /chat/threads/:id/model returns 400 when model is unavailable", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -251,7 +251,7 @@ describe("chatRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      `/api/chat/threads/${THREAD_ID}/model`,
+      `/chat/threads/${THREAD_ID}/model`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -266,7 +266,7 @@ describe("chatRoute", () => {
     });
   });
 
-  test("GET /api/chat/threads/:id/messages lists messages", async () => {
+  test("GET /chat/threads/:id/messages lists messages", async () => {
     const messageDate = new Date("2026-02-01T10:00:00.000Z");
 
     const app = createTestApp(
@@ -292,7 +292,7 @@ describe("chatRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      `/api/chat/threads/${THREAD_ID}/messages?limit=1`,
+      `/chat/threads/${THREAD_ID}/messages?limit=1`,
     );
 
     expect(response.status).toBe(200);
@@ -301,7 +301,7 @@ describe("chatRoute", () => {
     expect(body.nextCursor).toBeDefined();
   });
 
-  test("GET /api/chat/threads/:id/messages returns 400 for incomplete cursor parameters", async () => {
+  test("GET /chat/threads/:id/messages returns 400 for incomplete cursor parameters", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -322,7 +322,7 @@ describe("chatRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      `/api/chat/threads/${THREAD_ID}/messages?cursorId=${MESSAGE_ID_1}`,
+      `/chat/threads/${THREAD_ID}/messages?cursorId=${MESSAGE_ID_1}`,
     );
 
     expect(response.status).toBe(400);
@@ -332,7 +332,7 @@ describe("chatRoute", () => {
     });
   });
 
-  test("GET /api/chat/threads/:id/messages returns 400 for invalid cursorCreatedAt", async () => {
+  test("GET /chat/threads/:id/messages returns 400 for invalid cursorCreatedAt", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -353,7 +353,7 @@ describe("chatRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      `/api/chat/threads/${THREAD_ID}/messages?cursorId=${MESSAGE_ID_1}&cursorCreatedAt=not-a-date`,
+      `/chat/threads/${THREAD_ID}/messages?cursorId=${MESSAGE_ID_1}&cursorCreatedAt=not-a-date`,
     );
 
     expect(response.status).toBe(400);
@@ -363,7 +363,7 @@ describe("chatRoute", () => {
     });
   });
 
-  test("GET /api/chat/models lists text models", async () => {
+  test("GET /chat/models lists text models", async () => {
     const app = createTestApp(
       createChatRoute({
         getUserId: async () => USER_ID,
@@ -400,7 +400,7 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/chat/models");
+    const { response, body } = await requestJson(app, "/chat/models");
     expect(response.status).toBe(200);
     expect(body).toEqual([
       {
@@ -414,7 +414,7 @@ describe("chatRoute", () => {
     ]);
   });
 
-  test("POST /api/chat/stream delegates to API stream handler", async () => {
+  test("POST /chat/stream delegates to API stream handler", async () => {
     let capturedUserId: string | null = null;
     let capturedBody: unknown;
 
@@ -441,7 +441,7 @@ describe("chatRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/chat/stream", {
+    const { response, body } = await requestJson(app, "/chat/stream", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ threadId: THREAD_ID, content: "hello" }),

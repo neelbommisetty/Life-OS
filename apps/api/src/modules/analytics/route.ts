@@ -71,7 +71,6 @@ export function createAnalyticsRoute(
 
     return { summary, recentCalls };
   };
-
   analyticsRoute.get("/analytics/dashboard", async (c) => {
     try {
       return c.json(await getDashboardHandler(c.req.raw));
@@ -79,15 +78,6 @@ export function createAnalyticsRoute(
       return handleRouteError(c, error);
     }
   });
-
-  analyticsRoute.get("/api/analytics/dashboard", async (c) => {
-    try {
-      return c.json(await getDashboardHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   return analyticsRoute;
 }
 

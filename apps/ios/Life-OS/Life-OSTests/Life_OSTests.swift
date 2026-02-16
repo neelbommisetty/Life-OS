@@ -17,14 +17,14 @@ final class Life_OSTests: XCTestCase {
 
     func testMockAuthSignInLifecycle() async throws {
         let sessionBefore = await IOSMockAPI.shared.request(
-            path: "/api/auth/get-session",
+            path: "/auth/get-session",
             method: "GET",
             body: nil
         )
         XCTAssertEqual(sessionBefore.statusCode, 401)
 
         let invalidSignIn = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": "wrong@lifeos.dev",
@@ -35,7 +35,7 @@ final class Life_OSTests: XCTestCase {
         XCTAssertEqual(errorMessage(from: invalidSignIn.data), "Invalid email or password")
 
         let validSignIn = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": "demo@lifeos.dev",
@@ -45,7 +45,7 @@ final class Life_OSTests: XCTestCase {
         XCTAssertEqual(validSignIn.statusCode, 200)
 
         let sessionAfter = await IOSMockAPI.shared.request(
-            path: "/api/auth/get-session",
+            path: "/auth/get-session",
             method: "GET",
             body: nil
         )
@@ -53,14 +53,14 @@ final class Life_OSTests: XCTestCase {
         XCTAssertEqual(sessionUser(from: sessionAfter.data)?["email"] as? String, "demo@lifeos.dev")
 
         let signOut = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-out",
+            path: "/auth/sign-out",
             method: "POST",
             body: [:]
         )
         XCTAssertEqual(signOut.statusCode, 200)
 
         let sessionAfterSignOut = await IOSMockAPI.shared.request(
-            path: "/api/auth/get-session",
+            path: "/auth/get-session",
             method: "GET",
             body: nil
         )
@@ -69,7 +69,7 @@ final class Life_OSTests: XCTestCase {
 
     func testMockAccountSettingsUpdateProfileAndChangePassword() async throws {
         _ = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": "demo@lifeos.dev",
@@ -78,7 +78,7 @@ final class Life_OSTests: XCTestCase {
         )
 
         let updateProfile = await IOSMockAPI.shared.request(
-            path: "/api/auth/update-user",
+            path: "/auth/update-user",
             method: "POST",
             body: [
                 "name": "Updated Test User"
@@ -88,7 +88,7 @@ final class Life_OSTests: XCTestCase {
         XCTAssertEqual(sessionUser(from: updateProfile.data)?["name"] as? String, "Updated Test User")
 
         let invalidCurrentPassword = await IOSMockAPI.shared.request(
-            path: "/api/auth/change-password",
+            path: "/auth/change-password",
             method: "POST",
             body: [
                 "currentPassword": "wrong-current",
@@ -99,7 +99,7 @@ final class Life_OSTests: XCTestCase {
         XCTAssertEqual(errorMessage(from: invalidCurrentPassword.data), "Current password is incorrect")
 
         let changePassword = await IOSMockAPI.shared.request(
-            path: "/api/auth/change-password",
+            path: "/auth/change-password",
             method: "POST",
             body: [
                 "currentPassword": "demo12345",
@@ -108,10 +108,10 @@ final class Life_OSTests: XCTestCase {
         )
         XCTAssertEqual(changePassword.statusCode, 200)
 
-        _ = await IOSMockAPI.shared.request(path: "/api/auth/sign-out", method: "POST", body: [:])
+        _ = await IOSMockAPI.shared.request(path: "/auth/sign-out", method: "POST", body: [:])
 
         let oldPasswordSignIn = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": "demo@lifeos.dev",
@@ -121,7 +121,7 @@ final class Life_OSTests: XCTestCase {
         XCTAssertEqual(oldPasswordSignIn.statusCode, 401)
 
         let newPasswordSignIn = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": "demo@lifeos.dev",
@@ -133,14 +133,14 @@ final class Life_OSTests: XCTestCase {
 
     func testMockProtectedDataRequiresAuth() async throws {
         let notesWithoutAuth = await IOSMockAPI.shared.request(
-            path: "/api/notes",
+            path: "/notes",
             method: "GET",
             body: nil
         )
         XCTAssertEqual(notesWithoutAuth.statusCode, 401)
 
         _ = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": "demo@lifeos.dev",
@@ -149,7 +149,7 @@ final class Life_OSTests: XCTestCase {
         )
 
         let notesWithAuth = await IOSMockAPI.shared.request(
-            path: "/api/notes",
+            path: "/notes",
             method: "GET",
             body: nil
         )
@@ -185,7 +185,7 @@ final class Life_OSTests: XCTestCase {
         await IOSMockAPI.shared.reset()
 
         _ = await IOSMockAPI.shared.request(
-            path: "/api/auth/sign-in/email",
+            path: "/auth/sign-in/email",
             method: "POST",
             body: [
                 "email": "demo@lifeos.dev",
@@ -296,7 +296,7 @@ final class Life_OSTests: XCTestCase {
 
     func testInMemoryCookieJarStoresSecureCookieFromResponse() async throws {
         let jar = InMemoryCookieJar()
-        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:3001/api/auth/sign-in/email"))
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:3001/auth/sign-in/email"))
         let response = try XCTUnwrap(
             HTTPURLResponse(
                 url: url,
@@ -316,7 +316,7 @@ final class Life_OSTests: XCTestCase {
 
     func testInMemoryCookieJarClearRemovesStoredCookies() async throws {
         let jar = InMemoryCookieJar()
-        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:3001/api/auth/sign-in/email"))
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:3001/auth/sign-in/email"))
         let response = try XCTUnwrap(
             HTTPURLResponse(
                 url: url,

@@ -21,7 +21,7 @@ describe("resolveUserIdFromRequest", () => {
 
     let fetchedJwks = false;
     const userId = await resolveUserIdFromRequest(
-      new Request("https://api.example.com/api/projects", {
+      new Request("https://api.example.com/projects", {
         headers: {
           authorization: `Bearer ${token}`,
         },
@@ -62,7 +62,7 @@ describe("resolveUserIdFromRequest", () => {
 
     await expect(
       resolveUserIdFromRequest(
-        new Request("https://api.example.com/api/projects", {
+        new Request("https://api.example.com/projects", {
           headers: {
             authorization: `Bearer ${invalidToken}`,
           },
@@ -86,7 +86,7 @@ describe("resolveUserIdFromRequest", () => {
     let sessionRequestHeaders: Headers | null = null;
 
     const userId = await resolveUserIdFromRequest(
-      new Request("https://api.example.com/api/projects", {
+      new Request("https://api.example.com/projects", {
         headers: {
           cookie: "neon-auth.session_token=abc123",
           host: "api.example.com",
@@ -125,7 +125,7 @@ describe("resolveUserIdFromRequest", () => {
     let sessionRequestHeaders: Headers | null = null;
 
     const userId = await resolveUserIdFromRequest(
-      new Request("https://api.example.com/api/tasks", {
+      new Request("https://api.example.com/tasks", {
         method: "POST",
         headers: {
           cookie: "neon-auth.session_token=abc123",
@@ -178,7 +178,7 @@ describe("resolveUserIdFromRequest", () => {
   test("fails fast when auth session lookup times out", async () => {
     await expect(
       resolveUserIdFromRequest(
-        new Request("https://api.example.com/api/tasks", {
+        new Request("https://api.example.com/tasks", {
           method: "POST",
           headers: {
             cookie: "neon-auth.session_token=abc123",
@@ -203,19 +203,19 @@ describe("resolveUserIdFromRequest", () => {
     } satisfies Partial<ApiError>);
   });
 
-  test("fails fast for self-referential auth proxy base URL", async () => {
+  test("fails fast for self-referential auth proxy base URL (/auth)", async () => {
     let fetchCalled = false;
 
     await expect(
       resolveUserIdFromRequest(
-        new Request("https://api.example.com/api/tasks", {
+        new Request("https://api.example.com/tasks", {
           method: "POST",
           headers: {
             cookie: "neon-auth.session_token=abc123",
           },
         }),
         {
-          getAuthBaseUrl: () => "https://api.example.com/api/auth",
+          getAuthBaseUrl: () => "https://api.example.com/auth",
           fetchFn: async () => {
             fetchCalled = true;
             return new Response("ok", { status: 200 });
@@ -229,40 +229,10 @@ describe("resolveUserIdFromRequest", () => {
 
     expect(fetchCalled).toBe(false);
   });
-
-  test("fails fast for cross-origin /api/auth proxy base URL", async () => {
-    let fetchCalled = false;
-
-    await expect(
-      resolveUserIdFromRequest(
-        new Request("https://api.example.com/api/tasks", {
-          method: "POST",
-          headers: {
-            cookie: "neon-auth.session_token=abc123",
-          },
-        }),
-        {
-          getAuthBaseUrl: () => "https://web.example.com/api/auth",
-          fetchFn: async () => {
-            fetchCalled = true;
-            return new Response("ok", { status: 200 });
-          },
-        },
-      ),
-    ).rejects.toMatchObject({
-      status: 500,
-      code: "auth_configuration_error",
-      message:
-        "NEON_AUTH_BASE_URL cannot point to a /api/auth proxy endpoint; set it to the Neon Auth upstream URL",
-    } satisfies Partial<ApiError>);
-
-    expect(fetchCalled).toBe(false);
-  });
-
   test("includes upstream status when session lookup fails", async () => {
     await expect(
       resolveUserIdFromRequest(
-        new Request("https://api.example.com/api/tasks", {
+        new Request("https://api.example.com/tasks", {
           method: "POST",
           headers: {
             cookie: "neon-auth.session_token=abc123",
@@ -307,7 +277,7 @@ describe("resolveUserIdFromRequest", () => {
 
     try {
       await withEnv({ NEON_AUTH_BASE_URL: AUTH_BASE_URL }, async () => {
-        const request = new Request("https://api.example.com/api/projects", {
+        const request = new Request("https://api.example.com/projects", {
           headers: {
             cookie: "neon-auth.session_token=abc123",
           },

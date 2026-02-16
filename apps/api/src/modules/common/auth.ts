@@ -80,9 +80,7 @@ function isSelfAuthProxyBaseUrl(requestUrl: string, baseUrl: string) {
     }
 
     const normalizedPath = authBase.pathname.replace(/\/+$/, "");
-    return (
-      normalizedPath === "/api/auth" || normalizedPath.startsWith("/api/auth/")
-    );
+    return normalizedPath === "/auth" || normalizedPath.startsWith("/auth/");
   } catch {
     return false;
   }
@@ -92,9 +90,7 @@ function isProxyAuthPath(baseUrl: string) {
   try {
     const parsed = new URL(baseUrl);
     const normalizedPath = parsed.pathname.replace(/\/+$/, "");
-    return (
-      normalizedPath === "/api/auth" || normalizedPath.startsWith("/api/auth/")
-    );
+    return normalizedPath === "/auth" || normalizedPath.startsWith("/auth/");
   } catch {
     return false;
   }
@@ -226,7 +222,7 @@ async function resolveUserIdFromSession(
     throw new ApiError(
       500,
       "auth_configuration_error",
-      "NEON_AUTH_BASE_URL cannot point to a /api/auth proxy endpoint; set it to the Neon Auth upstream URL",
+      "NEON_AUTH_BASE_URL cannot point to an auth proxy endpoint (/auth); set it to the Neon Auth upstream URL",
     );
   }
 
@@ -234,7 +230,7 @@ async function resolveUserIdFromSession(
     throw new ApiError(
       500,
       "auth_configuration_error",
-      "NEON_AUTH_BASE_URL cannot point to this API /api/auth proxy; set it to the Neon Auth upstream URL",
+      "NEON_AUTH_BASE_URL cannot point to this API auth proxy (/auth); set it to the Neon Auth upstream URL",
     );
   }
 

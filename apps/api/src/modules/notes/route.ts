@@ -86,7 +86,6 @@ export function createNotesRoute(dependencies: NotesRouteDependencies = {}) {
     const [db, userId] = await Promise.all([getDb(), getUserId(request)]);
     return deleteNote({ db, userId, input: { id } });
   };
-
   notesRoute.get("/notes", async (c) => {
     try {
       return c.json(await listHandler(c.req.raw));
@@ -94,15 +93,6 @@ export function createNotesRoute(dependencies: NotesRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  notesRoute.get("/api/notes", async (c) => {
-    try {
-      return c.json(await listHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   notesRoute.get("/notes/:id", async (c) => {
     try {
       return c.json(await getByIdHandler(c.req.raw, c.req.param("id")));
@@ -110,15 +100,6 @@ export function createNotesRoute(dependencies: NotesRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  notesRoute.get("/api/notes/:id", async (c) => {
-    try {
-      return c.json(await getByIdHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   notesRoute.post("/notes", async (c) => {
     try {
       return c.json(await createHandler(c.req.raw), 201);
@@ -126,15 +107,6 @@ export function createNotesRoute(dependencies: NotesRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  notesRoute.post("/api/notes", async (c) => {
-    try {
-      return c.json(await createHandler(c.req.raw), 201);
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   notesRoute.post("/notes/save-from-message", async (c) => {
     try {
       return c.json(await saveFromMessageHandler(c.req.raw));
@@ -142,15 +114,6 @@ export function createNotesRoute(dependencies: NotesRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  notesRoute.post("/api/notes/save-from-message", async (c) => {
-    try {
-      return c.json(await saveFromMessageHandler(c.req.raw));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   notesRoute.patch("/notes/:id", async (c) => {
     try {
       return c.json(await updateHandler(c.req.raw, c.req.param("id")));
@@ -158,15 +121,6 @@ export function createNotesRoute(dependencies: NotesRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  notesRoute.patch("/api/notes/:id", async (c) => {
-    try {
-      return c.json(await updateHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   notesRoute.delete("/notes/:id", async (c) => {
     try {
       return c.json(await deleteHandler(c.req.raw, c.req.param("id")));
@@ -174,15 +128,6 @@ export function createNotesRoute(dependencies: NotesRouteDependencies = {}) {
       return handleRouteError(c, error);
     }
   });
-
-  notesRoute.delete("/api/notes/:id", async (c) => {
-    try {
-      return c.json(await deleteHandler(c.req.raw, c.req.param("id")));
-    } catch (error) {
-      return handleRouteError(c, error);
-    }
-  });
-
   return notesRoute;
 }
 

@@ -79,14 +79,14 @@ actor IOSMockAPI {
         let normalizedPath = path.hasPrefix("/") ? path : "/\(path)"
         let normalizedMethod = method.uppercased()
 
-        if normalizedPath == "/api/auth/get-session", normalizedMethod == "GET" {
+        if isAuthPath(normalizedPath, canonical: "/auth/get-session"), normalizedMethod == "GET" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
             return jsonResponse(statusCode: 200, object: sessionPayload())
         }
 
-        if normalizedPath == "/api/auth/sign-in/email", normalizedMethod == "POST" {
+        if isAuthPath(normalizedPath, canonical: "/auth/sign-in/email"), normalizedMethod == "POST" {
             let email = body?["email"] ?? ""
             let submittedPassword = body?["password"] ?? ""
             guard email == userEmail, submittedPassword == password else {
@@ -97,7 +97,7 @@ actor IOSMockAPI {
             return jsonResponse(statusCode: 200, object: ["success": true])
         }
 
-        if normalizedPath == "/api/auth/sign-up/email", normalizedMethod == "POST" {
+        if isAuthPath(normalizedPath, canonical: "/auth/sign-up/email"), normalizedMethod == "POST" {
             let email = body?["email"] ?? ""
             let name = body?["name"] ?? ""
             let submittedPassword = body?["password"] ?? ""
@@ -118,7 +118,7 @@ actor IOSMockAPI {
             return jsonResponse(statusCode: 200, object: ["success": true])
         }
 
-        if normalizedPath == "/api/auth/request-password-reset", normalizedMethod == "POST" {
+        if isAuthPath(normalizedPath, canonical: "/auth/request-password-reset"), normalizedMethod == "POST" {
             let email = body?["email"] ?? ""
             if email == "missing@lifeos.dev" {
                 return errorResponse(statusCode: 404, message: "Account not found")
@@ -127,7 +127,7 @@ actor IOSMockAPI {
             return jsonResponse(statusCode: 200, object: ["success": true])
         }
 
-        if normalizedPath == "/api/auth/reset-password", normalizedMethod == "POST" {
+        if isAuthPath(normalizedPath, canonical: "/auth/reset-password"), normalizedMethod == "POST" {
             let token = body?["token"] ?? ""
             let newPassword = body?["newPassword"] ?? ""
             guard token == "valid-reset-token", newPassword.count >= 8 else {
@@ -138,7 +138,7 @@ actor IOSMockAPI {
             return jsonResponse(statusCode: 200, object: ["success": true])
         }
 
-        if normalizedPath == "/api/auth/update-user", normalizedMethod == "POST" {
+        if isAuthPath(normalizedPath, canonical: "/auth/update-user"), normalizedMethod == "POST" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
@@ -152,7 +152,7 @@ actor IOSMockAPI {
             return jsonResponse(statusCode: 200, object: sessionPayload())
         }
 
-        if normalizedPath == "/api/auth/change-password", normalizedMethod == "POST" {
+        if isAuthPath(normalizedPath, canonical: "/auth/change-password"), normalizedMethod == "POST" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
@@ -172,40 +172,40 @@ actor IOSMockAPI {
             return jsonResponse(statusCode: 200, object: ["success": true])
         }
 
-        if normalizedPath == "/api/auth/sign-out", normalizedMethod == "POST" {
+        if isAuthPath(normalizedPath, canonical: "/auth/sign-out"), normalizedMethod == "POST" {
             isAuthenticated = false
             return jsonResponse(statusCode: 200, object: ["success": true])
         }
 
-        if normalizedPath == "/api/home/recent-projects", normalizedMethod == "GET" {
+        if isResourcePath(normalizedPath, canonical: "/home/recent-projects"), normalizedMethod == "GET" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
             return jsonResponse(statusCode: 200, object: recentProjects)
         }
 
-        if normalizedPath == "/api/home/upcoming-tasks", normalizedMethod == "GET" {
+        if isResourcePath(normalizedPath, canonical: "/home/upcoming-tasks"), normalizedMethod == "GET" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
             return jsonResponse(statusCode: 200, object: upcomingTasks)
         }
 
-        if normalizedPath == "/api/home/recent-notes", normalizedMethod == "GET" {
+        if isResourcePath(normalizedPath, canonical: "/home/recent-notes"), normalizedMethod == "GET" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
             return jsonResponse(statusCode: 200, object: notes)
         }
 
-        if normalizedPath == "/api/notes", normalizedMethod == "GET" {
+        if isResourcePath(normalizedPath, canonical: "/notes"), normalizedMethod == "GET" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
             return jsonResponse(statusCode: 200, object: notes)
         }
 
-        if normalizedPath == "/api/inbox", normalizedMethod == "GET" {
+        if isResourcePath(normalizedPath, canonical: "/inbox"), normalizedMethod == "GET" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
@@ -218,7 +218,7 @@ actor IOSMockAPI {
             return jsonResponse(statusCode: 200, object: sortedItems)
         }
 
-        if normalizedPath == "/api/inbox", normalizedMethod == "POST" {
+        if isResourcePath(normalizedPath, canonical: "/inbox"), normalizedMethod == "POST" {
             guard isAuthenticated else {
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
@@ -256,6 +256,14 @@ actor IOSMockAPI {
         }
 
         return errorResponse(statusCode: 404, message: "Not found")
+    }
+
+    private func isResourcePath(_ path: String, canonical: String) -> Bool {
+        path == canonical
+    }
+
+    private func isAuthPath(_ path: String, canonical: String) -> Bool {
+        path == canonical
     }
 
     private func sessionPayload() -> [String: Any] {

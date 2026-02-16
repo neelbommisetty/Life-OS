@@ -39,7 +39,7 @@ function parseDate(value: string) {
 
 export async function getRecentProjects() {
   const projects = await apiFetchJson<RecentProjectResponse[]>(
-    "/api/home/recent-projects",
+    "/home/recent-projects",
   );
 
   return projects.map((project) => ({
@@ -50,7 +50,7 @@ export async function getRecentProjects() {
 
 export async function getUpcomingTasks() {
   const tasks = await apiFetchJson<UpcomingTaskResponse[]>(
-    "/api/home/upcoming-tasks",
+    "/home/upcoming-tasks",
   );
 
   return tasks.map((task) => ({
@@ -61,7 +61,7 @@ export async function getUpcomingTasks() {
 
 export async function getRecentNotes() {
   const notes = await apiFetchJson<RecentNoteResponse[]>(
-    "/api/home/recent-notes",
+    "/home/recent-notes",
   );
 
   return notes.map((note) => ({

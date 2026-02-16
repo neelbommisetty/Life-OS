@@ -78,7 +78,7 @@ export async function listTasks(input?: ListTasksInput) {
     params.set("projectId", parsed.projectId);
   }
 
-  const path = params.size ? `/api/tasks?${params.toString()}` : "/api/tasks";
+  const path = params.size ? `/tasks?${params.toString()}` : "/tasks";
   const tasks = await apiFetchJson<TaskWithProjectResponse[]>(path);
 
   return tasks.map(hydrateTaskWithProject);
@@ -86,7 +86,7 @@ export async function listTasks(input?: ListTasksInput) {
 
 export async function createTask(input?: CreateTaskInput) {
   const parsed = createTaskSchema.parse(input ?? {});
-  const task = await apiFetchJson<TaskResponse>("/api/tasks", {
+  const task = await apiFetchJson<TaskResponse>("/tasks", {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -100,7 +100,7 @@ export async function createTask(input?: CreateTaskInput) {
 export async function updateTask(input: UpdateTaskInput) {
   const parsed = updateTaskSchema.parse(input);
   const { id, ...payload } = parsed;
-  const task = await apiFetchJson<TaskResponse>(`/api/tasks/${id}`, {
+  const task = await apiFetchJson<TaskResponse>(`/tasks/${id}`, {
     method: "PATCH",
     headers: {
       "content-type": "application/json",
@@ -113,12 +113,12 @@ export async function updateTask(input: UpdateTaskInput) {
 
 export async function deleteTask(input: DeleteTaskInput) {
   const parsed = deleteTaskSchema.parse(input);
-  return apiFetchJson<{ success: boolean }>(`/api/tasks/${parsed.id}`, {
+  return apiFetchJson<{ success: boolean }>(`/tasks/${parsed.id}`, {
     method: "DELETE",
   });
 }
 
 export async function listArchivedTasks() {
-  const tasks = await apiFetchJson<TaskWithProjectResponse[]>("/api/tasks/archived");
+  const tasks = await apiFetchJson<TaskWithProjectResponse[]>("/tasks/archived");
   return tasks.map(hydrateTaskWithProject);
 }

@@ -7,7 +7,7 @@ const NOTE_ID = "ckz1q2w3e4r5t6y7u8i9o0p1c";
 const MESSAGE_ID = "ckz1q2w3e4r5t6y7u8i9o0p1d";
 
 describe("notesRoute", () => {
-  test("GET /api/notes lists notes", async () => {
+  test("GET /notes lists notes", async () => {
     let capturedArgs: unknown;
 
     const app = createTestApp(
@@ -43,7 +43,7 @@ describe("notesRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/notes?search=hello");
+    const { response, body } = await requestJson(app, "/notes?search=hello");
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: NOTE_ID }]);
     expect(capturedArgs).toMatchObject({
@@ -54,7 +54,7 @@ describe("notesRoute", () => {
     });
   });
 
-  test("GET /api/notes/:id returns note", async () => {
+  test("GET /notes/:id returns note", async () => {
     const app = createTestApp(
       createNotesRoute({
         getUserId: async () => USER_ID,
@@ -85,12 +85,12 @@ describe("notesRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/notes/${NOTE_ID}`);
+    const { response, body } = await requestJson(app, `/notes/${NOTE_ID}`);
     expect(response.status).toBe(200);
     expect(body).toMatchObject({ id: NOTE_ID, title: "Doc" });
   });
 
-  test("POST /api/notes creates note", async () => {
+  test("POST /notes creates note", async () => {
     let capturedCreateArgs: unknown;
 
     const app = createTestApp(
@@ -126,7 +126,7 @@ describe("notesRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/notes", {
+    const { response, body } = await requestJson(app, "/notes", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "New", content: "Body" }),
@@ -143,7 +143,7 @@ describe("notesRoute", () => {
     });
   });
 
-  test("POST /api/notes/save-from-message saves assistant message as note", async () => {
+  test("POST /notes/save-from-message saves assistant message as note", async () => {
     let updateCalled = false;
 
     const app = createTestApp(
@@ -185,7 +185,7 @@ describe("notesRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/notes/save-from-message", {
+    const { response, body } = await requestJson(app, "/notes/save-from-message", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ messageId: MESSAGE_ID }),
@@ -196,7 +196,7 @@ describe("notesRoute", () => {
     expect(updateCalled).toBe(true);
   });
 
-  test("PATCH /api/notes/:id updates note", async () => {
+  test("PATCH /notes/:id updates note", async () => {
     const app = createTestApp(
       createNotesRoute({
         getUserId: async () => USER_ID,
@@ -227,7 +227,7 @@ describe("notesRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/notes/${NOTE_ID}`, {
+    const { response, body } = await requestJson(app, `/notes/${NOTE_ID}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "Renamed", content: "Updated" }),
@@ -237,7 +237,7 @@ describe("notesRoute", () => {
     expect(body).toMatchObject({ id: NOTE_ID, title: "Renamed" });
   });
 
-  test("DELETE /api/notes/:id soft deletes note", async () => {
+  test("DELETE /notes/:id soft deletes note", async () => {
     let txUpdateManyCalled = false;
 
     const app = createTestApp(
@@ -273,7 +273,7 @@ describe("notesRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/notes/${NOTE_ID}`, {
+    const { response, body } = await requestJson(app, `/notes/${NOTE_ID}`, {
       method: "DELETE",
     });
 

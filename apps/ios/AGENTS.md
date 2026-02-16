@@ -38,7 +38,7 @@ These instructions apply to all files under `apps/ios/*`.
 
 ## API and environment rules
 
-- Use existing API contracts from `/api/auth/*`, `/api/home/*`, and `/api/notes`.
+- Use canonical no-prefix backend routes only (including auth as `/auth/*` and app data as `/home/*`, `/notes*`, `/inbox*`).
 - Keep API access centralized via `APIClient`, `AuthService`, and `AppDataService`.
 - Use `LIFE_OS_API_BASE_URL` for real backend endpoint configuration.
 - Use `LIFE_OS_USE_MOCK_API=1` for deterministic local/unit/UI test behavior.

@@ -15,6 +15,8 @@
 - Use `zod` schemas for request/response validation where applicable.
 - Keep handlers small and deterministic; move shared behavior into reusable utilities.
 - Avoid long-running synchronous work in request handlers.
+- Canonical backend contracts must be no-prefix routes only (`/auth/*`, `/status`, `/home/*`, `/projects*`, `/tasks*`, `/inbox*`, `/notes*`, `/chat*`, `/analytics/*`).
+- Reject additions of `/api/*` route aliases in `apps/api`.
 
 ## Testing and Coverage Requirements
 

@@ -6,7 +6,7 @@ const USER_ID = "ckz1q2w3e4r5t6y7u8i9o0p1a";
 const TASK_ID = "ckz1q2w3e4r5t6y7u8i9o0p1e";
 
 describe("tasksRoute", () => {
-  test("GET /api/tasks lists tasks", async () => {
+  test("GET /tasks lists tasks", async () => {
     let updateManyCalled = false;
     let findManyArgs: unknown;
 
@@ -33,7 +33,7 @@ describe("tasksRoute", () => {
 
     const { response, body } = await requestJson(
       app,
-      "/api/tasks?search=bug&status=TODO",
+      "/tasks?search=bug&status=TODO",
     );
 
     expect(response.status).toBe(200);
@@ -48,7 +48,7 @@ describe("tasksRoute", () => {
     });
   });
 
-  test("GET /api/tasks/archived lists archived tasks", async () => {
+  test("GET /tasks/archived lists archived tasks", async () => {
     let findManyArgs: unknown;
 
     const app = createTestApp(
@@ -69,7 +69,7 @@ describe("tasksRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/tasks/archived");
+    const { response, body } = await requestJson(app, "/tasks/archived");
     expect(response.status).toBe(200);
     expect(body).toEqual([{ id: TASK_ID, deletedAt: expect.any(String) }]);
     expect(findManyArgs).toMatchObject({
@@ -80,7 +80,7 @@ describe("tasksRoute", () => {
     });
   });
 
-  test("POST /api/tasks creates task", async () => {
+  test("POST /tasks creates task", async () => {
     let createArgs: unknown;
 
     const app = createTestApp(
@@ -101,7 +101,7 @@ describe("tasksRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, "/api/tasks", {
+    const { response, body } = await requestJson(app, "/tasks", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "Task", dueDate: "2026-02-01" }),
@@ -117,7 +117,7 @@ describe("tasksRoute", () => {
     });
   });
 
-  test("PATCH /api/tasks/:id updates task", async () => {
+  test("PATCH /tasks/:id updates task", async () => {
     let updateArgs: unknown;
 
     const app = createTestApp(
@@ -138,7 +138,7 @@ describe("tasksRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/tasks/${TASK_ID}`, {
+    const { response, body } = await requestJson(app, `/tasks/${TASK_ID}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ status: "DONE" }),
@@ -152,7 +152,7 @@ describe("tasksRoute", () => {
     });
   });
 
-  test("DELETE /api/tasks/:id soft deletes task", async () => {
+  test("DELETE /tasks/:id soft deletes task", async () => {
     let updateArgs: unknown;
 
     const app = createTestApp(
@@ -173,7 +173,7 @@ describe("tasksRoute", () => {
       }),
     );
 
-    const { response, body } = await requestJson(app, `/api/tasks/${TASK_ID}`, {
+    const { response, body } = await requestJson(app, `/tasks/${TASK_ID}`, {
       method: "DELETE",
     });
 

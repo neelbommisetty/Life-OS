@@ -25,7 +25,7 @@ describe("api app integration", () => {
   test("preserves x-request-id header on error responses", async () => {
     const requestId = "req_test_custom_id_001";
     const response = await withEnv({ NEON_AUTH_BASE_URL: undefined }, () =>
-      app.request("/api/auth/get-session", {
+      app.request("/auth/get-session", {
         headers: {
           "x-request-id": requestId,
         },
@@ -61,24 +61,9 @@ describe("api app integration", () => {
     });
   });
 
-  test("mounts /api/status route", async () => {
-    await withEnv({ DATABASE_URL: undefined }, async () => {
-      const { response, body } = await requestJson(app, "/api/status");
-      expect(response.status).toBe(503);
-      expect(body.status).toBe("not_ready");
-      expect(body.db).toBe("not_configured");
-      expect(typeof body.ai.status).toBe("string");
-      expect(typeof body.ai.initialized).toBe("boolean");
-      expect(typeof body.ai.providers.openai).toBe("string");
-      expect(typeof body.ai.providers.anthropic).toBe("string");
-      expect(typeof body.ai.providers.gemini).toBe("string");
-      expect(typeof body.ai.providers.xai).toBe("string");
-    });
-  });
-
   test("mounts auth route", async () => {
     await withEnv({ NEON_AUTH_BASE_URL: undefined }, async () => {
-      const { response, body } = await requestJson(app, "/api/auth/get-session");
+      const { response, body } = await requestJson(app, "/auth/get-session");
       expect(response.status).toBe(500);
       expect(body).toEqual({
         error: "auth_proxy_error",
@@ -100,7 +85,7 @@ describe("api app integration", () => {
       await withEnv(
         { NEON_AUTH_BASE_URL: "https://auth.example.com/neondb/auth" },
         async () => {
-          const { response, body } = await requestJson(app, "/api/chat/models");
+          const { response, body } = await requestJson(app, "/chat/models");
 
           expect(response.status).toBe(401);
           expect(body).toEqual({
@@ -147,7 +132,7 @@ describe("api app integration", () => {
       await withEnv(
         { NEON_AUTH_BASE_URL: "https://auth.example.com/neondb/auth" },
         async () => {
-          const { response, body } = await requestJson(app, "/api/chat/models");
+          const { response, body } = await requestJson(app, "/chat/models");
 
           expect(response.status).toBe(200);
           expect(Array.isArray(body)).toBe(true);

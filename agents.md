@@ -5,6 +5,8 @@
 - `apps/ios` follows dedicated Swift/Xcode conventions in `apps/ios/AGENTS.md`; root-level git and hook policies still apply.
 - Put workspace-specific AGENTS policy updates in that workspace's `AGENTS.md` rather than this root file.
 - Prefer sharing code through `packages/*` workspace dependencies instead of cross-importing between apps.
+- Backend API contracts in `apps/api` are canonical no-prefix routes only (`/auth/*`, `/status`, `/inbox*`, etc.); do not add `/api/*` aliases in `apps/api`.
+- `apps/web/src/app/api/*` is an allowed Next-internal namespace for web proxy/stream handlers and is exempt from the `apps/api` no-`/api/*` rule.
 
 ## Orchestration Commands
 

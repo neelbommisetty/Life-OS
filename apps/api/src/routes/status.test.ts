@@ -105,19 +105,4 @@ describe("statusRoute", () => {
         ai: mockAIStatus,
       });
     });
-  });
-
-  test("GET /api/status returns ready when database is reachable", async () => {
-    const app = createTestApp(
-      createStatusRoute({
-        hasDatabaseUrl: () => true,
-        checkDatabaseReady: async () => true,
-        getAIServicesStatus: () => mockAIStatus,
-      }),
-    );
-    const { response, body } = await requestJson(app, "/api/status");
-
-    expect(response.status).toBe(200);
-    expect(body).toEqual({ status: "ready", db: "ready", ai: mockAIStatus });
-  });
-});
+  });});
