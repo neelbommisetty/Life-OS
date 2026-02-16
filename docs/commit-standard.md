@@ -15,7 +15,7 @@ Execution details:
 Example:
 
 ```text
-feat(apps/web,packages/db): add project task quick-filter pipeline
+feat(web,db): add project task quick-filter pipeline
 ```
 
 ## Allowed `type`
@@ -34,11 +34,12 @@ feat(apps/web,packages/db): add project task quick-filter pipeline
 
 ## Allowed monorepo `scope`
 
-- `apps/web`
-- `apps/api`
-- `apps/ios`
-- `packages/db`
-- `packages/ai`
+- `web`
+- `api`
+- `ios`
+- `db`
+- `ai`
+- `logger`
 - `repo`
 - `docs`
 - `tooling`
