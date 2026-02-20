@@ -31,6 +31,7 @@ import {
   type SkipInboxOutputInput,
   type UnarchiveInboxItemInput,
 } from "./validations";
+export type { InboxItemState, InboxProposalOutputState } from "./validations";
 
 type InboxItemResponse = {
   id: string;

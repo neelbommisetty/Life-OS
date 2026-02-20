@@ -41,10 +41,10 @@ Coverage Status Legend:
 | Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Assistant/Tasks/Library tabs | Edit success/error + tab content render |
 | Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
 | Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
-| Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture inbox items, review details, mark processed, and archive from the inbox view | `Automated`: create/list/detail plus process/archive/unarchive action coverage |
-| Inbox | Inbox proposal output review UX | `/inbox` | `Resolve All as No` is unavailable for `PROCESSED`/`ARCHIVED` items and disabled when no unresolved outputs remain; todo proposals render structured full task previews from payload with safe fallback on malformed payloads | `Automated`: todo payload validation + proposal processing safety; `Manual`: button visibility/disabled-state checks; `Planned`: dedicated inbox proposal review e2e |
-| Inbox | Inbox processing failure recovery | `/inbox` | When proposal generation fails, item transitions from `PROCESSING` back to `REVIEW`, persists `processingError`, and exposes retry/recover path (no stuck processing state) | `Automated`: service-level state transition + persistence checks; `Manual`: UI retry/recover behavior from failed processing |
-| Inbox | Inbox archive experience | `/inbox/archive` | Archived inbox items load and can be searched and unarchived | `Automated`: backend route coverage for archived list/search and archive/unarchive transitions; `Manual`: inbox archive UI load/search/unarchive flow |
+| Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture inbox items, review details, mark processed, and archive from the inbox view | Playwright create/list/detail plus process/archive coverage |
+| Inbox | Inbox proposal output review UX | `/inbox` | `Resolve All as No` is unavailable for `PROCESSED`/`ARCHIVED` items and disabled when no unresolved outputs remain; todo proposals render structured full task previews from payload with safe fallback on malformed payloads | Web unit coverage for todo payload validation + API/unit coverage for proposal processing safety + Playwright coverage for button availability and preview rendering |
+| Inbox | Inbox processing failure recovery | `/inbox` | When proposal generation fails, item transitions from `PROCESSING` back to `REVIEW`, persists `processingError`, and exposes retry/recover path (no stuck processing state) | Automated service-level state transition + persistence checks; manual UI retry/recover behavior from failed processing |
+| Inbox | Inbox archive experience | `/inbox/archive` | Archived inbox items load and can be searched and unarchived | Playwright archived data load + search + unarchive coverage |
 | Notes | Note selection and URL sync | `/notes` | Selecting notes updates `noteId`; first note auto-selects on `/notes` when available | Selection behavior + URL state + default selection |
 | Notes | Note editor behavior | `/notes` | Preview/edit toggle, autosave debounce, save on unmount/id change, Cmd/Ctrl+S | Autosave and manual save shortcuts/edge cases |
 | Chat | Thread management UI | `/chat` and project chat tab | Users can create/archive/select threads with URL sync and grouped/searchable list | Thread lifecycle + URL sync + filtering |
@@ -151,13 +151,30 @@ Run this set before release and after large refactors:
   - `apps/web/src/components/chat/message-actions.test.ts`
   - `apps/web/src/app/tasks/tasks-utils.test.ts`
 - Web e2e tests:
+  - `apps/web/tests/e2e/account-flows.e2e.ts`
+  - `apps/web/tests/e2e/analytics.e2e.ts`
   - `apps/web/tests/e2e/auth-flows.e2e.ts`
+  - `apps/web/tests/e2e/auth-redirects.e2e.ts`
+  - `apps/web/tests/e2e/chat-message-actions.e2e.ts`
+  - `apps/web/tests/e2e/chat-message-history.e2e.ts`
   - `apps/web/tests/e2e/session-gates.e2e.ts`
   - `apps/web/tests/e2e/chat-model-selector.e2e.ts`
   - `apps/web/tests/e2e/chat-scroll.e2e.ts`
+  - `apps/web/tests/e2e/chat-streaming.e2e.ts`
+  - `apps/web/tests/e2e/chat-thread-management.e2e.ts`
   - `apps/web/tests/e2e/chat-thread-switch-scroll.e2e.ts`
+  - `apps/web/tests/e2e/home-dashboard.e2e.ts`
+  - `apps/web/tests/e2e/inbox-archive.e2e.ts`
+  - `apps/web/tests/e2e/inbox-lifecycle.e2e.ts`
+  - `apps/web/tests/e2e/inbox-proposal-review.e2e.ts`
+  - `apps/web/tests/e2e/notes-editor.e2e.ts`
   - `apps/web/tests/e2e/notes-selection.e2e.ts`
   - `apps/web/tests/e2e/pricing.e2e.ts`
+  - `apps/web/tests/e2e/project-detail.e2e.ts`
+  - `apps/web/tests/e2e/projects-flows.e2e.ts`
+  - `apps/web/tests/e2e/shell-navigation.e2e.ts`
+  - `apps/web/tests/e2e/tasks-archive.e2e.ts`
+  - `apps/web/tests/e2e/tasks-kanban.e2e.ts`
 - iOS tests:
   - `apps/ios/Life-OS/Life-OSTests/Life_OSTests.swift`
   - `apps/ios/Life-OS/Life-OSUITests/Life_OSUITests.swift`

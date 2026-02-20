@@ -1,17 +1,5 @@
-import { expect, type Page, test } from "@playwright/test";
-
-async function setUnauthenticatedSessionCookie(page: Page) {
-  await page.context().addCookies([
-    {
-      name: "mock-session",
-      value: "invalid",
-      domain: "127.0.0.1",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-    },
-  ]);
-}
+import { expect, test } from "@playwright/test";
+import { setUnauthenticatedSessionCookie } from "./helpers";
 
 test.describe("auth flows", () => {
   test("sign in handles invalid credentials and redirects on success", async ({
@@ -98,7 +86,7 @@ test.describe("auth flows", () => {
     await page.getByLabel("Confirm password").fill("different-password");
     await page.getByRole("button", { name: "Update password" }).click();
 
-    await expect(page.getByText("Passwords do not match")).toBeVisible();
+    await expect(page.getByText("Passwords don't match.")).toBeVisible();
 
     await page.getByLabel("Confirm password").fill("new-password-123");
     await page.getByRole("button", { name: "Update password" }).click();
