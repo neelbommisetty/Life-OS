@@ -15,8 +15,10 @@ actor IOSMockAPI {
     private var password = "demo12345"
     private var inboxItems: [[String: Any]] = []
     private var nextInboxSequence = 1
-    private var shouldFailInboxCreateOnce = false
+    private var shouldFailInboxCreateOnce = ProcessInfo.processInfo.environment["LIFE_OS_MOCK_INBOX_CREATE_FAIL_ONCE"] == "1"
     private var hasConsumedInboxCreateFailure = false
+    private var shouldForceInboxUnauthorizedOnce = ProcessInfo.processInfo.environment["LIFE_OS_MOCK_INBOX_UNAUTHORIZED_ONCE"] == "1"
+    private var hasConsumedInboxUnauthorizedFailure = false
 
     private let recentProjects: [[String: Any]] = [
         [
@@ -73,6 +75,8 @@ actor IOSMockAPI {
         nextInboxSequence = 1
         shouldFailInboxCreateOnce = ProcessInfo.processInfo.environment["LIFE_OS_MOCK_INBOX_CREATE_FAIL_ONCE"] == "1"
         hasConsumedInboxCreateFailure = false
+        shouldForceInboxUnauthorizedOnce = ProcessInfo.processInfo.environment["LIFE_OS_MOCK_INBOX_UNAUTHORIZED_ONCE"] == "1"
+        hasConsumedInboxUnauthorizedFailure = false
     }
 
     func request(path: String, method: String, body: [String: String]?) -> IOSMockAPIResponse {
@@ -207,6 +211,12 @@ actor IOSMockAPI {
 
         if isResourcePath(normalizedPath, canonical: "/inbox"), normalizedMethod == "GET" {
             guard isAuthenticated else {
+                return errorResponse(statusCode: 401, message: "Unauthorized")
+            }
+
+            if shouldForceInboxUnauthorizedOnce, !hasConsumedInboxUnauthorizedFailure {
+                hasConsumedInboxUnauthorizedFailure = true
+                isAuthenticated = false
                 return errorResponse(statusCode: 401, message: "Unauthorized")
             }
 

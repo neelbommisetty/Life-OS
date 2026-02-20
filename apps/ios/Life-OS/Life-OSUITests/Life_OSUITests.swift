@@ -69,6 +69,128 @@ final class Life_OSUITests: XCTestCase {
     }
 
     @MainActor
+    func testSignUpCreatesAccountAndUnlocksShell() throws {
+        let app = makeApp()
+        app.launch()
+
+        let goToSignUp = app.buttons["auth.signIn.gotoSignUp"]
+        XCTAssertTrue(goToSignUp.waitForExistence(timeout: 6))
+        goToSignUp.tap()
+
+        let nameField = app.textFields["auth.signUp.name"]
+        let emailField = app.textFields["auth.signUp.email"]
+        let passwordField = app.secureTextFields["auth.signUp.password"]
+        let submitButton = app.buttons["auth.signUp.submit"]
+
+        XCTAssertTrue(nameField.waitForExistence(timeout: 6))
+        nameField.tap()
+        nameField.typeText("iOS Test User")
+
+        XCTAssertTrue(emailField.exists)
+        emailField.tap()
+        emailField.typeText("ios-signup@lifeos.dev")
+
+        XCTAssertTrue(passwordField.exists)
+        passwordField.tap()
+        passwordField.typeText("signup-pass-123")
+
+        XCTAssertTrue(submitButton.exists)
+        submitButton.tap()
+        dismissKeyboardIfVisible(in: app)
+        dismissSavePasswordPromptIfPresent(in: app)
+
+        XCTAssertTrue(app.tabBars.buttons["Capture"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.textViews["capture.editor"].waitForExistence(timeout: 6))
+    }
+
+    @MainActor
+    func testRecoverAndResetPasswordValidationFlow() throws {
+        let app = makeApp()
+        app.launch()
+
+        let goToRecover = app.buttons["auth.signIn.gotoRecover"]
+        XCTAssertTrue(goToRecover.waitForExistence(timeout: 6))
+        goToRecover.tap()
+
+        let recoverEmail = app.textFields["auth.recover.email"]
+        let recoverSubmit = app.buttons["auth.recover.submit"]
+        XCTAssertTrue(recoverEmail.waitForExistence(timeout: 6))
+        XCTAssertTrue(recoverSubmit.exists)
+
+        recoverSubmit.tap()
+        XCTAssertTrue(app.staticTexts["Email required."].waitForExistence(timeout: 4))
+
+        recoverEmail.tap()
+        recoverEmail.typeText("missing@lifeos.dev")
+        recoverSubmit.tap()
+        XCTAssertTrue(app.staticTexts["Account not found"].waitForExistence(timeout: 4))
+
+        recoverEmail.clearAndTypeText("demo@lifeos.dev")
+        recoverSubmit.tap()
+        XCTAssertTrue(
+            app.staticTexts["If that email exists, a password reset link has been sent."].waitForExistence(timeout: 4)
+        )
+
+        let goToReset = app.buttons["auth.recover.gotoReset"]
+        XCTAssertTrue(goToReset.exists)
+        goToReset.tap()
+
+        let tokenField = app.textFields["auth.reset.token"]
+        let newPassword = app.secureTextFields["auth.reset.newPassword"]
+        let confirmPassword = app.secureTextFields["auth.reset.confirmPassword"]
+        let resetSubmit = app.buttons["auth.reset.submit"]
+
+        XCTAssertTrue(tokenField.waitForExistence(timeout: 6))
+        tokenField.tap()
+        tokenField.typeText("invalid-reset-token")
+        newPassword.tap()
+        newPassword.typeText("new-password-123")
+        confirmPassword.tap()
+        confirmPassword.typeText("new-password-123")
+        resetSubmit.tap()
+
+        XCTAssertTrue(app.staticTexts["Invalid or expired reset token"].waitForExistence(timeout: 4))
+
+        let backToSignIn = app.buttons["auth.reset.gotoSignIn"]
+        XCTAssertTrue(backToSignIn.waitForExistence(timeout: 6))
+        backToSignIn.tap()
+        XCTAssertTrue(app.buttons["auth.signIn.submit"].waitForExistence(timeout: 6))
+    }
+
+    @MainActor
+    func testAuthenticatedShellDefaultsToCaptureAndSupportsTabNavigation() throws {
+        let app = makeApp()
+        app.launch()
+
+        signIn(app: app, email: "demo@lifeos.dev", password: "demo12345")
+
+        XCTAssertTrue(app.tabBars.buttons["Capture"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.textViews["capture.editor"].waitForExistence(timeout: 6))
+
+        openInboxTab(in: app)
+        XCTAssertTrue(app.navigationBars["Inbox"].waitForExistence(timeout: 6))
+
+        openAccountTab(in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["account.signOut"].waitForExistence(timeout: 6))
+    }
+
+    @MainActor
+    func testInboxUnauthorizedRefreshRoutesBackToSignIn() throws {
+        let app = makeApp(
+            extraEnvironment: [
+                "LIFE_OS_MOCK_INBOX_UNAUTHORIZED_ONCE": "1",
+            ]
+        )
+        app.launch()
+
+        signIn(app: app, email: "demo@lifeos.dev", password: "demo12345")
+        openInboxTab(in: app)
+
+        XCTAssertTrue(app.buttons["auth.signIn.submit"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Session expired. Sign in again."].waitForExistence(timeout: 4))
+    }
+
+    @MainActor
     func testCaptureSaveCreatesInboxItem() throws {
         let app = makeApp(
             extraEnvironment: [

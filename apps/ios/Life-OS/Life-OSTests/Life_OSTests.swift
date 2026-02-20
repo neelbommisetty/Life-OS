@@ -159,6 +159,103 @@ final class Life_OSTests: XCTestCase {
         XCTAssertFalse(notesArray.isEmpty)
     }
 
+    func testMockSignUpRecoverAndResetPasswordLifecycle() async throws {
+        let duplicateSignUp = await IOSMockAPI.shared.request(
+            path: "/auth/sign-up/email",
+            method: "POST",
+            body: [
+                "name": "Taken User",
+                "email": "already@taken.dev",
+                "password": "initial-password-123",
+            ]
+        )
+        XCTAssertEqual(duplicateSignUp.statusCode, 409)
+        XCTAssertEqual(errorMessage(from: duplicateSignUp.data), "Email already exists")
+
+        let signUp = await IOSMockAPI.shared.request(
+            path: "/auth/sign-up/email",
+            method: "POST",
+            body: [
+                "name": "New User",
+                "email": "new@lifeos.dev",
+                "password": "initial-password-123",
+            ]
+        )
+        XCTAssertEqual(signUp.statusCode, 200)
+
+        let sessionAfterSignUp = await IOSMockAPI.shared.request(
+            path: "/auth/get-session",
+            method: "GET",
+            body: nil
+        )
+        XCTAssertEqual(sessionAfterSignUp.statusCode, 200)
+        XCTAssertEqual(sessionUser(from: sessionAfterSignUp.data)?["email"] as? String, "new@lifeos.dev")
+
+        let missingResetEmail = await IOSMockAPI.shared.request(
+            path: "/auth/request-password-reset",
+            method: "POST",
+            body: [
+                "email": "missing@lifeos.dev",
+                "redirectTo": "http://127.0.0.1:3001/auth/reset-password",
+            ]
+        )
+        XCTAssertEqual(missingResetEmail.statusCode, 404)
+        XCTAssertEqual(errorMessage(from: missingResetEmail.data), "Account not found")
+
+        let resetRequest = await IOSMockAPI.shared.request(
+            path: "/auth/request-password-reset",
+            method: "POST",
+            body: [
+                "email": "new@lifeos.dev",
+                "redirectTo": "http://127.0.0.1:3001/auth/reset-password",
+            ]
+        )
+        XCTAssertEqual(resetRequest.statusCode, 200)
+
+        let invalidReset = await IOSMockAPI.shared.request(
+            path: "/auth/reset-password",
+            method: "POST",
+            body: [
+                "token": "invalid-token",
+                "newPassword": "updated-password-123",
+            ]
+        )
+        XCTAssertEqual(invalidReset.statusCode, 400)
+        XCTAssertEqual(errorMessage(from: invalidReset.data), "Invalid or expired reset token")
+
+        let validReset = await IOSMockAPI.shared.request(
+            path: "/auth/reset-password",
+            method: "POST",
+            body: [
+                "token": "valid-reset-token",
+                "newPassword": "updated-password-123",
+            ]
+        )
+        XCTAssertEqual(validReset.statusCode, 200)
+
+        _ = await IOSMockAPI.shared.request(path: "/auth/sign-out", method: "POST", body: [:])
+
+        let oldPasswordSignIn = await IOSMockAPI.shared.request(
+            path: "/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "new@lifeos.dev",
+                "password": "initial-password-123",
+            ]
+        )
+        XCTAssertEqual(oldPasswordSignIn.statusCode, 401)
+
+        let newPasswordSignIn = await IOSMockAPI.shared.request(
+            path: "/auth/sign-in/email",
+            method: "POST",
+            body: [
+                "email": "new@lifeos.dev",
+                "password": "updated-password-123",
+            ]
+        )
+        XCTAssertEqual(newPasswordSignIn.statusCode, 200)
+    }
+
     func testAppDataServiceInboxRequiresAuth() async throws {
         setenv("LIFE_OS_USE_MOCK_API", "1", 1)
         defer { unsetenv("LIFE_OS_USE_MOCK_API") }
@@ -292,6 +389,143 @@ final class Life_OSTests: XCTestCase {
 
         XCTAssertEqual(appState.sessionUser?.email, "demo@lifeos.dev")
         XCTAssertNil(appState.authError)
+    }
+
+    @MainActor
+    func testAppStateCaptureResetTokenRoutesToResetPasswordFlow() async {
+        let appState = AppState()
+        let resetURL = URL(string: "lifeos://auth/reset-password?token=valid-reset-token")!
+
+        appState.captureResetToken(from: resetURL)
+
+        XCTAssertEqual(appState.authFlow, .resetPassword)
+        XCTAssertEqual(appState.resetToken, "valid-reset-token")
+        XCTAssertNil(appState.authError)
+        XCTAssertEqual(appState.authSuccess, "Reset link opened. Set a new password to continue.")
+    }
+
+    @MainActor
+    func testAppStateRecoverAndResetValidations() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        defer { unsetenv("LIFE_OS_USE_MOCK_API") }
+        await IOSMockAPI.shared.reset()
+
+        let appState = AppState()
+
+        await appState.requestPasswordReset(email: "   ")
+        XCTAssertEqual(appState.authError, "Email required.")
+
+        await appState.requestPasswordReset(email: "missing@lifeos.dev")
+        XCTAssertEqual(appState.authError, "Account not found")
+
+        await appState.requestPasswordReset(email: "demo@lifeos.dev")
+        XCTAssertEqual(
+            appState.authSuccess,
+            "If that email exists, a password reset link has been sent."
+        )
+
+        await appState.resetPassword(
+            token: "   ",
+            newPassword: "new-password-123",
+            confirmPassword: "new-password-123"
+        )
+        XCTAssertEqual(appState.authError, "Missing reset token. Open the reset link again.")
+
+        await appState.resetPassword(
+            token: "valid-reset-token",
+            newPassword: "new-password-123",
+            confirmPassword: "different-password"
+        )
+        XCTAssertEqual(appState.authError, "Passwords don't match.")
+
+        await appState.resetPassword(
+            token: "valid-reset-token",
+            newPassword: "",
+            confirmPassword: ""
+        )
+        XCTAssertEqual(appState.authError, "New password required.")
+
+        await appState.resetPassword(
+            token: "valid-reset-token",
+            newPassword: "new-password-123",
+            confirmPassword: "new-password-123"
+        )
+        XCTAssertNil(appState.authError)
+        XCTAssertEqual(appState.authSuccess, "Password updated. Sign in.")
+        XCTAssertEqual(appState.authFlow, .signIn)
+    }
+
+    @MainActor
+    func testAppStateRefreshInboxUnauthorizedRoutesBackToSignIn() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        defer { unsetenv("LIFE_OS_USE_MOCK_API") }
+        await IOSMockAPI.shared.reset()
+
+        let appState = AppState()
+        await appState.signIn(email: "demo@lifeos.dev", password: "demo12345")
+        XCTAssertNotNil(appState.sessionUser)
+
+        _ = await IOSMockAPI.shared.request(path: "/auth/sign-out", method: "POST", body: [:])
+
+        let modelContext = try makeInMemoryModelContext()
+        await appState.refreshInbox(modelContext: modelContext)
+
+        XCTAssertNil(appState.sessionUser)
+        XCTAssertEqual(appState.authFlow, .signIn)
+        XCTAssertEqual(appState.authError, "Session expired. Sign in again.")
+    }
+
+    @MainActor
+    func testRefreshInboxPrunesStaleSyncedCacheAndKeepsUnsyncedCreates() async throws {
+        setenv("LIFE_OS_USE_MOCK_API", "1", 1)
+        defer { unsetenv("LIFE_OS_USE_MOCK_API") }
+        await IOSMockAPI.shared.reset()
+
+        let appState = AppState()
+        await appState.signIn(email: "demo@lifeos.dev", password: "demo12345")
+
+        let modelContext = try makeInMemoryModelContext()
+
+        let staleSynced = InboxItem(
+            serverId: "stale-server-id",
+            content: "stale synced row",
+            syncStatus: InboxItemSyncStatus.synced.rawValue
+        )
+        let unsyncedLocal = InboxItem(
+            content: "local unsynced row",
+            syncStatus: InboxItemSyncStatus.failedCreate.rawValue,
+            lastSyncError: "failed previously"
+        )
+        modelContext.insert(staleSynced)
+        modelContext.insert(unsyncedLocal)
+        try modelContext.save()
+
+        let remoteCreate = await IOSMockAPI.shared.request(
+            path: "/inbox",
+            method: "POST",
+            body: ["content": "remote live row"]
+        )
+        XCTAssertEqual(remoteCreate.statusCode, 201)
+
+        await appState.refreshInbox(modelContext: modelContext)
+
+        let items = try modelContext.fetch(FetchDescriptor<InboxItem>())
+
+        XCTAssertFalse(items.contains(where: { $0.serverId == "stale-server-id" }))
+        XCTAssertTrue(
+            items.contains(where: {
+                $0.content == "remote live row"
+                    && $0.serverId != nil
+                    && $0.syncStatus == InboxItemSyncStatus.synced.rawValue
+            })
+        )
+        XCTAssertTrue(
+            items.contains(where: {
+                $0.content == "local unsynced row"
+                    && $0.syncStatus == InboxItemSyncStatus.failedCreate.rawValue
+                    && $0.serverId == nil
+            })
+        )
     }
 
     func testInMemoryCookieJarStoresSecureCookieFromResponse() async throws {
