@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-02-16
+Last updated: 2026-02-20
 
 ## Purpose
 This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
@@ -34,7 +34,7 @@ Coverage Status Legend:
 | iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in normalizes surrounding email whitespace; auth screens show success/error feedback across sign-in/sign-up/recover/reset | Unit + UI flow coverage for invalid + valid sign-in, whitespace-trimmed sign-in email, recover/reset validations, and gated app unlock |
 | iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
 | iOS Shell | Protected mobile tabs | `apps/ios` capture/inbox/settings tabs | Authenticated users land on Capture by default, can navigate Inbox and Settings, and unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
-| iOS Inbox | API-backed capture + inbox resilience | `apps/ios` capture/inbox views + `/inbox` | Saving from Capture creates inbox items via API; API failures preserve unsynced local items with retry; Inbox refresh mirrors API results into local cache | Unit + UI coverage for create/list happy path, failed create local fallback, retry sync success, and unauthorized handling |
+| iOS Inbox | API-backed capture + inbox resilience | `apps/ios` capture/inbox views + `/inbox` | Saving from Capture creates inbox items via API; API failures preserve unsynced local items with retry; Inbox refresh mirrors API results into local cache | Unit + UI coverage for create/list happy path, failed create local fallback, retry sync success, stale synced cache pruning during refresh, and unauthorized handling |
 | Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
 | Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/library render | Module rendering for empty/non-empty states |
 | Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
@@ -98,7 +98,7 @@ Coverage Status Legend:
 | AI Platform | Structured JSON schema compatibility fallback | `packages/ai/src/core/json.ts` (`callJson`) | JSON schema generation prefers `z.toJSONSchema` when available and falls back to `zod-to-json-schema` for compatibility | `Automated`: package unit coverage on schema generation path with fallback safety |
 | iOS Platform | Auth/API client contract handling | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`APIClient`, `AuthService`, `AppState`) | iOS maps auth to canonical `/auth/*` and app-data calls to canonical no-prefix routes (`/home/*`, `/notes*`, `/inbox*`), trims surrounding whitespace from auth email inputs before request submission, keeps an in-memory fallback cookie jar from auth `Set-Cookie` headers for subsequent API requests, treats empty/null session payloads as signed-out, enforces login gate, and transitions to auth on `401` responses |
 | iOS Platform | Inbox API cache + sync contract | `apps/ios/Life-OS/Life-OS/{Views,State,Networking}` | iOS uses `/inbox` as source of truth, mirrors results into SwiftData cache, preserves unsynced local captures when create fails, supports retry sync, and clears stale synced cache entries during refresh |
-| iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`IOSMockAPI`) | Deterministic auth/home/library/account responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests |
+| iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/Mocks/IOSMockAPI.swift` | Deterministic auth/home/library/account/inbox responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests, including one-shot failure/unauthorized scenarios |
 | iOS Platform | Sentry SDK startup instrumentation | `apps/ios/Life-OS/Life-OS/Life_OSApp.swift` | App bootstrap initializes Sentry SDK and startup capture hooks without blocking auth-gated navigation or shell rendering | `Manual`: startup smoke with Sentry enabled; `Planned`: add startup instrumentation assertions to iOS UI test harness |
 
 ## Core Regression Checklist
