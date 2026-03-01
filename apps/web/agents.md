@@ -14,6 +14,24 @@
 - Prefer CSS transitions; introduce heavier animation tooling only when required.
 - Maintain accessibility basics: labels, keyboard support, and semantic controls.
 
+## Product Copy Rules
+
+- All UI labels, placeholders, empty states, toasts, errors, and page descriptions are governed by app text language first.
+- Brand persona may shape assistant-facing experiences, but it must not distort baseline UI wording or make workflow copy less clear.
+- Keep visual styling decisions separate from wording decisions; `docs/brand-design-guidelines.md` is not a copy spec.
+- When changing naming, labels, or prompts, use `docs/brand-guidelines.md` as the canonical source for app text language, brand persona, and terminology.
+- When editing `brand` constants or navigation and placeholder text, review terminology consistency before changing wording.
+- Avoid clever, abstract, or overly branded labels that read worse in workflow UI.
+- Likely copy hotspots in this workspace:
+  - `src/lib/brand.ts`
+  - `src/lib/chat-utils.ts`
+  - navigation components
+  - toast and error helpers
+- For user-facing text changes in `apps/web`, follow this order:
+  1. Apply app text language rules.
+  2. Layer in brand persona only where assistant tone matters.
+  3. Treat any term rename as a terminology review.
+
 ## Data, Auth, and Boundaries
 
 - Treat `apps/api` as the only data boundary for `apps/web`.

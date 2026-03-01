@@ -8,6 +8,34 @@
 - Backend API contracts in `apps/api` are canonical no-prefix routes only (`/auth/*`, `/status`, `/inbox*`, etc.); do not add `/api/*` aliases in `apps/api`.
 - `apps/web/src/app/api/*` is an allowed Next-internal namespace for web proxy/stream handlers and is exempt from the `apps/api` no-`/api/*` rule.
 
+## Brand, Copy, and Language Rules
+
+- Any task involving UI copy, system messages, prompts, naming, onboarding text, product descriptions, or assistant wording must separate:
+  - **App text language**: the wording system for all user-facing text.
+  - **Brand persona**: the assistant's character, behavior, and tonal overlay.
+- Do not collapse app text language and brand persona into a single "voice" decision. They are separate controls and must stay separate.
+- Use `docs/brand-guidelines.md` as the canonical source for app text language, brand persona, and terminology.
+- Use `docs/brand-design-guidelines.md` as the canonical source for visual design only.
+- For wording decisions, apply app text language rules first. Apply brand persona only where assistant behavior or tone matters.
+- Do not use the design guidelines as copy guidance except when visual presentation context matters.
+- Treat product terminology as a governed system:
+  - do not casually rename user-facing terms
+  - when touching naming, check the canonical terminology guidance first
+  - if a term feels unnatural in-product, treat it as a terminology decision, not a tone tweak
+  - keep terminology consistent across web, API, iOS, prompts, and docs
+- Copy changes must account for every affected user-facing surface:
+  - web UI
+  - API-generated assistant responses
+  - iOS UI
+  - shared AI prompt construction
+  - docs where user-facing phrasing is canonicalized
+- Follow this decision order for all user-facing text work:
+  1. Determine whether the change affects user-facing text.
+  2. If yes, apply app text language rules first.
+  3. Then apply brand persona only where assistant behavior or tone matters.
+  4. Keep visual design decisions separate.
+  5. If wording changes affect canonical terms, treat that as a terminology review.
+
 ## Orchestration Commands
 
 - Run orchestration scripts from the repo root `package.json`.
