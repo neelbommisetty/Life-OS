@@ -23,7 +23,7 @@ struct CaptureView: View {
 
             statusOverlay
         }
-        .navigationTitle("Capture")
+        .navigationTitle(Brand.Capture.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
@@ -113,7 +113,7 @@ struct CaptureView: View {
                 .accessibilityLabel("Capture text")
 
             if noteText.isEmpty {
-                Text("Write a note or tap to speak")
+                Text(Brand.Capture.placeholder)
                     .font(.title3)
                     .foregroundStyle(.secondary)
                     .padding(12)
@@ -127,9 +127,9 @@ struct CaptureView: View {
         Button {
             save()
         } label: {
-            Text("Save")
+            Text(Brand.Capture.saveButton)
         }
-        .accessibilityLabel("Save to Inbox")
+        .accessibilityLabel(Brand.Capture.saveToInbox)
         .accessibilityIdentifier("capture.saveButton")
         .disabled(!canSave || isSavingInbox)
     }
@@ -139,9 +139,9 @@ struct CaptureView: View {
             Spacer()
 
             if saveConfirmationTick {
-                statusBadge("Saved to Inbox")
+                statusBadge(Brand.Capture.savedConfirmation)
                     .transition(.opacity)
-                    .accessibilityLabel("Saved to Inbox")
+                    .accessibilityLabel(Brand.Capture.savedConfirmation)
                     .accessibilityIdentifier("capture.saved")
             }
 

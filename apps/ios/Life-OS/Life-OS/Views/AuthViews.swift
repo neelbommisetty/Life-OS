@@ -89,7 +89,7 @@ struct AuthGatewayView: View {
             Text(Brand.productName)
                 .font(.system(.largeTitle, design: .rounded).weight(.bold))
 
-            Text(Brand.oneSentenceDescription)
+            Text(Brand.Descriptions.app)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

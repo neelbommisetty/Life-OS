@@ -52,7 +52,11 @@ final class SpeechRecognizer: NSObject, ObservableObject {
 
     private func beginRecognition() {
         guard let recognizer, recognizer.isAvailable else {
-            errorMessage = Brand.couldnt("start voice input")
+            errorMessage = Brand.couldnt(
+                "start voice input",
+                safeState: "Your current text is still here",
+                nextStep: "Please try again in a moment"
+            )
             return
         }
 
@@ -84,7 +88,10 @@ final class SpeechRecognizer: NSObject, ObservableObject {
                     }
 
                     if error != nil, self.isRecording {
-                        self.errorMessage = Brand.couldnt("transcribe audio")
+                        self.errorMessage = Brand.couldnt(
+                            "transcribe audio",
+                            safeState: "Your current text is still here"
+                        )
                         self.stopRecording()
                     }
                 }
@@ -92,7 +99,11 @@ final class SpeechRecognizer: NSObject, ObservableObject {
 
             isRecording = true
         } catch {
-            errorMessage = Brand.couldnt("start voice input")
+            errorMessage = Brand.couldnt(
+                "start voice input",
+                safeState: "Your current text is still here",
+                nextStep: "Check your microphone settings and try again"
+            )
             stopRecording()
         }
     }

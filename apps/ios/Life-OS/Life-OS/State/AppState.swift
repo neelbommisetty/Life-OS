@@ -87,7 +87,7 @@ final class AppState: ObservableObject {
         resetToken = token
         authFlow = .resetPassword
         authError = nil
-        authSuccess = "Reset link opened. Set a new password to continue."
+        authSuccess = Brand.Messages.resetLinkOpened
     }
 
     func signIn(email: String, password: String) async {
@@ -95,11 +95,11 @@ final class AppState: ObservableObject {
 
         guard !isSubmittingAuth else { return }
         guard !normalizedEmail.isEmpty else {
-            authError = "Email required."
+            authError = Brand.Messages.emailRequired
             return
         }
         guard !password.isEmpty else {
-            authError = "Password required."
+            authError = Brand.Messages.passwordRequired
             return
         }
 
@@ -126,15 +126,15 @@ final class AppState: ObservableObject {
 
         guard !isSubmittingAuth else { return }
         guard !trimmedName.isEmpty else {
-            authError = "Name required."
+            authError = Brand.Messages.nameRequired
             return
         }
         guard !normalizedEmail.isEmpty else {
-            authError = "Email required."
+            authError = Brand.Messages.emailRequired
             return
         }
         guard !password.isEmpty else {
-            authError = "Password required."
+            authError = Brand.Messages.passwordRequired
             return
         }
 
@@ -161,7 +161,7 @@ final class AppState: ObservableObject {
 
         guard !isSubmittingAuth else { return }
         guard !normalizedEmail.isEmpty else {
-            authError = "Email required."
+            authError = Brand.Messages.emailRequired
             return
         }
 
@@ -171,7 +171,7 @@ final class AppState: ObservableObject {
 
         do {
             try await authService.requestPasswordReset(email: normalizedEmail)
-            authSuccess = "If that email exists, a password reset link has been sent."
+            authSuccess = Brand.Messages.resetLinkSent
         } catch {
             authError = error.userFacingMessage
         }
@@ -182,17 +182,17 @@ final class AppState: ObservableObject {
 
         let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedToken.isEmpty else {
-            authError = "Missing reset token. Open the reset link again."
+            authError = Brand.Messages.missingResetToken
             return
         }
 
         guard newPassword == confirmPassword else {
-            authError = "Passwords don't match."
+            authError = Brand.Messages.passwordsDontMatch
             return
         }
 
         guard !newPassword.isEmpty else {
-            authError = "New password required."
+            authError = Brand.Messages.newPasswordRequired
             return
         }
 
@@ -203,7 +203,7 @@ final class AppState: ObservableObject {
         do {
             try await authService.resetPassword(token: trimmedToken, newPassword: newPassword)
             authFlow = .signIn
-            authSuccess = "Password updated. Sign in."
+            authSuccess = Brand.Messages.passwordUpdatedSignIn
         } catch {
             authError = error.userFacingMessage
         }
@@ -244,7 +244,7 @@ final class AppState: ObservableObject {
             if error.isUnauthorized {
                 sessionUser = nil
                 authFlow = .signIn
-                authError = "Session expired. Sign in again."
+                authError = Brand.Messages.sessionExpired
             } else {
                 protectedError = error.userFacingMessage
             }
@@ -366,7 +366,7 @@ final class AppState: ObservableObject {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !trimmedName.isEmpty else {
-            accountError = "Name required."
+            accountError = Brand.Messages.nameRequired
             return
         }
 
@@ -384,12 +384,12 @@ final class AppState: ObservableObject {
                 }
                 sessionUser = refreshedSession
             }
-            accountSuccess = "Profile updated."
+            accountSuccess = Brand.Messages.profileUpdated
         } catch {
             if error.isUnauthorized {
                 sessionUser = nil
                 authFlow = .signIn
-                authError = "Session expired. Sign in again."
+                authError = Brand.Messages.sessionExpired
             } else {
                 accountError = error.userFacingMessage
             }
@@ -400,17 +400,17 @@ final class AppState: ObservableObject {
         guard !isSubmittingAuth else { return }
 
         guard !currentPassword.isEmpty else {
-            accountError = "Current password required."
+            accountError = Brand.Messages.currentPasswordRequired
             return
         }
 
         guard !newPassword.isEmpty else {
-            accountError = "New password required."
+            accountError = Brand.Messages.newPasswordRequired
             return
         }
 
         guard newPassword == confirmPassword else {
-            accountError = "Passwords don't match."
+            accountError = Brand.Messages.passwordsDontMatch
             return
         }
 
@@ -423,12 +423,12 @@ final class AppState: ObservableObject {
                 currentPassword: currentPassword,
                 newPassword: newPassword
             )
-            accountSuccess = "Password updated."
+            accountSuccess = Brand.Messages.passwordUpdated
         } catch {
             if error.isUnauthorized {
                 sessionUser = nil
                 authFlow = .signIn
-                authError = "Session expired. Sign in again."
+                authError = Brand.Messages.sessionExpired
             } else {
                 accountError = error.userFacingMessage
             }
@@ -438,7 +438,7 @@ final class AppState: ObservableObject {
     private func handleUnauthorizedSession() {
         sessionUser = nil
         authFlow = .signIn
-        authError = "Session expired. Sign in again."
+        authError = Brand.Messages.sessionExpired
     }
 
     private func resetInboxCacheIfNeeded(modelContext: ModelContext) {
