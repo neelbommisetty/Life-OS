@@ -18,6 +18,7 @@ export function TopNav() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
+            aria-label="Search tasks, projects, or notes..."
             placeholder="Search tasks, projects, or notes..."
             className="h-9 w-full rounded-full bg-muted/50 border-none pl-9 transition-all focus-visible:bg-background focus-visible:ring-1 focus-visible:ring-primary/20"
           />
