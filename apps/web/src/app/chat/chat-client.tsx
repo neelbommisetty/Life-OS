@@ -29,7 +29,7 @@ import { toastApiError } from "@/lib/api/error-toast";
 import type { ChatThread, ChatMessage, Project } from "@life-os/db";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { brand, couldnt } from "@/lib/brand";
+import { couldnt } from "@/lib/brand";
 
 type ChatThreadWithProject = ChatThread & { project: Project | null };
 
@@ -354,10 +354,10 @@ export function ChatClient({ projectId }: { projectId?: string }) {
           ),
         );
         if (!result.alreadySaved) {
-          toast.success(`Saved to ${brand.terms.library}.`);
+          toast.success("Saved as note.");
         }
       } catch (error) {
-        toastApiError(error, couldnt(`save to ${brand.terms.library.toLowerCase()}`));
+        toastApiError(error, couldnt("save as a note"));
       } finally {
         setSavingNoteById((prev) => {
           const next = { ...prev };

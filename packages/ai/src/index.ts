@@ -1,5 +1,6 @@
 // Logger exports
 export * from './logger';
+export * from './copy';
 
 // AI services lifecycle
 export * from './services';

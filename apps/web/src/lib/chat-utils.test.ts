@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import {
+  buildSystemPrompt,
   encodeSSE,
   parseSSELine,
   parseSSEChunk,
@@ -152,19 +153,25 @@ describe("Stream Error Handling", () => {
   test("handles StreamError with NETWORK_ERROR code", () => {
     const error = new StreamError("Network failed", "NETWORK_ERROR");
     const message = handleStreamError(error);
-    expect(message).toBe("Couldn't reach the server. Try again.");
+    expect(message).toBe(
+      "Couldn't reach the server. Your conversation is unchanged. Check your connection and try again.",
+    );
   });
 
   test("handles StreamError with PARSE_ERROR code", () => {
     const error = new StreamError("Parse failed", "PARSE_ERROR");
     const message = handleStreamError(error);
-    expect(message).toBe("Couldn't read the response. Try again.");
+    expect(message).toBe(
+      "Couldn't read the response. Your conversation is unchanged. Please try again.",
+    );
   });
 
   test("handles StreamError with STREAM_ERROR code", () => {
     const error = new StreamError("General stream error", "STREAM_ERROR");
     const message = handleStreamError(error);
-    expect(message).toBe("Couldn't stream the response. Try again.");
+    expect(message).toBe(
+      "Couldn't stream the response. Your conversation is unchanged. Please try again.",
+    );
   });
 
   test("handles AbortError", () => {
@@ -181,10 +188,32 @@ describe("Stream Error Handling", () => {
   });
 
   test("handles non-Error values", () => {
-    expect(handleStreamError("string error")).toBe("Couldn't complete that request. Try again.");
-    expect(handleStreamError(null)).toBe("Couldn't complete that request. Try again.");
-    expect(handleStreamError(undefined)).toBe("Couldn't complete that request. Try again.");
-    expect(handleStreamError(123)).toBe("Couldn't complete that request. Try again.");
+    expect(handleStreamError("string error")).toBe(
+      "Couldn't complete that request. Your conversation is unchanged. Please try again.",
+    );
+    expect(handleStreamError(null)).toBe(
+      "Couldn't complete that request. Your conversation is unchanged. Please try again.",
+    );
+    expect(handleStreamError(undefined)).toBe(
+      "Couldn't complete that request. Your conversation is unchanged. Please try again.",
+    );
+    expect(handleStreamError(123)).toBe(
+      "Couldn't complete that request. Your conversation is unchanged. Please try again.",
+    );
+  });
+});
+
+describe("buildSystemPrompt", () => {
+  test("uses the shared product framing and language-first guidance", () => {
+    const prompt = buildSystemPrompt();
+
+    expect(prompt).toContain(
+      "Life-OS organizes tasks, notes, and conversations into a clear plan you can review and act on.",
+    );
+    expect(prompt).toContain("App text language:");
+    expect(prompt).toContain("Brand persona:");
+    expect(prompt).toContain("Use stable terms: Assistant, Inbox, Library, Plan.");
+    expect(prompt).not.toContain("helpful AI assistant");
   });
 });
 

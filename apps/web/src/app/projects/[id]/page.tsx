@@ -15,7 +15,7 @@ export async function generateMetadata({
 
   return {
     title: `Project ${id}`,
-    description: `Review project details, tasks, ${brand.terms.library.toLowerCase()}, and the ${brand.terms.assistant.toLowerCase()}.`,
+    description: `Review project details, tasks, notes, and the ${brand.terms.assistant.toLowerCase()}.`,
   };
 }
 

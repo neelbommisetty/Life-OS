@@ -9,11 +9,10 @@ import {
   UpcomingTasksSkeleton,
   RecentNotesSkeleton
 } from "@/components/home/home-skeletons";
-import { brand } from "@/lib/brand";
 
 export const metadata: Metadata = {
   title: "Home",
-  description: `Review what’s next across projects, tasks, and ${brand.terms.library.toLowerCase()}.`,
+  description: "Review what's next across projects, tasks, and notes.",
 };
 
 export default async function Page() {

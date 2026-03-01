@@ -4,10 +4,18 @@ import { useCallback } from "react";
 import { CheckIcon, CopyIcon, FileTextIcon, RotateCcwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { brand, couldnt } from "@/lib/brand";
+import { couldnt } from "@/lib/brand";
 
 export function getMessageCopyText(content: string): string {
   return content;
+}
+
+export function getSaveAsNoteLabel() {
+  return "Save as note";
+}
+
+export function getSavedAsNoteLabel() {
+  return "Saved as note";
 }
 
 type MessageActionsProps = {
@@ -59,7 +67,7 @@ export function MessageActions({
       {isSavedNote ? (
         <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
           <CheckIcon className="h-3 w-3" />
-          {`Saved to ${brand.terms.library.toLowerCase()}`}
+          {getSavedAsNoteLabel()}
         </span>
       ) : onSaveAsNote ? (
         <Button
@@ -69,10 +77,10 @@ export function MessageActions({
           variant="ghost"
           size="xs"
           className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-medium"
-          title={`Save to ${brand.terms.library.toLowerCase()}`}
+          title={getSaveAsNoteLabel()}
         >
           <FileTextIcon className="h-3 w-3" />
-          {`Save to ${brand.terms.library.toLowerCase()}`}
+          {getSaveAsNoteLabel()}
         </Button>
       ) : null}
       {onRegenerate && (

@@ -29,7 +29,7 @@ export const metadata: Metadata = {
     default: "Life-OS",
     template: "%s | Life-OS",
   },
-  description: brand.oneSentenceDescription,
+  description: brand.descriptions.app,
 };
 
 export default async function RootLayout({
