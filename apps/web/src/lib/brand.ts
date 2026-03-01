@@ -17,7 +17,7 @@ export const brand = {
   >,
 } as const;
 
-function toSentence(value: string | undefined) {
+function toSentence(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) {
     return null;
@@ -32,7 +32,7 @@ export function couldnt(
     safeState?: string;
     nextStep?: string;
   },
-) {
+): string {
   const safeState = toSentence(options?.safeState);
   const nextStep = toSentence(options?.nextStep ?? "Please try again");
   const parts = [`Couldn't ${action}.`];
