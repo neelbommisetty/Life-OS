@@ -5,16 +5,18 @@ import {
   type BrandTermStatus,
 } from "@life-os/ai/copy";
 
+const brandTerms = Object.freeze({ ...defaultBrandTerms });
+const brandTermStatus = Object.freeze({
+  ...defaultBrandTermStatus,
+} satisfies Record<keyof typeof defaultBrandTerms, BrandTermStatus>);
+
 export const brand = {
   productName: "Life-OS",
   descriptions: {
     app: appDescription,
   },
-  terms: defaultBrandTerms,
-  termStatus: defaultBrandTermStatus satisfies Record<
-    keyof typeof defaultBrandTerms,
-    BrandTermStatus
-  >,
+  terms: brandTerms,
+  termStatus: brandTermStatus,
 } as const;
 
 function toSentence(value: string | undefined): string | null {
@@ -34,7 +36,7 @@ export function couldnt(
   },
 ): string {
   const safeState = toSentence(options?.safeState);
-  const nextStep = toSentence(options?.nextStep ?? "Please try again");
+  const nextStep = toSentence(options?.nextStep) ?? "Please try again.";
   const parts = [`Couldn't ${action}.`];
 
   if (safeState) {
