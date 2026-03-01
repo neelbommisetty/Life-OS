@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en-US
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  collapse_walkthrough: false
+  review_status: true
+  commit_status: true
+  fail_commit_status: true
+  request_changes_workflow: false
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+    base_branches:
+      - develop
+  path_filters:
+    - "!**/bun.lock"
+    - "!**/.next/**"
+    - "!**/dist/**"
+    - "!**/build/**"
+    - "!**/coverage/**"
+    - "!**/*.xcodeproj/**"
+    - "!**/*.xcworkspace/**"
+    - "!**/DerivedData/**"
+  path_instructions:
+    - path: "apps/web/**"
+      instructions: >
+        Review against Next.js App Router and React 19 patterns. Prefer server
+        components and server actions where possible, flag unnecessary client
+        boundaries, and call out feature changes that should update
+        docs/test-plan.md in the same PR.
+    - path: "apps/api/**"
+      instructions: >
+        Treat this as Bun + Hono ESM code. Flag missing .js extensions on
+        relative runtime imports, and call out any new or changed endpoints that
+        do not include matching unit-test updates and docs/test-plan.md changes.
+    - path: "apps/ios/**"
+      instructions: >
+        Treat this as native iOS code with Swift and Xcode conventions, not the
+        TypeScript stack. Focus on SwiftUI/UIKit correctness, accessibility,
+        state-management regressions, and preserving existing project file and
+        build-setting integrity.
+    - path: "packages/db/**"
+      instructions: >
+        Treat Prisma schema and migrations as the source of truth. Flag unsafe
+        schema changes, missing migration follow-through, and accidental runtime
+        duplication of the shared Prisma client.
+    - path: "packages/ai/**"
+      instructions: >
+        Focus on provider correctness, type safety, and avoiding regressions in
+        shared runtime code that is consumed by multiple apps.
+  tools:
+    github-checks:
+      enabled: true
+      timeout_ms: 90000
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
