@@ -38,7 +38,9 @@ struct CaptureTabView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        CaptureView(appState: appState)
+        NavigationStack {
+            CaptureView(appState: appState)
+        }
     }
 }
 

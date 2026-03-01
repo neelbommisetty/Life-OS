@@ -165,6 +165,7 @@ final class Life_OSUITests: XCTestCase {
         signIn(app: app, email: "demo@lifeos.dev", password: "demo12345")
 
         XCTAssertTrue(app.tabBars.buttons["Capture"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.navigationBars["Capture"].waitForExistence(timeout: 6))
         XCTAssertTrue(app.textViews["capture.editor"].waitForExistence(timeout: 6))
 
         openInboxTab(in: app)
