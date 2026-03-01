@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@life-os/db";
+import { buildCoreBrandPrompt, defaultBrandTerms } from "@life-os/ai/copy";
 
 export type StreamEventType = "chunk" | "done" | "error" | "message_saved";
 
@@ -18,17 +19,7 @@ export function buildSystemPrompt(projectContext?: {
   description?: string | null;
   aiInstructions?: string | null;
 }): string {
-  let prompt = `You are a helpful AI assistant in Life-OS, a personal productivity platform.
-
-Your role is to help users with:
-- Brainstorming ideas and exploring concepts
-- Answering questions and providing information
-- Learning and understanding new topics
-- Creative writing and problem-solving
-- General assistance with work and personal tasks
-
-Be concise, helpful, and creative. Adapt your communication style to match the user's needs.
-Format your responses using markdown when appropriate for better readability.`;
+  let prompt = buildCoreBrandPrompt(defaultBrandTerms);
 
   if (projectContext) {
     prompt += `\n\n## Project Context: ${projectContext.name}`;

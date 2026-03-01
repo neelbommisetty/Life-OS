@@ -51,7 +51,7 @@ Coverage Status Legend:
 | Chat | Message history and thread switching | `/chat` | Messages paginate with cursor; switching threads returns view to latest message even after scrolling up | Cursor pagination + thread-switch scroll restoration |
 | Chat | Streaming conversation UX | `/chat` via `/api/chat/stream` | Optimistic user message, streaming assistant output, stop-stream behavior, stream error badge | Stream lifecycle, cancellation, error handling |
 | Chat | Model selection UX | `/chat` | Model list is visible; selection persists; invalid change shows error | Load list + successful change + invalid change path |
-| Chat | Assistant message actions | `/chat` | Users can copy output, regenerate latest assistant response, save assistant message as note | Action availability + state transitions |
+| Chat | Assistant message actions | `/chat` | Users can copy output, regenerate latest assistant response, and save assistant output as a note with note-specific labels and confirmations | Action availability + state transitions |
 | Analytics | Usage dashboard rendering | `/analytics` | Summary cards, breakdown sections, recent activity render for empty/non-empty states | Dashboard shape and render coverage |
 | Pricing | Model pricing catalog | `/pricing` | Pricing catalog loads grouped models with key pricing fields | Catalog render and key labels/values |
 | SEO | Route metadata titles and descriptions | `/`, `/chat`, `/notes`, `/tasks`, `/tasks/archive`, `/inbox`, `/inbox/archive`, `/projects`, `/projects/[id]`, `/analytics`, `/pricing`, `/auth/*`, `/account/*` | Each route exposes page-specific metadata for title/description (including dynamic auth/account/project paths) | Static metadata assertions + dynamic metadata resolution for known and fallback paths |
@@ -134,6 +134,7 @@ Run this set before release and after large refactors:
   - `apps/api/src/modules/inbox/service.test.ts`
   - `apps/api/src/modules/notes/route.test.ts`
   - `apps/api/src/modules/chat/route.test.ts`
+  - `apps/api/src/modules/chat/stream-utils.test.ts`
   - `apps/api/src/modules/chat/thread-context-service.test.ts`
   - `apps/api/src/modules/analytics/route.test.ts`
   - `apps/api/src/modules/settings/inbox-agents-route.test.ts`
@@ -144,6 +145,7 @@ Run this set before release and after large refactors:
   - `apps/web/src/lib/chat/validations.test.ts`
   - `apps/web/src/lib/inbox/validations.test.ts`
   - `apps/web/src/lib/chat-utils.test.ts`
+  - `apps/web/src/lib/brand.test.ts`
   - `apps/web/src/lib/notes/note-save.test.ts`
   - `apps/web/src/lib/notes/note-utils.test.ts`
   - `apps/web/src/lib/notes/validations.test.ts`

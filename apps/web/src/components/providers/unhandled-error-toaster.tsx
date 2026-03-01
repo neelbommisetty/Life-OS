@@ -7,7 +7,12 @@ import { couldnt } from "@/lib/brand";
 export function UnhandledErrorToaster() {
   useEffect(() => {
     const onUnhandledRejection = (event: PromiseRejectionEvent) => {
-      toastApiError(event.reason, couldnt("complete that request"));
+      toastApiError(
+        event.reason,
+        couldnt("complete that request", {
+          safeState: "Your data is unchanged",
+        }),
+      );
     };
 
     window.addEventListener("unhandledrejection", onUnhandledRejection);

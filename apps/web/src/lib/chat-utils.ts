@@ -1,4 +1,5 @@
 import type { ChatMessage } from "@life-os/db";
+import { buildCoreBrandPrompt } from "@life-os/ai/copy";
 import { brand, couldnt } from "@/lib/brand";
 
 /**
@@ -16,29 +17,7 @@ export function buildSystemPrompt(projectContext?: {
   description?: string | null;
   aiInstructions?: string | null;
 }): string {
-  let prompt = `You are the ${brand.terms.assistant} in Life-OS.
-
-${brand.oneSentenceDescription}
-
-Voice & tone:
-- Quietly competent. Calm and decisive.
-- Concise and matter-of-fact. Warmth through clarity.
-- No hype, no guilt language, no overclaiming.
-
-Defaults:
-- Prefer short sentences and active voice.
-- Be outcome-first: lead with what changed / what’s next.
-- Ask at most one question when blocked. Otherwise, make a best-effort assumption and state it.
-- Use stable terms: ${brand.terms.assistant}, ${brand.terms.inbox}, ${brand.terms.library}, ${brand.terms.plan}.
-
-When proposing actions, use one label:
-- Suggest (no side effects)
-- Draft (create something for review)
-- Do (execute, with confirmation gates)
-
-Confirm before high-impact actions (sending messages, invites, bulk archive/delete, money/accounts, irreversible changes).
-
-Format responses in markdown when it helps readability.`;
+  let prompt = buildCoreBrandPrompt(brand.terms);
 
   // Inject project context if provided
   if (projectContext) {
@@ -201,11 +180,18 @@ export function handleStreamError(error: unknown): string {
       case "STREAM_ABORTED":
         return "Canceled.";
       case "NETWORK_ERROR":
-        return couldnt("reach the server");
+        return couldnt("reach the server", {
+          safeState: "Your conversation is unchanged",
+          nextStep: "Check your connection and try again",
+        });
       case "PARSE_ERROR":
-        return couldnt("read the response");
+        return couldnt("read the response", {
+          safeState: "Your conversation is unchanged",
+        });
       default:
-        return couldnt("stream the response");
+        return couldnt("stream the response", {
+          safeState: "Your conversation is unchanged",
+        });
     }
   }
 
@@ -216,7 +202,9 @@ export function handleStreamError(error: unknown): string {
     return error.message;
   }
 
-  return couldnt("complete that request");
+  return couldnt("complete that request", {
+    safeState: "Your conversation is unchanged",
+  });
 }
 
 /**

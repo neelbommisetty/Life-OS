@@ -7,7 +7,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModelSelector, type ModelOption } from "./model-selector";
-import { brand } from "@/lib/brand";
 
 type Props = {
   input: string;
@@ -119,7 +118,7 @@ export function ChatInput({
             adjustHeight(e.target);
           }}
           onKeyDown={onKeyDown}
-          placeholder={`Message the ${brand.terms.assistant.toLowerCase()}...`}
+          placeholder="Ask a question or describe what you need..."
           aria-label="Message input"
           disabled={isPending || !effectiveThreadId}
           rows={1}

@@ -1,16 +1,49 @@
+import {
+  appDescription,
+  defaultBrandTerms,
+  defaultBrandTermStatus,
+  type BrandTermStatus,
+} from "@life-os/ai/copy";
+
 export const brand = {
   productName: "Life-OS",
-  oneSentenceDescription:
-    "Life-OS is a minimalist AI personal assistant that organizes your tasks and knowledge into a clear plan—and helps execute it.",
-  terms: {
-    assistant: "Assistant",
-    inbox: "Inbox",
-    library: "Library",
-    plan: "Plan",
+  descriptions: {
+    app: appDescription,
   },
+  terms: defaultBrandTerms,
+  termStatus: defaultBrandTermStatus satisfies Record<
+    keyof typeof defaultBrandTerms,
+    BrandTermStatus
+  >,
 } as const;
 
-export function couldnt(action: string) {
-  return `Couldn't ${action}. Try again.`;
+function toSentence(value: string | undefined) {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }
 
+export function couldnt(
+  action: string,
+  options?: {
+    safeState?: string;
+    nextStep?: string;
+  },
+) {
+  const safeState = toSentence(options?.safeState);
+  const nextStep = toSentence(options?.nextStep ?? "Please try again");
+  const parts = [`Couldn't ${action}.`];
+
+  if (safeState) {
+    parts.push(safeState);
+  }
+
+  if (nextStep) {
+    parts.push(nextStep);
+  }
+
+  return parts.join(" ");
+}

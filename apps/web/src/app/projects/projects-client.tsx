@@ -22,7 +22,7 @@ import { createProject, type CreateProjectInput } from "@/lib/projects";
 import { ProjectCard } from "@/components/projects/project-card";
 import { toastApiError } from "@/lib/api/error-toast";
 import type { Project } from "@life-os/db";
-import { brand, couldnt } from "@/lib/brand";
+import { couldnt } from "@/lib/brand";
 
 interface ProjectsClientProps {
   initialProjects: Project[];
@@ -62,7 +62,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
         <div>
           <h1 className="text-3xl font-bold">Projects</h1>
           <p className="text-muted-foreground mt-1">
-            Group threads, tasks, and {brand.terms.library.toLowerCase()}.
+            Group threads, tasks, and notes.
           </p>
         </div>
         <AlertDialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
