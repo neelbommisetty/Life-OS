@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-02-20
+Last updated: 2026-03-01
 
 ## Purpose
 This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
@@ -33,8 +33,8 @@ Coverage Status Legend:
 | Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
 | iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in normalizes surrounding email whitespace; auth screens show success/error feedback across sign-in/sign-up/recover/reset | Unit + UI flow coverage for invalid + valid sign-in, whitespace-trimmed sign-in email, recover/reset validations, and gated app unlock |
 | iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
-| iOS Shell | Protected mobile tabs | `apps/ios` capture/inbox/settings tabs | Authenticated users land on Capture by default, can navigate Inbox and Settings, and unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling |
-| iOS Inbox | API-backed capture + inbox resilience | `apps/ios` capture/inbox views + `/inbox` | Saving from Capture creates inbox items via API; API failures preserve unsynced local items with retry; Inbox refresh mirrors API results into local cache | Unit + UI coverage for create/list happy path, failed create local fallback, retry sync success, stale synced cache pruning during refresh, and unauthorized handling |
+| iOS Shell | Protected mobile tabs | `apps/ios` capture/inbox/settings tabs | Authenticated users land on Capture by default, Capture shows native navigation chrome, users can navigate Inbox and Settings, and unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling, including Capture title visibility |
+| iOS Inbox | API-backed capture + inbox resilience | `apps/ios` capture/inbox views + `/inbox` | Saving from Capture via the top-bar Save action creates inbox items via API; API failures preserve unsynced local items with retry; Inbox refresh mirrors API results into local cache | Unit + UI coverage for create/list happy path, failed create local fallback, retry sync success, stale synced cache pruning during refresh, and unauthorized handling |
 | Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
 | Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/library render | Module rendering for empty/non-empty states |
 | Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
