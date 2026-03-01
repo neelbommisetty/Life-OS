@@ -9,6 +9,18 @@
 - Do not import app-local code from `apps/*`.
 - Reuse shared dependencies from workspaces (`@life-os/db`, `@life-os/logger`) where needed.
 
+## Shared Prompt Contract
+
+- Shared prompt utilities must model app text language and brand persona as separate concerns.
+- Do not bake persona assumptions into reusable interfaces unless that coupling is intentional and clearly documented.
+- Shared AI behavior should allow clean composition of:
+  - stable terminology
+  - app text language rules
+  - persona overlays
+- Use `docs/brand-guidelines.md` as the canonical source for language, persona, and terminology rules.
+- Do not treat `docs/brand-design-guidelines.md` as prompt or copy guidance; it is for visual design only.
+- For shared prompt changes, apply app text language rules first and layer persona only where assistant behavior or tone matters.
+
 ## Build and Exports Rules
 
 - This package is runtime-consumed; keep JS artifacts in `dist` up to date.

@@ -18,6 +18,18 @@ These instructions apply to all files under `apps/ios/*`.
 - Keep spacing and interaction patterns consistent across auth, home, notes, and account screens.
 - Preserve existing accessibility identifiers on auth/account controls so XCUITests remain stable.
 
+## iOS Copy Rules
+
+- Screen labels, tab names, empty states, alerts, and errors use app text language first.
+- Brand persona should only influence assistant-driven copy, not primary iOS navigation, system affordances, or baseline task flow wording.
+- Preserve native iOS clarity and directness while following the shared terminology system in `docs/brand-guidelines.md`.
+- Do not use `docs/brand-design-guidelines.md` as a copy specification; it remains visual-only guidance.
+- Any custom copy added in SwiftUI must align with the same canonical terms used across web, API, prompts, and docs.
+- For user-facing text changes in `apps/ios`, follow this order:
+  1. Apply app text language rules.
+  2. Layer in brand persona only where assistant tone matters.
+  3. Treat any term rename as a terminology review.
+
 ## Current architecture
 
 - Keep root composition in `apps/ios/Life-OS/Life-OS/ContentView.swift`.

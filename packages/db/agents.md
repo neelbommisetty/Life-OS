@@ -17,6 +17,9 @@
 - Maintain stable exports for consuming server runtimes (`apps/api`, server packages).
 - `apps/web` should not consume this package directly; web data access must go through `apps/api`.
 - Do not add app-specific business logic here; keep this package infrastructure-focused.
+- This package should not own user-facing copy decisions.
+- If schema or metadata changes introduce user-visible labels or seeded text, defer to the root brand and copy rules in `docs/brand-guidelines.md`.
+- Keep copy policy out of infrastructure code unless there is no practical alternative.
 
 ## Commands (workspace-local)
 
