@@ -80,6 +80,7 @@ struct CaptureView: View {
             .buttonStyle(.borderedProminent)
             .tint(speechRecognizer.isRecording ? .red : Color.accentColor)
             .accessibilityLabel(speechRecognizer.isRecording ? "Stop recording" : "Start recording")
+            .accessibilityIdentifier("capture.recordButton")
         }
         .padding(.horizontal, 16)
         .padding(.top, 26)
@@ -115,8 +116,7 @@ struct CaptureView: View {
                 Text("Write a note or tap to speak")
                     .font(.title3)
                     .foregroundStyle(.secondary)
-                    .padding(.top, 20)
-                    .padding(.leading, 18)
+                    .padding(12)
                     .allowsHitTesting(false)
             }
         }
