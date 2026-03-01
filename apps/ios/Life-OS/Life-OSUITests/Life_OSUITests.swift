@@ -167,6 +167,7 @@ final class Life_OSUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Capture"].waitForExistence(timeout: 6))
         XCTAssertTrue(app.navigationBars["Capture"].waitForExistence(timeout: 6))
         XCTAssertTrue(app.textViews["capture.editor"].waitForExistence(timeout: 6))
+        XCTAssertTrue(app.staticTexts["Capture a thought or start speaking"].waitForExistence(timeout: 6))
 
         openInboxTab(in: app)
         XCTAssertTrue(app.navigationBars["Inbox"].waitForExistence(timeout: 6))

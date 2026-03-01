@@ -11,9 +11,9 @@ struct InboxView: View {
         Group {
             if items.isEmpty {
                 ContentUnavailableView(
-                    "No inbox items yet",
+                    Brand.Inbox.emptyTitle,
                     systemImage: "tray",
-                    description: Text("Save a capture to see it here.")
+                    description: Text(Brand.Inbox.emptyDescription)
                 )
             } else {
                 List {
@@ -31,13 +31,13 @@ struct InboxView: View {
                 }
             }
         }
-        .navigationTitle("Inbox")
+        .navigationTitle(Brand.Terms.inbox)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if appState.isRefreshingInbox || appState.isRetryingPendingInboxCreates {
                     ProgressView()
                 } else if hasPendingCreates {
-                    Button("Retry all") {
+                    Button(Brand.Inbox.retryAll) {
                         Task {
                             await appState.retryPendingInboxCreates(modelContext: modelContext)
                         }
@@ -78,7 +78,7 @@ private struct InboxRow: View {
                     .foregroundStyle(.secondary)
 
                 if item.syncStatus != InboxItemSyncStatus.synced.rawValue {
-                    Text("Not synced")
+                    Text(Brand.Inbox.notSynced)
                         .font(.caption2.weight(.semibold))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
@@ -117,7 +117,7 @@ private struct InboxItemDetailView: View {
             }
             .padding()
         }
-        .navigationTitle("Item")
+        .navigationTitle(Brand.Inbox.detailTitle)
         .navigationBarTitleDisplayMode(.inline)
     }
 }

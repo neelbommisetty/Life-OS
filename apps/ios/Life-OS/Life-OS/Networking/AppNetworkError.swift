@@ -10,15 +10,23 @@ enum AppNetworkError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Couldn't connect. Check LIFE_OS_API_BASE_URL."
+            return "Couldn't connect. Check the app connection settings."
         case .invalidResponse:
-            return Brand.couldnt("read the server response")
+            return Brand.couldnt(
+                "read the server response",
+                safeState: "Your data is unchanged",
+                nextStep: "Please try again in a moment"
+            )
         case .unauthorized(let message):
             return message
         case .server(_, let message):
             return message
         case .invalidBody:
-            return Brand.couldnt("send that request")
+            return Brand.couldnt(
+                "send that request",
+                safeState: "Your data is unchanged",
+                nextStep: "Please try again"
+            )
         }
     }
 
