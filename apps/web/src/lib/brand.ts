@@ -43,9 +43,7 @@ export function couldnt(
     parts.push(safeState);
   }
 
-  if (nextStep) {
-    parts.push(nextStep);
-  }
+  parts.push(nextStep);
 
   return parts.join(" ");
 }
