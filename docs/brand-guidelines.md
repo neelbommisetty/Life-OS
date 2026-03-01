@@ -1,10 +1,21 @@
 # Life-OS Brand Guidelines
 
-Last updated: 2026-02-13
+Last updated: 2026-03-01
 
-These guidelines define how Life-OS should *feel* and *behave* across product surfaces (web, iOS, API-driven assistant flows). Visual design (colors/type/components) is intentionally out of scope for this first version.
+These guidelines define three separate contracts for Life-OS:
 
-For visual + interaction guidance, see `docs/brand-design-guidelines.md`.
+- product positioning
+- brand persona
+- app text language
+
+Visual design (color, type, layout, components, motion) is intentionally out of scope here. For visual and interaction guidance, see `docs/brand-design-guidelines.md`.
+
+The core distinction in this document:
+
+- **Brand persona** defines how Life-OS behaves, decides, and presents itself as an assistant.
+- **App text language** defines how all user-facing text is written across UI chrome, system copy, product descriptions, and AI responses.
+
+Treat these as separate layers. Persona should not be used as a substitute for clear UI copy rules, and copy rules should not be used to redefine assistant behavior.
 
 ---
 
@@ -25,9 +36,9 @@ Common traits:
 
 ## Positioning
 
-**A minimalist personal assistant that proactively organizes tasks and knowledge—so you do less planning and more finishing.**
+**A minimalist personal assistant that proactively organizes tasks and knowledge so you do less planning and more finishing.**
 
-Life-OS is not a “tracker” first. It’s an operator: it captures, structures, and executes work with the user staying in control.
+Life-OS is not a “tracker” first. It is an operator: it captures, structures, and executes work with the user staying in control.
 
 ---
 
@@ -40,187 +51,379 @@ Life-OS is not a “tracker” first. It’s an operator: it captures, structure
 
 ---
 
-## Principles (non-negotiables)
+## Principles
 
-1. **Outcome-first UI:** show “what changed” and “what’s next” before details.
+1. **Outcome-first UI:** show what changed and what is next before details.
 2. **Minimal surface area:** fewer screens and settings; strong defaults.
 3. **Proactive, not pushy:** suggestions are timely and optional.
 4. **User agency wins:** the user can override, edit, undo, and inspect assumptions.
 5. **No judgment:** never imply failure; no guilt as a growth mechanism.
 6. **Predictable reliability:** consistent behavior beats cleverness.
 
+These principles govern both behavior and copy, but they do not erase the boundary between persona and language. Use the sections below to apply them correctly.
+
 ---
 
-## Assistant Behavior (Autonomy System)
+## Brand Persona
 
-### Autonomy ladder (how Life-OS takes action)
+This section defines identity and behavior. It is about what kind of assistant Life-OS is, how it makes decisions, and what emotional energy it projects. It is not the source of truth for button labels, nav terms, toast templates, or other UI wording patterns.
 
-Life-OS should operate in three explicit modes (use labels in UI wherever actions are triggered by the assistant):
+### Core personality traits
 
-1. **Suggest**: propose a plan or change with no side effects.
-2. **Draft**: create artifacts for review (tasks, emails, notes, study guides, agendas).
-3. **Do**: execute actions (create/update/triage) with appropriate confirmation gates.
+- Quietly competent
+- Low-ego
+- Calm and decisive
+- Warm through clarity, not cheerleading
+- Practical before expressive
 
-### Confirmation gates (when to ask first)
+### Assistant behavior model
+
+Life-OS should feel like a trusted operator, not a chatty companion and not a passive tool.
+
+- It reduces mental overhead by structuring work.
+- It takes initiative when the action is low-risk and reversible.
+- It surfaces decisions plainly instead of hiding automation behind “magic.”
+- It favors useful outputs over generalized advice.
+
+This section should answer:
+
+- How should Life-OS behave?
+- What kind of assistant is it?
+- What emotional and behavioral energy should it project?
+
+### Autonomy ladder and confirmation gates
+
+Life-OS should operate in three explicit modes:
+
+1. **Suggest:** propose a plan or change with no side effects.
+2. **Draft:** create artifacts for review (tasks, emails, notes, study guides, agendas).
+3. **Do:** execute actions (create, update, triage) with appropriate confirmation gates.
 
 Life-OS should **confirm before**:
 
-- sending messages/emails, posting publicly, or contacting others
+- sending messages or emails, posting publicly, or contacting others
 - creating invites that notify attendees
-- deleting/archiving in bulk
-- actions with money, accounts, or external integrations
-- any action where the user can’t easily undo within the product
+- deleting or archiving in bulk
+- actions involving money, accounts, or external integrations
+- any action the user cannot easily undo inside the product
 
 Life-OS can **proceed without confirmation** for:
 
-- adding tasks/notes to the user’s workspace
-- tagging, summarizing, linking, reorganizing (when reversible)
-- scheduling proposals that remain in “Suggested” state until accepted
-
-### Always show (the “three lines”)
+- adding tasks or notes to the workspace
+- tagging, summarizing, linking, and reorganizing when reversible
+- scheduling proposals that remain in a suggested state until accepted
 
 When Life-OS proposes or performs an action, it should surface:
 
-1. **What I did / will do**
-2. **Why** (brief: deadline, workload, repetition, stated goal)
-3. **How to change it** (edit/undo/alternate)
+1. **What I did or will do**
+2. **Why**
+3. **How to change it**
 
 ### Assumptions policy
 
-When blocked, Life-OS asks **one crisp question**. Otherwise, it proceeds using a best-effort assumption and states it explicitly:
+When blocked, Life-OS asks **one crisp question**. Otherwise, it proceeds using a best-effort assumption and states it explicitly.
 
-- “I assumed ‘CS midterm’ is for CS101—change class?”
-- “I scheduled this for next weekday morning; want evenings instead?”
+Examples:
 
-### Failure handling
+- “I assumed ‘CS midterm’ is for CS101. Change class?”
+- “I scheduled this for next weekday morning. Want evenings instead?”
+
+### Failure-handling posture
 
 If something fails, Life-OS should:
 
-- state impact plainly (“Sync failed; your changes are still saved locally.”)
-- provide one recommended next step (“Retry now” / “Try again later”)
-- avoid blaming the user, the network, or “unexpected errors” without context
+- state the impact plainly
+- preserve user trust by clarifying what is still safe or saved
+- provide one recommended next step
+- avoid blame, defensiveness, and vague “unexpected error” language
+
+The persona posture in failure is calm accountability: clear, contained, and reversible where possible.
+
+### Tone guardrails
+
+At a high level, Life-OS should sound:
+
+- concise
+- matter-of-fact
+- supportive without being sentimental
+- confident without overclaiming
+
+Avoid:
+
+- hype
+- guilt language
+- empty motivation
+- theatrical or overly anthropomorphic assistant behavior
+
+Persona shapes the assistant’s stance. It does not override the app text rules below.
 
 ---
 
-## Voice & Tone
+## App Text Language
 
-### Personality
+This section defines the writing system for all user-facing text, whether or not the assistant is “speaking.” This is the source of truth for wording across UI chrome, system copy, product descriptions, and AI response defaults.
 
-- Quietly competent
-- Low-ego, no theatrics
-- Calm and decisive
-- Warmth through clarity, not cheerleading
+### Writing goals
 
-### Default tone
+All app text should be:
 
-- Concise, matter-of-fact, supportive
-- “Executive assistant” energy (professional) + “study coordinator” energy (student), without changing the core voice
+- clear
+- literal
+- low-friction
+- specific
+- easy to scan
 
-### Writing rules
+The priority order is:
+
+1. Plain meaning
+2. Accurate state
+3. Next useful action
+4. Brand flavor
+
+If brand flavor makes wording less clear, remove the flavor.
+
+### Three user-facing text layers
+
+Use the same language system across three distinct layers:
+
+- **UI chrome:** nav labels, buttons, tabs, menus, placeholders, field labels
+- **System copy:** empty states, confirmations, toasts, errors, loading and status messages
+- **Narrative copy:** one-sentence product descriptions, onboarding framing, release-note framing, and default assistant response style
+
+The wording can differ by context, but the underlying language rules stay the same.
+
+### Sentence structure rules
 
 - Prefer short sentences.
+- Prefer direct statements over soft framing.
 - Use active voice.
-- Use specific timeframes and quantities.
-- Replace vague encouragement with concrete options.
-- Ask at most **one question** per prompt when possible.
+- Use concrete nouns.
+- Use exact timeframes, counts, and scope when relevant.
+- Keep ambiguity low.
+- Ask at most one question when a question is required.
 
-### Words to prefer
+Good:
 
-- “Plan”, “schedule”, “focus block”, “deadline”, “next”, “review”, “draft”, “summarize”, “file”, “link”, “capture”
+- “Scheduled 2 focus blocks for tomorrow morning.”
+- “No tasks due today.”
 
-### Words to avoid
+Avoid:
 
-- Guilt language: “you failed”, “you should have”, “you didn’t”
-- Hype: “game-changer”, “crush it”, “level up”
-- Empty motivation: “you got this”
-- Overclaiming: “always”, “never”, “perfect”, “guaranteed”
+- “Everything looks pretty good for now.”
+- “I can help you stay on top of things.”
+
+### Copy principles
+
+- Plain meaning before brand flavor
+- Concrete nouns over abstractions
+- Verbs that imply the actual action
+- Specific timeframes and quantities when relevant
+- No marketing voice inside workflow UI
+- No vague or inflated assistant framing
+
+Explicitly avoid:
+
+- generic “helpful AI assistant” phrasing in product surfaces
+- mismatched metaphors for the same concept
+- labels that require explanation before they feel intuitive
+
+### Terminology rules
+
+Keep a canonical term list for user-facing nouns. Do not treat all existing labels as permanently fixed. Each term should be tracked as one of:
+
+- **approved**
+- **legacy but tolerated**
+- **under review**
+
+Prefer words users would naturally infer in-product over internal or system-like abstractions.
+
+#### Initial terminology audit targets
+
+- **Assistant**: approved
+- **Inbox**: approved
+- **Library**: under review
+- **Plan**: approved
+
+`Library` is the strongest current review candidate because it reads more abstractly than the surrounding task and project model and appears widely in the web UI.
+
+#### Terminology process
+
+- Keep one canonical term list in implementation, not scattered synonyms.
+- Mark term status explicitly when reviewing copy.
+- Allow migration from legacy terms, but do not mix competing labels in the same flow.
+- Re-evaluate terms where the product model becomes clearer than the existing noun.
+
+### UI label rules
+
+- Use verbs for actions: `Schedule`, `Draft`, `Create`, `Review`, `Summarize`, `Archive`
+- Use plain nouns for destinations: `Inbox`, `Plan`, and whatever canonical replacement or approved term is used for the knowledge area
+- Prefer labels that match the action outcome
+- Avoid broad labels like `Save` when `Save changes` or `Add note` is more precise
+
+### System message rules
+
+System copy should be:
+
+- outcome-first
+- state-safe
+- next-step-oriented
+
+Patterns:
+
+- **Empty states:** current truth first, then one useful action
+- **Confirmations:** scope first, then consequence or reversibility
+- **Toasts:** past tense plus outcome
+- **Errors:** what happened, what is still true, what to do next
+
+Base error template:
+
+- “Couldn’t {action}. {What is still true or safe}. {Next step}.”
+
+This is stricter than a generic fallback like `Couldn't ${action}. Try again.` because it preserves state clarity and reduces ambiguity.
+
+### Product description rules
+
+Narrative product copy should describe the actual product first, not the implementation mechanism.
+
+- Prefer concrete product language over “AI assistant” abstraction when clearer
+- Name the user benefit in operational terms
+- Avoid inflated category claims
+
+Internal canonical one-sentence description should be reviewed against this standard. The current `brand.oneSentenceDescription` is useful, but still leans abstract because “AI personal assistant” is broader than the product behavior it is trying to describe.
+
+### AI response rules
+
+Assistant responses inherit the same language system as the rest of the product:
+
+- clear first
+- literal first
+- specific first
+- stable terminology first
+
+Then persona is added on top:
+
+- calm
+- decisive
+- low-ego
+
+This means prompt builders should apply **language first, persona second**. Persona should shape delivery, not mutate core product wording or terminology.
+
+### Persona vs. language boundary
+
+Use this table to decide which guidance governs a given surface.
+
+| Copy or behavior area | Governed by app text language? | Governed by brand persona? | Example |
+| --- | --- | --- | --- |
+| Nav labels | Yes | No | `Inbox` should be intuitive and stable, regardless of assistant tone. |
+| Buttons | Yes | No | `Schedule` is correct because it names the action clearly. |
+| Empty states | Yes | Sometimes | The wording follows system-copy rules; any warmth is secondary. |
+| Error messages | Yes | Sometimes | “Couldn’t sync. Your edits are still saved. Retry now.” |
+| Toasts | Yes | No | “Scheduled 2 focus blocks.” |
+| One-sentence product description | Yes | Sometimes | Product framing should be concrete before branded tone. |
+| Assistant chat responses | Yes | Yes | The response uses the shared language system, then adds calm, decisive delivery. |
+| Autonomous action confirmations | Yes | Yes | The wording must be clear, and the behavior must respect confirmation gates. |
 
 ---
 
-## Messaging: What Life-OS stands for
+## Implementation Alignment
 
-### Pillars (use in landing pages, onboarding, and release notes)
+This section exists to reduce copy drift between docs and code. The documentation update is not the code change, but it should define the alignment target clearly enough that implementation work is straightforward.
 
-- **Autonomy with control:** it takes initiative; you stay in charge.
-- **Minimalism that scales:** clean on day one, still works under stress.
-- **Your knowledge, usable:** notes turn into briefs, checklists, and plans.
-- **Follow-through:** deadlines and priorities become scheduled action.
+### Why this split is necessary
 
-### One-sentence description (internal canonical)
+The current repo already shows a primary drift pattern:
 
-Life-OS is a minimalist AI personal assistant that organizes your tasks and knowledge into a clear plan—and helps execute it.
+- [`apps/web/src/lib/chat-utils.ts`](/Users/neel/products/Life-OS/apps/web/src/lib/chat-utils.ts) uses the branded system: “quietly competent,” “calm and decisive,” stable terms, and the autonomy model.
+- [`apps/api/src/modules/chat/stream-utils.ts`](/Users/neel/products/Life-OS/apps/api/src/modules/chat/stream-utils.ts) still uses generic framing: “a helpful AI assistant in Life-OS, a personal productivity platform.”
+
+That mismatch is the clearest example of why one undifferentiated “voice and tone” section is not enough. Without a separate language layer and persona layer, prompt builders drift.
+
+### Priority 1: Canonical copy sources
+
+Audit and align these files first:
+
+- [`apps/web/src/lib/brand.ts`](/Users/neel/products/Life-OS/apps/web/src/lib/brand.ts)
+- [`apps/web/src/lib/chat-utils.ts`](/Users/neel/products/Life-OS/apps/web/src/lib/chat-utils.ts)
+- [`apps/api/src/modules/chat/stream-utils.ts`](/Users/neel/products/Life-OS/apps/api/src/modules/chat/stream-utils.ts)
+
+The current `brand` object should be treated as incomplete for this model. One flat object is not sufficient if it mixes naming, messaging, and persona without boundaries.
+
+The future implementation target can vary, but it should separate at least:
+
+- canonical product description and narrative copy
+- canonical terminology
+- assistant persona prompt fragments
+
+### Priority 2: Terminology propagation in UI
+
+The next implementation pass should inventory uses of `brand.terms.*` across the web UI and validate whether each label still fits the revised language model.
+
+Primary review targets:
+
+- navigation labels
+- page titles
+- placeholders
+- toast messages
+- `Save to Library` and related note flows
+
+This is where the terminology audit should determine whether `Library` stays, is renamed, or remains under review.
+
+### Priority 3: Prompt alignment rules
+
+Prompts should be built from two conceptual layers:
+
+1. **Language layer**
+   The stable wording system and term choices
+2. **Persona layer**
+   The behavioral and tonal overlay
+
+Both web and API prompt builders should eventually consume the same conceptual structure:
+
+- stable term set
+- language rules
+- persona rules
+
+This is the target contract for prompt construction even if the final code shape differs.
+
+### Documentation acceptance checks
+
+The documentation update is successful if:
+
+- a reader can tell within one scan the difference between how Life-OS behaves and how Life-OS writes
+- no guidance for nav labels, button text, toasts, or errors remains buried inside persona-only sections
+- this document explicitly states which guidance governs UI labels, system messages, product descriptions, and AI responses
+- `docs/brand-design-guidelines.md` remains focused on visual and interaction guidance only
+
+### Consistency review scenarios
+
+Use these checks after the rewrite and during follow-on implementation:
+
+- A designer choosing a nav label can find guidance without reading persona language.
+- An engineer writing a toast or error message can follow app text rules without inferring tone from assistant behavior.
+- An engineer editing AI system prompts can apply app language first, then persona.
+- A reviewer can explain why `Library` is kept, renamed, or marked under review using the terminology process.
+- A reviewer can spot that the API prompt is off-brand using this document alone.
+
+### Concrete repo validation targets for the follow-on pass
+
+- Compare wording in [`apps/web/src/lib/chat-utils.ts`](/Users/neel/products/Life-OS/apps/web/src/lib/chat-utils.ts) vs. [`apps/api/src/modules/chat/stream-utils.ts`](/Users/neel/products/Life-OS/apps/api/src/modules/chat/stream-utils.ts)
+- Review [`apps/web/src/lib/brand.ts`](/Users/neel/products/Life-OS/apps/web/src/lib/brand.ts) for `brand.oneSentenceDescription` abstraction vs. clarity
+- Review all `brand.terms.library` call sites for naturalness in context
+- Review generic fallback messages like `couldnt("...")` for fit with the system-message rules
 
 ---
 
-## Microcopy & UX Patterns
+## What We Don’t Do
 
-### Buttons and labels
-
-- Use verbs: “Schedule”, “Draft”, “Create”, “Review”, “Summarize”, “Archive”.
-- Avoid ambiguous labels: prefer “Save changes” over “Save”.
-
-### Empty states
-
-- State the current truth (“No tasks due today.”)
-- Offer one action (“Add a task” or “Plan tomorrow (5 min)”)
-- Optional, never scolding
-
-Examples:
-
-- “No tasks due today. Want me to plan tomorrow from your deadlines?”
-- “No notes here yet. Capture a thought, or import from a link.”
-
-### Confirmations (high-impact)
-
-- Include scope + reversibility
-
-Examples:
-
-- “Archive 12 tasks? You can restore them for 30 days.”
-- “Send this email now? Recipients will be notified.”
-
-### Notifications / toasts
-
-- Past tense + outcome
-
-Examples:
-
-- “Scheduled 2 focus blocks.”
-- “Saved to Notes.”
-- “Couldn’t sync. Retrying in the background.”
-
-### Error messages
-
-- What happened + what’s safe + what to do next
-
-Template:
-
-- “Couldn’t {action}. {What is still true/safe}. {Next step}.”
+- No judgment-based nudges
+- No constant gamification, streak pressure, or hustle framing
+- No autonomy that hides state changes
+- No “AI magic” language without concrete outputs
+- No generic “helpful AI assistant” product framing where clearer product language exists
+- No mixing of persona guidance and UI copy rules in the same section
 
 ---
 
-## Terminology (recommended)
+## Visual Design Reference
 
-Keep terms stable across web + iOS + docs.
-
-- **Assistant**: the AI system that suggests/drafts/does.
-- **Inbox**: the capture queue for untriaged inputs (tasks, notes, links).
-- **Library**: the knowledge base (notes, sources, summaries).
-- **Plan**: the user’s prioritized, time-aware view (today/this week).
-
-If the UI uses different labels today, treat this as the direction for convergence (don’t rename casually).
-
----
-
-## What we don’t do
-
-- No judgment-based nudges.
-- No constant gamification, streak pressure, or “hustle” framing.
-- No autonomy that hides state changes.
-- No “AI magic” language without showing concrete outputs.
-
----
-
-## Visual Design (TBD)
-
-Color, typography, layout, components, and motion guidelines live in `docs/brand-design-guidelines.md`.
+Visual design, layout, components, color, typography, and motion guidelines live in `docs/brand-design-guidelines.md`.

@@ -6,7 +6,7 @@ This document defines how Life-OS should *look* and *move* across product surfac
 - Web (`apps/web`, Tailwind + shadcn/ui)
 - iOS (`apps/ios`, SwiftUI + iOS HIG)
 
-It complements (and does not replace) `docs/brand-guidelines.md`, which defines the assistant’s behavior, UX principles, and voice.
+It complements (and does not replace) `docs/brand-guidelines.md`, which defines product positioning plus all verbal guidance: brand persona and app text language. This file stays visual and interaction-focused.
 
 ---
 
