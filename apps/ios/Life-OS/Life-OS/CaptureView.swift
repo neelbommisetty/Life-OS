@@ -130,6 +130,7 @@ struct CaptureView: View {
             Text("Save")
         }
         .accessibilityLabel("Save to Inbox")
+        .accessibilityIdentifier("capture.saveButton")
         .disabled(!canSave || isSavingInbox)
     }
 
