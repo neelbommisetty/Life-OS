@@ -1,6 +1,6 @@
 # Life-OS Test Plan (API + Web + iOS)
 
-Last updated: 2026-03-01
+Last updated: 2026-03-06
 
 ## Purpose
 This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
@@ -53,7 +53,7 @@ Coverage Status Legend:
 | Chat | Model selection UX | `/chat` | Model list is visible; selection persists; invalid change shows error | Load list + successful change + invalid change path |
 | Chat | Assistant message actions | `/chat` | Users can copy output, regenerate latest assistant response, and save assistant output as a note with note-specific labels and confirmations | Action availability + state transitions |
 | Analytics | Usage dashboard rendering | `/analytics` | Summary cards, breakdown sections, recent activity render for empty/non-empty states | Dashboard shape and render coverage |
-| Pricing | Model pricing catalog | `/pricing` | Pricing catalog loads grouped models with key pricing fields | Catalog render and key labels/values |
+| Pricing | Model pricing catalog | `/pricing` | Pricing catalog loads grouped models with key pricing fields, including newly registered provider releases | Catalog render and key labels/values for newly added model entries |
 | SEO | Route metadata titles and descriptions | `/`, `/chat`, `/notes`, `/tasks`, `/tasks/archive`, `/inbox`, `/inbox/archive`, `/projects`, `/projects/[id]`, `/analytics`, `/pricing`, `/auth/*`, `/account/*` | Each route exposes page-specific metadata for title/description (including dynamic auth/account/project paths) | Static metadata assertions + dynamic metadata resolution for known and fallback paths |
 | Errors | Client error feedback | interactive routes and Next internal `/api/*` proxies | API/runtime failures show toasts or fallback error UI instead of silent failure | API error toast + unhandled rejection + route error fallback |
 
@@ -90,7 +90,7 @@ Coverage Status Legend:
 | Web Platform | API chat stream proxy passthrough | `/api/chat/stream` | Forwards request/response stream and propagates `x-request-id` |
 | Web Platform | Server API base URL resolution | `apps/web/src/lib/api/base-url*.ts` | `API_BASE_URL` precedence, dev fallback `http://localhost:3001`, production fallback to `NEXT_PUBLIC_API_BASE_URL`, throws when unresolved in production |
 | Web Platform | Server-side API auth redirect behavior | `apps/web/src/lib/api/fetch.ts` | Server-side API 401 responses redirect to `/auth/sign-in` |
-| Web Platform | AI model catalog registry consistency | `/pricing`, `@life-os/ai/services` | Pricing catalog reads registered model metadata from the same initialized AI services module instance used by chat services |
+| Web Platform | AI model catalog registry consistency | `/pricing`, `@life-os/ai/services` | Pricing catalog reads registered model metadata from the same initialized AI services module instance used by chat services, including newly added provider model releases |
 | Web Platform | App Router metadata coverage | `apps/web/src/app/**/page.tsx` | Every page route exports `metadata` or `generateMetadata`; dynamic routes resolve context-specific titles/descriptions |
 | Build Platform | Dynamic rendering boundary | app layout + API-backed routes | `next build` succeeds without build-time API base URL while runtime checks still execute on request |
 | Build Platform | Monorepo runtime prep orchestration | root `postinstall` / `prebuild` / `vercel:install:*` scripts and app Vercel `installCommand` | Install/build flows deterministically run Prisma client generation plus DB/AI workspace runtime builds before API/web build and type steps |
