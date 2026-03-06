@@ -19,10 +19,13 @@ test("tasks page supports create, edit, search, and delete", async ({ page }) =>
 
   await page.getByRole("button", { name: "Create task" }).click();
   const taskDialog = page.getByRole("dialog");
-  await taskDialog.getByPlaceholder("Task title").fill("E2E Task Alpha");
-  await taskDialog
-    .getByPlaceholder("Task description")
-    .fill("Created in e2e test");
+  await expect(taskDialog.getByText("Capture the next step")).toBeVisible();
+  await expect(taskDialog.getByText("Add a title to save this task.")).toBeVisible();
+  await taskDialog.getByLabel("Title").fill("E2E Task Alpha");
+  await taskDialog.getByLabel("Notes").fill("Created in e2e test");
+  await taskDialog.getByRole("button", { name: "In progress" }).click();
+  await taskDialog.getByRole("button", { name: "High" }).click();
+  await expect(taskDialog.getByText("Active now. Needs attention. Add a deadline if timing matters.")).toBeVisible();
   await taskDialog.getByRole("button", { name: "Create task" }).click();
   await page.reload();
 
@@ -30,7 +33,9 @@ test("tasks page supports create, edit, search, and delete", async ({ page }) =>
 
   await taskCard(page, "E2E Task Alpha").click();
   const editDialog = page.getByRole("dialog");
-  await editDialog.getByPlaceholder("Task title").fill("E2E Task Alpha Updated");
+  await expect(editDialog.getByText("Refine the next step")).toBeVisible();
+  await expect(editDialog.getByText("Ready to save.")).toBeVisible();
+  await editDialog.getByLabel("Title").fill("E2E Task Alpha Updated");
   await editDialog.getByRole("button", { name: "Save changes" }).click();
   await page.reload();
 
