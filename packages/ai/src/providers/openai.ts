@@ -349,6 +349,20 @@ const createOpenAIModelDefinition = (
 
 const DEFAULT_OPENAI_MODEL_CONFIGS: readonly OpenAIModelDefinitionConfig[] = [
   {
+    key: ModelKeyName.OpenAIGpt54,
+    modelId: 'gpt-5.4',
+    label: 'OpenAI GPT-5.4',
+    description: 'Latest flagship GPT-5.4 model for advanced coding, reasoning, and agentic workflows.',
+    releaseStage: 'ga',
+    costTier: CostTier.Premium,
+    pricing: {
+      inputUsdPer1m: 2.2,
+      outputUsdPer1m: 17.6,
+      cacheReadInputUsdPer1m: 0.22,
+    },
+    tags: ['gpt-5.4', 'flagship', 'responses'],
+  },
+  {
     key: ModelKeyName.OpenAIGpt52Pro,
     modelId: 'gpt-5.2-pro',
     label: 'OpenAI GPT-5.2 Pro',

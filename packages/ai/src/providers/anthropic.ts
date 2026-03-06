@@ -488,6 +488,24 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     tags: ['claude', 'haiku', '4.5', 'responses', 'economy'],
   },
   {
+    key: ModelKeyName.AnthropicClaudeSonnet46,
+    modelId: 'claude-sonnet-4-6',
+    label: 'Anthropic Claude Sonnet 4.6',
+    description:
+      'Latest Claude Sonnet 4.6 release balancing coding performance, reasoning quality, and long-context orchestration.',
+    releaseStage: 'ga',
+    maxOutputTokens: 64000,
+    contextWindow: 200000,
+    costTier: CostTier.Standard,
+    pricing: {
+      inputUsdPer1m: 3,
+      outputUsdPer1m: 15,
+      cacheCreationInputUsdPer1m: 3.75,
+      cacheReadInputUsdPer1m: 0.3,
+    },
+    tags: ['claude', 'sonnet', '4.6', 'responses', 'standard'],
+  },
+  {
     key: ModelKeyName.AnthropicClaudeSonnet45,
     modelId: 'claude-sonnet-4-5',
     label: 'Anthropic Claude Sonnet 4.5',
@@ -504,6 +522,24 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
       cacheReadInputUsdPer1m: 0.3,
     },
     tags: ['claude', 'sonnet', '4.5', 'responses', 'standard'],
+  },
+  {
+    key: ModelKeyName.AnthropicClaudeOpus46,
+    modelId: 'claude-opus-4-6',
+    label: 'Anthropic Claude Opus 4.6',
+    description:
+      'Latest flagship Claude Opus 4.6 model for premium reasoning depth, coding reliability, and agentic workflows.',
+    releaseStage: 'ga',
+    maxOutputTokens: 64000,
+    contextWindow: 200000,
+    costTier: CostTier.Premium,
+    pricing: {
+      inputUsdPer1m: 5,
+      outputUsdPer1m: 25,
+      cacheCreationInputUsdPer1m: 6.25,
+      cacheReadInputUsdPer1m: 0.5,
+    },
+    tags: ['claude', 'opus', '4.6', 'responses', 'premium'],
   },
   {
     key: ModelKeyName.AnthropicClaudeOpus45,

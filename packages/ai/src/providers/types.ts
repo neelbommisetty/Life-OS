@@ -25,6 +25,7 @@ export enum CostTier {
  */
 export enum ModelKeyName {
   // OpenAI models
+  OpenAIGpt54 = 'openai.gpt-5.4',
   OpenAIGpt52 = 'openai.gpt-5.2',
   OpenAIGpt52Pro = 'openai.gpt-5.2-pro',
   OpenAIGpt5 = 'openai.gpt-5',
@@ -32,7 +33,9 @@ export enum ModelKeyName {
   OpenAIGpt5Nano = 'openai.gpt-5-nano',
   // Anthropic Claude models
   AnthropicClaudeHaiku45 = 'anthropic.claude-haiku-4-5',
+  AnthropicClaudeSonnet46 = 'anthropic.claude-sonnet-4-6',
   AnthropicClaudeSonnet45 = 'anthropic.claude-sonnet-4-5',
+  AnthropicClaudeOpus46 = 'anthropic.claude-opus-4-6',
   AnthropicClaudeOpus45 = 'anthropic.claude-opus-4-5',
   // Google Gemini models
   GoogleGemini3ProPreview = 'google.gemini-3-pro-preview',
