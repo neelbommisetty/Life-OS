@@ -138,6 +138,9 @@ Run this set before release and after large refactors:
   - `apps/api/src/modules/chat/thread-context-service.test.ts`
   - `apps/api/src/modules/analytics/route.test.ts`
   - `apps/api/src/modules/settings/inbox-agents-route.test.ts`
+- AI package tests:
+  - `packages/ai/src/index.test.ts`
+  - `packages/ai/src/providers/default-models.test.ts`
 - Web unit tests (selected):
   - `apps/web/src/lib/api/base-url.test.ts`
   - `apps/web/src/lib/api/error-message.test.ts`
