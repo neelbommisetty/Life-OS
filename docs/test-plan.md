@@ -115,7 +115,7 @@ Run this set before release and after large refactors:
 9. Notes: create/edit/delete and autosave behavior.
 10. Chat: send prompt, stream response, regenerate, save assistant message as note.
 11. Analytics: dashboard loads with non-empty and empty usage states.
-12. Pricing page: catalog renders without runtime errors.
+12. Pricing page: `/pricing` renders grouped model catalog sections and shows expected pricing keys/labels and correct entry-level values for newly registered provider releases.
 13. iOS smoke: invalid + valid sign-in, account profile/password updates, and sign-out returns to auth gate.
 14. Dev runner smoke: `bun run dev:all|dev:web|dev:api` executes runtime prep by default; `LIFE_OS_SKIP_RUNTIME_PREP=1` bypasses prep.
 
