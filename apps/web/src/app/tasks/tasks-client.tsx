@@ -3,16 +3,12 @@
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -31,7 +27,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Search, Archive } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Archive,
+  CalendarClock,
+  CircleDashed,
+  Flag,
+} from "lucide-react";
 import Link from "next/link";
 import {
   listTasks,
@@ -42,9 +45,11 @@ import {
 import { toastApiError } from "@/lib/api/error-toast";
 import type { TaskStatus, Priority } from "@life-os/db";
 import { KanbanColumn } from "./kanban-column";
+import { getTaskEditorSummary } from "./task-editor-utils";
 import { type TaskWithProject } from "./task-card";
 import { selectDisplayedTasks } from "./tasks-utils";
 import { couldnt } from "@/lib/brand";
+import { cn } from "@/lib/utils";
 
 type TaskDraft = {
   id?: string;
@@ -70,9 +75,28 @@ function formatDate(date: Date | null | undefined): string {
   return new Date(date).toISOString().split("T")[0];
 }
 
+const STATUS_OPTIONS: TaskStatus[] = ["TODO", "IN_PROGRESS", "DONE"];
+
+const PRIORITY_OPTIONS: Priority[] = ["LOW", "MEDIUM", "HIGH"];
+
+const STATUS_BADGE_CLASSES: Record<TaskStatus, string> = {
+  TODO: "border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  IN_PROGRESS:
+    "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  DONE:
+    "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+};
+
+const PRIORITY_BADGE_CLASSES: Record<Priority, string> = {
+  LOW: "border-zinc-500/20 bg-zinc-500/10 text-zinc-700 dark:text-zinc-300",
+  MEDIUM:
+    "border-violet-500/20 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+  HIGH: "border-rose-500/20 bg-rose-500/10 text-rose-700 dark:text-rose-300",
+};
+
 export function TasksClient({
   projectId,
-  initialTasks = []
+  initialTasks = [],
 }: {
   projectId?: string;
   initialTasks?: TaskWithProject[];
@@ -90,6 +114,13 @@ export function TasksClient({
   const [isDeleting, startDeleteTransition] = useTransition();
 
   const isEdit = !!draft.id;
+  const { selectedStatus, selectedPriority, dueDateLabel, summaryText } =
+    getTaskEditorSummary({
+      status: draft.status,
+      priority: draft.priority,
+      dueDate: draft.dueDate,
+    });
+  const isSaving = isCreating || isUpdating;
 
   const displayedTasks = selectDisplayedTasks({
     search,
@@ -299,112 +330,260 @@ export function TasksClient({
 
         {/* Create/Edit Sheet */}
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetContent className="w-full sm:max-w-md">
+          <SheetContent className="w-full overflow-hidden border-l border-white/10 bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.16),_transparent_34%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-0 backdrop-blur-xl sm:max-w-xl dark:bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.2),_transparent_34%),linear-gradient(180deg,_rgba(10,15,24,0.98),_rgba(7,10,18,0.98))]">
             <form onSubmit={handleSave} className="flex flex-col h-full">
-              <SheetHeader>
-                <SheetTitle>{isEdit ? "Edit task" : "Create task"}</SheetTitle>
+              <SheetHeader className="gap-4 border-b border-border/60 bg-background/55 pb-5 pr-14">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-2">
+                    <Badge
+                      variant="outline"
+                      className="border-primary/20 bg-primary/10 text-primary"
+                    >
+                      {isEdit ? "Update task" : "New task"}
+                    </Badge>
+                    <SheetTitle className="text-xl font-semibold tracking-tight">
+                      {isEdit ? "Refine the next step" : "Capture the next step"}
+                    </SheetTitle>
+                  </div>
+                  <div className="hidden rounded-3xl border border-border/70 bg-background/70 px-3 py-2 text-right text-xs text-muted-foreground shadow-sm sm:block">
+                    <div className="font-medium text-foreground">
+                      {draft.title.trim() || "Untitled task"}
+                    </div>
+                    <div>
+                      {projectId
+                        ? "Saved in this project"
+                        : "Saved to your task board"}
+                    </div>
+                  </div>
+                </div>
                 <SheetDescription>
                   {isEdit
-                    ? "Update task details."
-                    : "Add details for the new task."}
+                    ? "Adjust the details, timing, or urgency."
+                    : "Add just enough detail to keep work moving."}
                 </SheetDescription>
               </SheetHeader>
 
-              <div className="flex-1 space-y-4 py-6 overflow-y-auto">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Title *</label>
+              <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+                <section className="rounded-[28px] border border-border/70 bg-background/70 p-4 shadow-sm backdrop-blur-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "h-7 rounded-full border px-3 text-xs font-medium",
+                        STATUS_BADGE_CLASSES[draft.status],
+                      )}
+                    >
+                      <CircleDashed className="size-3.5" />
+                      {selectedStatus.label}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "h-7 rounded-full border px-3 text-xs font-medium",
+                        PRIORITY_BADGE_CLASSES[draft.priority],
+                      )}
+                    >
+                      <Flag className="size-3.5" />
+                      {selectedPriority.label} priority
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className="h-7 rounded-full px-3 text-xs font-medium"
+                    >
+                      <CalendarClock className="size-3.5" />
+                      {dueDateLabel}
+                    </Badge>
+                  </div>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    {summaryText}
+                  </p>
+                </section>
+
+                <section className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="task-title">Title</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Use a specific action so the task is easy to start.
+                    </p>
+                  </div>
                   <Input
+                    id="task-title"
                     value={draft.title}
                     onChange={(e) =>
                       setDraft({ ...draft, title: e.target.value })
                     }
-                    placeholder="Task title"
+                    placeholder="Draft kickoff agenda"
+                    className="h-12 rounded-[24px] border-border/70 bg-background/80 text-base shadow-sm"
                     required
                   />
-                </div>
+                </section>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Description</label>
+                <section className="space-y-3">
+                  <div className="space-y-1">
+                    <Label htmlFor="task-description">Notes</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Add context, links, or the definition of done.
+                    </p>
+                  </div>
                   <Textarea
+                    id="task-description"
                     value={draft.description}
                     onChange={(e) =>
                       setDraft({ ...draft, description: e.target.value })
                     }
-                    placeholder="Task description"
-                    rows={4}
+                    placeholder="Include the outcome, constraints, or key details."
+                    rows={5}
+                    className="min-h-32 rounded-[24px] border-border/70 bg-background/80 shadow-sm"
                   />
-                </div>
+                </section>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Status</label>
-                    <Select
-                      value={draft.status}
-                      onValueChange={(value) =>
-                        setDraft({ ...draft, status: value as TaskStatus })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="TODO">To Do</SelectItem>
-                        <SelectItem value="IN_PROGRESS">In Progress</SelectItem>
-                        <SelectItem value="DONE">Done</SelectItem>
-                      </SelectContent>
-                    </Select>
+                <section className="space-y-4 rounded-[28px] border border-border/70 bg-background/70 p-4 shadow-sm">
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-medium text-foreground">
+                      Workflow
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Set the current state and urgency in one pass.
+                    </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Priority</label>
-                    <Select
-                      value={draft.priority}
-                      onValueChange={(value) =>
-                        setDraft({ ...draft, priority: value as Priority })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="LOW">Low</SelectItem>
-                        <SelectItem value="MEDIUM">Medium</SelectItem>
-                        <SelectItem value="HIGH">High</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {STATUS_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() =>
+                          setDraft({ ...draft, status: option })
+                        }
+                        className={cn(
+                          "rounded-[22px] border px-4 py-3 text-left transition-all",
+                          draft.status === option
+                            ? "border-primary/40 bg-primary/10 shadow-sm"
+                            : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
+                        )}
+                      >
+                        <div className="text-sm font-medium text-foreground">
+                          {getTaskEditorSummary({
+                            status: option,
+                            priority: draft.priority,
+                            dueDate: draft.dueDate,
+                          }).selectedStatus.label}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {getTaskEditorSummary({
+                            status: option,
+                            priority: draft.priority,
+                            dueDate: draft.dueDate,
+                          }).selectedStatus.hint}
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Deadline</label>
-                  <Input
-                    type="date"
-                    value={draft.dueDate}
-                    onChange={(e) =>
-                      setDraft({ ...draft, dueDate: e.target.value })
-                    }
-                  />
-                </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {PRIORITY_OPTIONS.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() =>
+                          setDraft({ ...draft, priority: option })
+                        }
+                        className={cn(
+                          "rounded-[22px] border px-4 py-3 text-left transition-all",
+                          draft.priority === option
+                            ? "border-primary/40 bg-primary/10 shadow-sm"
+                            : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
+                        )}
+                      >
+                        <div className="text-sm font-medium text-foreground">
+                          {getTaskEditorSummary({
+                            status: draft.status,
+                            priority: option,
+                            dueDate: draft.dueDate,
+                          }).selectedPriority.label}
+                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {getTaskEditorSummary({
+                            status: draft.status,
+                            priority: option,
+                            dueDate: draft.dueDate,
+                          }).selectedPriority.hint}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <Separator className="bg-border/70" />
+
+                  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <div className="space-y-2">
+                      <Label htmlFor="task-deadline">Deadline</Label>
+                      <Input
+                        id="task-deadline"
+                        type="date"
+                        value={draft.dueDate}
+                        onChange={(e) =>
+                          setDraft({ ...draft, dueDate: e.target.value })
+                        }
+                        className="h-11 rounded-[22px] border-border/70 bg-background/80 shadow-sm"
+                      />
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="justify-self-start rounded-full px-0 text-muted-foreground hover:text-foreground"
+                      onClick={() => setDraft({ ...draft, dueDate: "" })}
+                      disabled={!draft.dueDate}
+                    >
+                      Clear deadline
+                    </Button>
+                  </div>
+                </section>
+
+                <section className="grid gap-4 rounded-[28px] border border-dashed border-border/70 bg-background/50 p-4 text-sm text-muted-foreground sm:grid-cols-2">
+                  <div>
+                    <div className="font-medium text-foreground">Quick rule</div>
+                    <p className="mt-1">
+                      Keep titles action-first. Put supporting detail in notes.
+                    </p>
+                  </div>
+                  <div>
+                    <div className="font-medium text-foreground">Save target</div>
+                    <p className="mt-1">
+                      {projectId
+                        ? "This task stays attached to the current project."
+                        : "This task will appear on your main board."}
+                    </p>
+                  </div>
+                </section>
               </div>
 
-              <SheetFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setSheetOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={isCreating || isUpdating || !draft.title.trim()}
-                >
-                  {isCreating || isUpdating
-                    ? "Saving..."
-                    : isEdit
-                      ? "Save changes"
-                      : "Create task"}
-                </Button>
+              <SheetFooter className="border-t border-border/60 bg-background/80 sm:flex-row sm:items-center sm:justify-between">
+                <p className="hidden text-xs text-muted-foreground sm:block">
+                  {draft.title.trim()
+                    ? "Ready to save."
+                    : "Add a title to save this task."}
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setSheetOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={isSaving || !draft.title.trim()}
+                    className="min-w-32"
+                  >
+                    {isSaving
+                      ? "Saving..."
+                      : isEdit
+                        ? "Save changes"
+                        : "Create task"}
+                  </Button>
+                </div>
               </SheetFooter>
             </form>
           </SheetContent>

@@ -36,7 +36,7 @@ Coverage Status Legend:
 | Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/library render | Module rendering for empty/non-empty states |
 | Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
 | Projects | Project detail and embedded workspace tabs | `/projects/[id]` | Users can edit metadata and use Overview/Assistant/Tasks/Library tabs | Edit success/error + tab content render |
-| Tasks | Kanban CRUD and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, move task columns | CRUD + optimistic move + rollback on failure |
+| Tasks | Kanban CRUD, editor UX, and drag/drop | `/tasks` | Users can create/edit/delete tasks, search tasks, use the task editor's workflow controls and summary guidance, and move task columns | CRUD + task editor UX assertions + optimistic move + rollback on failure |
 | Tasks | Archived tasks experience | `/tasks/archive` | Archived list loads and can be searched client-side | Archived data load + client filtering |
 | Inbox | Inbox capture and item lifecycle controls | `/inbox` | Users can capture inbox items, review details, mark processed, and archive from the inbox view | Playwright create/list/detail plus process/archive coverage |
 | Inbox | Inbox proposal output review UX | `/inbox` | `Resolve All as No` is unavailable for `PROCESSED`/`ARCHIVED` items and disabled when no unresolved outputs remain; todo proposals render structured full task previews from payload with safe fallback on malformed payloads | Web unit coverage for todo payload validation + API/unit coverage for proposal processing safety + Playwright coverage for button availability and preview rendering |
@@ -146,6 +146,7 @@ Run this set before release and after large refactors:
   - `apps/web/src/lib/notes/validations.test.ts`
   - `apps/web/src/lib/utils.test.ts`
   - `apps/web/src/components/chat/message-actions.test.ts`
+  - `apps/web/src/app/tasks/task-editor-utils.test.ts`
   - `apps/web/src/app/tasks/tasks-utils.test.ts`
 - Web e2e tests:
   - `apps/web/tests/e2e/account-flows.e2e.ts`
