@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import {
   Sheet,
   SheetContent,
@@ -331,39 +332,47 @@ export function TasksClient({
         {/* Create/Edit Sheet */}
         <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
           <SheetContent className="w-full overflow-hidden border-l border-white/10 bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.16),_transparent_34%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-0 backdrop-blur-xl sm:max-w-xl dark:bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.2),_transparent_34%),linear-gradient(180deg,_rgba(10,15,24,0.98),_rgba(7,10,18,0.98))]">
-            <form onSubmit={handleSave} className="flex flex-col h-full">
-              <SheetHeader className="gap-4 border-b border-border/60 bg-background/55 pb-5 pr-14">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="space-y-2">
-                    <Badge
-                      variant="outline"
-                      className="border-primary/20 bg-primary/10 text-primary"
-                    >
-                      {isEdit ? "Update task" : "New task"}
-                    </Badge>
-                    <SheetTitle className="text-xl font-semibold tracking-tight">
-                      {isEdit ? "Refine the next step" : "Capture the next step"}
-                    </SheetTitle>
-                  </div>
-                  <div className="hidden rounded-3xl border border-border/70 bg-background/70 px-3 py-2 text-right text-xs text-muted-foreground shadow-sm sm:block">
-                    <div className="font-medium text-foreground">
-                      {draft.title.trim() || "Untitled task"}
+            <form
+              onSubmit={handleSave}
+              aria-busy={isSaving}
+              className={cn(
+                "flex h-full flex-col transition-opacity",
+                isSaving && "pointer-events-none opacity-95",
+              )}
+            >
+              <fieldset disabled={isSaving} className="contents">
+                <SheetHeader className="gap-4 border-b border-border/60 bg-background/55 pb-5 pr-14">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-2">
+                      <Badge
+                        variant="outline"
+                        className="border-primary/20 bg-primary/10 text-primary"
+                      >
+                        {isEdit ? "Update task" : "New task"}
+                      </Badge>
+                      <SheetTitle className="text-xl font-semibold tracking-tight">
+                        {isEdit ? "Refine the next step" : "Capture the next step"}
+                      </SheetTitle>
                     </div>
-                    <div>
-                      {projectId
-                        ? "Saved in this project"
-                        : "Saved to your task board"}
+                    <div className="hidden rounded-3xl border border-border/70 bg-background/70 px-3 py-2 text-right text-xs text-muted-foreground shadow-sm sm:block">
+                      <div className="font-medium text-foreground">
+                        {draft.title.trim() || "Untitled task"}
+                      </div>
+                      <div>
+                        {projectId
+                          ? "Saved in this project"
+                          : "Saved to your task board"}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <SheetDescription>
-                  {isEdit
-                    ? "Adjust the details, timing, or urgency."
-                    : "Add just enough detail to keep work moving."}
-                </SheetDescription>
-              </SheetHeader>
+                  <SheetDescription>
+                    {isEdit
+                      ? "Adjust the details, timing, or urgency."
+                      : "Add just enough detail to keep work moving."}
+                  </SheetDescription>
+                </SheetHeader>
 
-              <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+                <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
                 <section className="rounded-[28px] border border-border/70 bg-background/70 p-4 shadow-sm backdrop-blur-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge
@@ -449,14 +458,15 @@ export function TasksClient({
 
                   <div className="grid gap-3 sm:grid-cols-3">
                     {STATUS_OPTIONS.map((option) => (
-                      <button
+                      <Toggle
                         key={option}
-                        type="button"
+                        variant="outline"
+                        pressed={draft.status === option}
                         onClick={() =>
                           setDraft({ ...draft, status: option })
                         }
                         className={cn(
-                          "rounded-[22px] border px-4 py-3 text-left transition-all",
+                          "h-auto flex-col items-start justify-start rounded-[22px] border px-4 py-3 text-left transition-all",
                           draft.status === option
                             ? "border-primary/40 bg-primary/10 shadow-sm"
                             : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
@@ -476,20 +486,21 @@ export function TasksClient({
                             dueDate: draft.dueDate,
                           }).selectedStatus.hint}
                         </div>
-                      </button>
+                      </Toggle>
                     ))}
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-3">
                     {PRIORITY_OPTIONS.map((option) => (
-                      <button
+                      <Toggle
                         key={option}
-                        type="button"
+                        variant="outline"
+                        pressed={draft.priority === option}
                         onClick={() =>
                           setDraft({ ...draft, priority: option })
                         }
                         className={cn(
-                          "rounded-[22px] border px-4 py-3 text-left transition-all",
+                          "h-auto flex-col items-start justify-start rounded-[22px] border px-4 py-3 text-left transition-all",
                           draft.priority === option
                             ? "border-primary/40 bg-primary/10 shadow-sm"
                             : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
@@ -509,7 +520,7 @@ export function TasksClient({
                             dueDate: draft.dueDate,
                           }).selectedPriority.hint}
                         </div>
-                      </button>
+                      </Toggle>
                     ))}
                   </div>
 
@@ -556,35 +567,35 @@ export function TasksClient({
                     </p>
                   </div>
                 </section>
-              </div>
-
-              <SheetFooter className="border-t border-border/60 bg-background/80 sm:flex-row sm:items-center sm:justify-between">
-                <p className="hidden text-xs text-muted-foreground sm:block">
-                  {draft.title.trim()
-                    ? "Ready to save."
-                    : "Add a title to save this task."}
-                </p>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    type="submit"
-                    disabled={isSaving || !draft.title.trim()}
-                    className="min-w-32"
-                  >
-                    {isSaving
-                      ? "Saving..."
-                      : isEdit
-                        ? "Save changes"
-                        : "Create task"}
-                  </Button>
                 </div>
-              </SheetFooter>
+                <SheetFooter className="border-t border-border/60 bg-background/80 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="hidden text-xs text-muted-foreground sm:block">
+                    {draft.title.trim()
+                      ? "Ready to save."
+                      : "Add a title to save this task."}
+                  </p>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setSheetOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={isSaving || !draft.title.trim()}
+                      className="min-w-32"
+                    >
+                      {isSaving
+                        ? "Saving..."
+                        : isEdit
+                          ? "Save changes"
+                          : "Create task"}
+                    </Button>
+                  </div>
+                </SheetFooter>
+              </fieldset>
             </form>
           </SheetContent>
         </Sheet>
