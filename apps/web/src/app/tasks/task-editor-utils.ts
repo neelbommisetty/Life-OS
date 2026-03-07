@@ -24,7 +24,7 @@ export function getTaskEditorSummary({
   const selectedStatus = STATUS_META[status];
   const selectedPriority = PRIORITY_META[priority];
   const dueDateLabel = dueDate
-    ? new Date(`${dueDate}T00:00:00`).toLocaleDateString(undefined, {
+    ? new Date(`${dueDate}T00:00:00`).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
