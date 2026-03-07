@@ -7,7 +7,7 @@ test("inbox supports capture, detail review, process, and archive actions", asyn
   await signInViaApi(page, "/");
   await page.goto("/");
 
-  const capturedText = "E2E inbox capture item";
+  const capturedText = `E2E inbox capture item ${Date.now()}`;
   await page
     .getByPlaceholder("Capture a thought, reminder, or draft plan.")
     .fill(capturedText);
