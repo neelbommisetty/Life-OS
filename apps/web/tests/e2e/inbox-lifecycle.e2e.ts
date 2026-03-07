@@ -14,7 +14,7 @@ test("inbox supports capture, detail review, process, and archive actions", asyn
   await page.getByRole("button", { name: "Capture" }).click();
   await page.getByRole("link", { name: "Open Inbox" }).click();
 
-  await expect(page.getByRole("button", { name: new RegExp(capturedText) })).toBeVisible();
+  await expect(page.getByRole("button", { name: capturedText, exact: false })).toBeVisible();
 
   await page
     .getByRole("button", {
