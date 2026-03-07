@@ -3,12 +3,14 @@
 Last updated: 2026-03-07
 
 ## Purpose
-This document tracks current product behavior in `apps/api` and `apps/web`, grouped into:
+
+This document tracks current product behavior across `apps/api`, `apps/web`, `packages/ai`, and other shared platform surfaces such as root build/dev orchestration, grouped into:
 - **User Facing Test Cases**: what users do and what they should see.
 - **Platform Capabilities**: behind-the-scenes API, auth, proxy, middleware, and resilience behavior.
 
 ## Update Policy
-When a feature is added or changed in `apps/api` or `apps/web`, update this file in the same change.
+
+When a feature is added or changed in `apps/api`, `apps/web`, shared packages such as `packages/ai`, or other shared platform surfaces, update this file in the same change.
 
 Required updates for feature work:
 - Update at least one relevant row in `User Facing Test Cases` and/or `Platform Capabilities`.
