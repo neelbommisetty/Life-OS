@@ -474,71 +474,71 @@ export function TasksClient({
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-3">
-                    {STATUS_OPTIONS.map((option) => (
-                      <Toggle
-                        key={option}
-                        variant="outline"
-                        pressed={draft.status === option}
-                        onClick={() =>
-                          setDraft({ ...draft, status: option })
-                        }
-                        className={cn(
-                          "h-auto flex-col items-start justify-start rounded-[22px] border px-4 py-3 text-left transition-all",
-                          draft.status === option
-                            ? "border-primary/40 bg-primary/10 shadow-sm"
-                            : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
-                        )}
-                      >
-                        <div className="text-sm font-medium text-foreground">
-                          {getTaskEditorSummary({
-                            status: option,
-                            priority: draft.priority,
-                            dueDate: draft.dueDate,
-                          }).selectedStatus.label}
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {getTaskEditorSummary({
-                            status: option,
-                            priority: draft.priority,
-                            dueDate: draft.dueDate,
-                          }).selectedStatus.hint}
-                        </div>
-                      </Toggle>
-                    ))}
+                    {STATUS_OPTIONS.map((option) => {
+                      const summary = getTaskEditorSummary({
+                        status: option,
+                        priority: draft.priority,
+                        dueDate: draft.dueDate,
+                      });
+
+                      return (
+                        <Toggle
+                          key={option}
+                          variant="outline"
+                          pressed={draft.status === option}
+                          onClick={() =>
+                            setDraft({ ...draft, status: option })
+                          }
+                          className={cn(
+                            "h-auto flex-col items-start justify-start rounded-[22px] border px-4 py-3 text-left transition-all",
+                            draft.status === option
+                              ? "border-primary/40 bg-primary/10 shadow-sm"
+                              : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
+                          )}
+                        >
+                          <div className="text-sm font-medium text-foreground">
+                            {summary.selectedStatus.label}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {summary.selectedStatus.hint}
+                          </div>
+                        </Toggle>
+                      );
+                    })}
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-3">
-                    {PRIORITY_OPTIONS.map((option) => (
-                      <Toggle
-                        key={option}
-                        variant="outline"
-                        pressed={draft.priority === option}
-                        onClick={() =>
-                          setDraft({ ...draft, priority: option })
-                        }
-                        className={cn(
-                          "h-auto flex-col items-start justify-start rounded-[22px] border px-4 py-3 text-left transition-all",
-                          draft.priority === option
-                            ? "border-primary/40 bg-primary/10 shadow-sm"
-                            : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
-                        )}
-                      >
-                        <div className="text-sm font-medium text-foreground">
-                          {getTaskEditorSummary({
-                            status: draft.status,
-                            priority: option,
-                            dueDate: draft.dueDate,
-                          }).selectedPriority.label}
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {getTaskEditorSummary({
-                            status: draft.status,
-                            priority: option,
-                            dueDate: draft.dueDate,
-                          }).selectedPriority.hint}
-                        </div>
-                      </Toggle>
-                    ))}
+                    {PRIORITY_OPTIONS.map((option) => {
+                      const summary = getTaskEditorSummary({
+                        status: draft.status,
+                        priority: option,
+                        dueDate: draft.dueDate,
+                      });
+
+                      return (
+                        <Toggle
+                          key={option}
+                          variant="outline"
+                          pressed={draft.priority === option}
+                          onClick={() =>
+                            setDraft({ ...draft, priority: option })
+                          }
+                          className={cn(
+                            "h-auto flex-col items-start justify-start rounded-[22px] border px-4 py-3 text-left transition-all",
+                            draft.priority === option
+                              ? "border-primary/40 bg-primary/10 shadow-sm"
+                              : "border-border/70 bg-background/80 hover:border-foreground/20 hover:bg-muted/40",
+                          )}
+                        >
+                          <div className="text-sm font-medium text-foreground">
+                            {summary.selectedPriority.label}
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {summary.selectedPriority.hint}
+                          </div>
+                        </Toggle>
+                      );
+                    })}
                   </div>
 
                   <Separator className="bg-border/70" />
