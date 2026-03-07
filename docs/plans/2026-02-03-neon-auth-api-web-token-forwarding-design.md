@@ -5,14 +5,14 @@ Owner: Life-OS
 
 ## Summary
 
-Add Neon Auth JWT verification to `apps/api` and forward a server-only JWT from `apps/web` to the API. The API becomes the single enforcement point for authorization and can be shared by web and iOS.
+Add Neon Auth JWT verification to `apps/api` and forward a server-only JWT from `apps/web` to the API. The API becomes the single enforcement point for authorization for the web product.
 
 ## Goals
 
 - Verify Neon Auth JWTs in `apps/api` for all routes except `/health` and `/ready`.
 - Forward a server-side JWT from `apps/web` to the API using `Authorization: Bearer <token>`.
 - Keep tokens off the client; no browser JS access.
-- Align web and iOS on the same API contract.
+- Keep the web app and API on the same auth contract.
 
 ## Non-Goals
 

@@ -1,21 +1,20 @@
-# Life-OS Test Plan (API + Web + iOS)
+# Life-OS Test Plan (API + Web)
 
-Last updated: 2026-03-06
+Last updated: 2026-03-07
 
 ## Purpose
-This document tracks current product behavior in `apps/api`, `apps/web`, and `apps/ios`, grouped into:
+This document tracks current product behavior in `apps/api` and `apps/web`, grouped into:
 - **User Facing Test Cases**: what users do and what they should see.
 - **Platform Capabilities**: behind-the-scenes API, auth, proxy, middleware, and resilience behavior.
 
 ## Update Policy
-When a feature is added or changed in `apps/api`, `apps/web`, or `apps/ios`, update this file in the same change.
+When a feature is added or changed in `apps/api` or `apps/web`, update this file in the same change.
 
 Required updates for feature work:
 - Update at least one relevant row in `User Facing Test Cases` and/or `Platform Capabilities`.
 - Add at least one happy-path test and one edge/error-path test for changed behavior.
 - If a new API endpoint is added, add/update API route tests in `apps/api/src/**/route.test.ts` in the same PR.
 - If UI behavior changes, add/update web tests (unit and/or browser flow) for the user-facing behavior.
-- If iOS behavior changes, add/update iOS unit and UI tests (`apps/ios/Life-OS/Life-OSTests`, `apps/ios/Life-OS/Life-OSUITests`) for the user-facing behavior.
 
 Coverage Status Legend:
 - Automated: Covered by unit/integration/e2e tests in-repo.
@@ -31,10 +30,6 @@ Coverage Status Legend:
 | Auth | Signed-in redirect on auth pages | `/auth/sign-in`, `/auth/sign-up` | Authenticated users are redirected to `/` | Redirect occurs when session exists |
 | Auth | Session-gated app access | `/`, `/chat`, `/projects`, `/projects/[id]`, `/tasks`, `/tasks/archive`, `/inbox`, `/inbox/archive`, `/notes`, `/analytics`, `/account/*` | Unauthenticated users are redirected to `/auth/sign-in`; authenticated users load pages | Redirect and authenticated load success |
 | Auth | Account profile/security actions | `/account/profile`, `/account/security` | Users can update name, change password, and sign out; success/error feedback is shown | Profile update, password change, sign-out success/error |
-| iOS Auth | Login gate and auth flows | `apps/ios` auth gateway | App content stays locked until session exists; sign-in normalizes surrounding email whitespace; auth screens show success/error feedback across sign-in/sign-up/recover/reset | Unit + UI flow coverage for invalid + valid sign-in, whitespace-trimmed sign-in email, recover/reset validations, and gated app unlock |
-| iOS Account | Account settings | `apps/ios` account tab (Profile/Security) | Users can update profile name, change password, and sign out with clear success/error states | UI flow coverage for profile save, password mismatch + success path, and sign-out redirect to login |
-| iOS Shell | Protected mobile tabs | `apps/ios` capture/inbox/settings tabs | Authenticated users land on Capture by default, Capture shows native navigation chrome and the task-oriented placeholder copy, users can navigate Inbox and Settings, and unauthorized state returns to login | Authenticated tab render coverage plus unauthorized/session-expiry handling, including Capture title and placeholder visibility |
-| iOS Inbox | API-backed capture + inbox resilience | `apps/ios` capture/inbox views + `/inbox` | Saving from Capture via the top-bar Save action creates inbox items via API; API failures preserve unsynced local items with retry; Inbox refresh mirrors API results into local cache, while empty-state and retry copy stay literal and consistent with the shared app language system | Unit + UI coverage for create/list happy path, failed create local fallback, retry sync success, stale synced cache pruning during refresh, and unauthorized handling |
 | Shell | App chrome and navigation | shared layout with side/top nav | Navigation links work; mode toggle and user menu render expected state | Route navigation and auth menu behavior |
 | Home | Dashboard cards | `/` | Greeting/date and recent projects/upcoming tasks/library render | Module rendering for empty/non-empty states |
 | Projects | Project list and create flow | `/projects` | Users can open create dialog, validate input, and navigate to created project | Create success + validation/error path |
@@ -96,10 +91,6 @@ Coverage Status Legend:
 | Build Platform | Monorepo runtime prep orchestration | root `postinstall` / `prebuild` / `vercel:install:*` scripts and app Vercel `installCommand` | Install/build flows deterministically run Prisma client generation plus DB/AI workspace runtime builds before API/web build and type steps |
 | Build Platform | Dev startup runtime prep enforcement | root `dev:all` / `dev:web` / `dev:api` via `scripts/dev-with-logs.sh` | Dev startup runs `prepare:runtime` before launching services unless `LIFE_OS_SKIP_RUNTIME_PREP=1` is explicitly set | `Manual`: run default dev commands and skip-flag variant; `Planned`: script-level smoke assertions in CI |
 | AI Platform | Structured JSON schema compatibility fallback | `packages/ai/src/core/json.ts` (`callJson`) | JSON schema generation prefers `z.toJSONSchema` when available and falls back to `zod-to-json-schema` for compatibility | `Automated`: package unit coverage on schema generation path with fallback safety |
-| iOS Platform | Auth/API client contract handling | `apps/ios/Life-OS/Life-OS/ContentView.swift` (`APIClient`, `AuthService`, `AppState`) | iOS maps auth to canonical `/auth/*` and app-data calls to canonical no-prefix routes (`/home/*`, `/notes*`, `/inbox*`), trims surrounding whitespace from auth email inputs before request submission, keeps an in-memory fallback cookie jar from auth `Set-Cookie` headers for subsequent API requests, treats empty/null session payloads as signed-out, enforces login gate, and transitions to auth on `401` responses |
-| iOS Platform | Inbox API cache + sync contract | `apps/ios/Life-OS/Life-OS/{Views,State,Networking}` | iOS uses `/inbox` as source of truth, mirrors results into SwiftData cache, preserves unsynced local captures when create fails, supports retry sync, and clears stale synced cache entries during refresh |
-| iOS Platform | Mock API test harness | `apps/ios/Life-OS/Life-OS/Mocks/IOSMockAPI.swift` | Deterministic auth/home/library/account/inbox responses when `LIFE_OS_USE_MOCK_API=1` for repeatable unit/UI e2e tests, including one-shot failure/unauthorized scenarios |
-| iOS Platform | Sentry SDK startup instrumentation | `apps/ios/Life-OS/Life-OS/Life_OSApp.swift` | App bootstrap initializes Sentry SDK and startup capture hooks without blocking auth-gated navigation or shell rendering | `Manual`: startup smoke with Sentry enabled; `Planned`: add startup instrumentation assertions to iOS UI test harness |
 
 ## Core Regression Checklist
 Run this set before release and after large refactors:
@@ -116,8 +107,7 @@ Run this set before release and after large refactors:
 10. Chat: send prompt, stream response, regenerate, save assistant message as note.
 11. Analytics: dashboard loads with non-empty and empty usage states.
 12. Pricing page: `/pricing` renders grouped model catalog sections and shows expected pricing keys/labels and correct entry-level values for newly registered provider releases.
-13. iOS smoke: invalid + valid sign-in, account profile/password updates, and sign-out returns to auth gate.
-14. Dev runner smoke: `bun run dev:all|dev:web|dev:api` executes runtime prep by default; `LIFE_OS_SKIP_RUNTIME_PREP=1` bypasses prep.
+13. Dev runner smoke: `bun run dev:all|dev:web|dev:api` executes runtime prep by default; `LIFE_OS_SKIP_RUNTIME_PREP=1` bypasses prep.
 
 ## Current Test File Index
 - API route and module tests:
@@ -180,8 +170,3 @@ Run this set before release and after large refactors:
   - `apps/web/tests/e2e/shell-navigation.e2e.ts`
   - `apps/web/tests/e2e/tasks-archive.e2e.ts`
   - `apps/web/tests/e2e/tasks-kanban.e2e.ts`
-- iOS tests:
-  - `apps/ios/Life-OS/Life-OSTests/BrandCopyTests.swift`
-  - `apps/ios/Life-OS/Life-OSTests/Life_OSTests.swift`
-  - `apps/ios/Life-OS/Life-OSUITests/Life_OSUITests.swift`
-  - `apps/ios/Life-OS/Life-OSUITests/Life_OSUITestsLaunchTests.swift`

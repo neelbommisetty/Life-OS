@@ -1,7 +1,6 @@
 const allowedScopes = [
   "web",
   "api",
-  "ios",
   "db",
   "ai",
   "logger",

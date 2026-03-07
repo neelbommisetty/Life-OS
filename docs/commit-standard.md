@@ -36,7 +36,6 @@ feat(web,db): add project task quick-filter pipeline
 
 - `web`
 - `api`
-- `ios`
 - `db`
 - `ai`
 - `logger`
@@ -62,6 +61,6 @@ This configures:
 
 - Never bypass hooks with `git commit --no-verify`.
 - Branch-aware pre-commit behavior:
-  - `main`: run full workspace unit suite (`bun run test`) + web e2e; run iOS unit + UI tests when available.
-  - `develop`: run full workspace unit suite (`bun run test`); run iOS unit tests when available.
-  - any other branch: run lint + unit tests only for changed workspaces (for example, web-only changes run only web checks); run iOS unit tests when staged changes include `apps/ios/*`.
+  - `main`: run full workspace unit suite (`bun run test`) + web e2e.
+  - `develop`: run full workspace unit suite (`bun run test`).
+  - any other branch: run lint + unit tests only for changed workspaces (for example, web-only changes run only web checks).

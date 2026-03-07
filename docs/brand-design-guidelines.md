@@ -1,10 +1,9 @@
 # Life-OS Brand Design Guidelines (Visual + Interaction)
 
-Last updated: 2026-02-13
+Last updated: 2026-03-07
 
 This document defines how Life-OS should *look* and *move* across product surfaces:
 - Web (`apps/web`, Tailwind + shadcn/ui)
-- iOS (`apps/ios`, SwiftUI + iOS HIG)
 
 It complements (and does not replace) `docs/brand-guidelines.md`, which defines product positioning plus all verbal guidance: brand persona and app text language. This file stays visual and interaction-focused.
 
@@ -40,7 +39,7 @@ Life-OS is “paper + ink” minimalism: readable, high-contrast, neutral-first,
 
 ## 3) Color System
 
-### Roles (cross-platform)
+### Roles
 Use role-based colors, not “random palette picks”:
 - `Background` / `Surface` / `Elevated`
 - `TextPrimary` / `TextSecondary` / `TextTertiary`
@@ -55,7 +54,7 @@ Use role-based colors, not “random palette picks”:
 - Do not use it for: large backgrounds, decorative gradients, or charts-as-style.
 
 ### Recommended core palette (web reference)
-These values are the target “paper + ink” baseline. On iOS, prefer semantic system colors and use the same hue via `AccentColor`.
+These values are the target “paper + ink” baseline for the product.
 
 | Role | Light | Dark | Notes |
 | --- | --- | --- | --- |
@@ -105,12 +104,6 @@ These values are the target “paper + ink” baseline. On iOS, prefer semantic 
 - `3xl`: 30
 - `4xl`: 36
 
-### iOS
-- Use semantic text styles (`.headline`, `.body`, `.callout`, etc.).
-- Support Dynamic Type. Avoid fixed-size custom fonts in core flows.
-
----
-
 ## 5) Layout, Spacing, and Density
 
 ### Spacing
@@ -147,7 +140,7 @@ These values are the target “paper + ink” baseline. On iOS, prefer semantic 
 - Destructive: irreversible or harmful actions; require confirmation where appropriate.
 
 ### Inputs
-- Clear focus state (web: visible focus ring; iOS: native focus treatment).
+- Clear focus state (visible focus ring).
 - Placeholder text is hint-only; labels carry meaning.
 
 ### Lists and rows
@@ -166,12 +159,6 @@ These values are the target “paper + ink” baseline. On iOS, prefer semantic 
 - Use `lucide-react` icons.
 - Prefer outline icons; avoid mixing filled and outline styles in the same view.
 - Keep icon semantics literal (calendar, inbox, document) rather than abstract.
-
-### iOS
-- Use SF Symbols.
-- Prefer standard symbol names and system rendering; avoid custom glyph sets.
-
----
 
 ## 9) Motion
 
@@ -196,7 +183,7 @@ Life-OS uses three explicit assistant modes (see `docs/brand-guidelines.md`):
 
 ---
 
-## 11) Accessibility Baselines (Both)
+## 11) Accessibility Baselines
 
 - Contrast: primary actions and key text remain readable in light/dark.
 - States: clear disabled, loading, focused, and selected states.
@@ -211,4 +198,3 @@ This section is a pointer to where these guidelines will map when implemented (n
 
 - Web tokens: `apps/web/src/app/globals.css` (CSS variables + shadcn roles)
 - Web components: `apps/web/src/components/ui/*` and app-level components
-- iOS brand accent: `apps/ios/.../Assets.xcassets/AccentColor.colorset` (set to `#2563EB`) + `.tint(.accentColor)`
