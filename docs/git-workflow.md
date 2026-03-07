@@ -10,9 +10,9 @@
 ## PR and checks policy
 
 - Pre-commit hooks are the required local gate before push/PR:
-  - on `main`: run full workspace unit suite + web e2e (and iOS unit + UI when available)
-  - on `develop`: run full workspace unit suite (and iOS unit when available)
-  - on other branches: run only changed-workspace lint + unit tests (for example, web-only changes run only web checks), plus iOS unit tests for `apps/ios/*` changes
+  - on `main`: run full workspace unit suite + web e2e
+  - on `develop`: run full workspace unit suite
+  - on other branches: run only changed-workspace lint + unit tests (for example, web-only changes run only web checks)
 - Never bypass hooks with `git commit --no-verify`.
 
 ## Worktree-first flow

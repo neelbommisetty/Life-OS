@@ -2,7 +2,6 @@
 
 - This repository is a Bun workspace monorepo (`workspaces: ["apps/*", "packages/*"]`).
 - Active TypeScript workspaces are `apps/web`, `apps/api`, `packages/db`, `packages/ai`, and `packages/logger`.
-- `apps/ios` follows dedicated Swift/Xcode conventions in `apps/ios/AGENTS.md`; root-level git and hook policies still apply.
 - Put workspace-specific AGENTS policy updates in that workspace's `AGENTS.md` rather than this root file.
 - Prefer sharing code through `packages/*` workspace dependencies instead of cross-importing between apps.
 - Backend API contracts in `apps/api` are canonical no-prefix routes only (`/auth/*`, `/status`, `/inbox*`, etc.); do not add `/api/*` aliases in `apps/api`.
@@ -22,11 +21,10 @@
   - do not casually rename user-facing terms
   - when touching naming, check the canonical terminology guidance first
   - if a term feels unnatural in-product, treat it as a terminology decision, not a tone tweak
-  - keep terminology consistent across web, API, iOS, prompts, and docs
+  - keep terminology consistent across web, API, prompts, and docs
 - Copy changes must account for every affected user-facing surface:
   - web UI
   - API-generated assistant responses
-  - iOS UI
   - shared AI prompt construction
   - docs where user-facing phrasing is canonicalized
 - Follow this decision order for all user-facing text work:
@@ -73,5 +71,5 @@
 - Commit message format: `<type>(<scope>[,<scope>...]): <one-line description>`.
 - Commit bodies are required and must include execution details.
 - Allowed `type`: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`.
-- Allowed `scope`: `apps/web`, `apps/api`, `apps/ios`, `packages/db`, `packages/ai`, `repo`, `docs`, `tooling`, `monorepo`.
+- Allowed `scope`: `apps/web`, `apps/api`, `packages/db`, `packages/ai`, `repo`, `docs`, `tooling`, `monorepo`.
 - For PR sync, always rebase on `develop`; never merge `develop` into feature branches.
