@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type KeyboardEvent, useState, useTransition } from "react";
+import { type KeyboardEvent, useRef, useState, useTransition } from "react";
 import { Inbox, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,15 @@ import { createInboxItem } from "@/lib/inbox/actions";
 export function InboxCaptureCard() {
   const [contentDraft, setContentDraft] = useState("");
   const [isCreating, startCreateTransition] = useTransition();
+  const inFlightRef = useRef(false);
 
   const handleCreate = () => {
     const content = contentDraft.trim();
-    if (!content) {
+    if (!content || inFlightRef.current) {
       return;
     }
 
+    inFlightRef.current = true;
     startCreateTransition(async () => {
       try {
         await createInboxItem({ content });
@@ -27,6 +29,8 @@ export function InboxCaptureCard() {
         toast.success("Captured to Inbox.");
       } catch (error) {
         toastApiError(error, "Failed to capture inbox item");
+      } finally {
+        inFlightRef.current = false;
       }
     });
   };
