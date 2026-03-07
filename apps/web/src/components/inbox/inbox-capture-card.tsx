@@ -56,6 +56,7 @@ export function InboxCaptureCard() {
         <Textarea
           value={contentDraft}
           onChange={(event) => setContentDraft(event.target.value)}
+          aria-label="Capture content"
           placeholder="Capture a thought, reminder, or draft plan."
           rows={4}
         />
