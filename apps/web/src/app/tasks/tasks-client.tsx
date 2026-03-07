@@ -267,6 +267,11 @@ export function TasksClient({
     }
   };
 
+  const handleSheetOpenChange = (open: boolean) => {
+    if (!open && isSaving) return;
+    setSheetOpen(open);
+  };
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="h-full flex flex-col p-6 space-y-6">
@@ -330,8 +335,20 @@ export function TasksClient({
         </div>
 
         {/* Create/Edit Sheet */}
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetContent className="w-full overflow-hidden border-l border-white/10 bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.16),_transparent_34%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-0 backdrop-blur-xl sm:max-w-xl dark:bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.2),_transparent_34%),linear-gradient(180deg,_rgba(10,15,24,0.98),_rgba(7,10,18,0.98))]">
+        <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+          <SheetContent
+            showCloseButton={!isSaving}
+            onEscapeKeyDown={(event) => {
+              if (isSaving) event.preventDefault();
+            }}
+            onPointerDownOutside={(event) => {
+              if (isSaving) event.preventDefault();
+            }}
+            onInteractOutside={(event) => {
+              if (isSaving) event.preventDefault();
+            }}
+            className="w-full overflow-hidden border-l border-white/10 bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.16),_transparent_34%),linear-gradient(180deg,_rgba(255,255,255,0.98),_rgba(248,250,252,0.98))] p-0 backdrop-blur-xl sm:max-w-xl dark:bg-[radial-gradient(circle_at_top,_rgba(83,109,254,0.2),_transparent_34%),linear-gradient(180deg,_rgba(10,15,24,0.98),_rgba(7,10,18,0.98))]"
+          >
             <form
               onSubmit={handleSave}
               aria-busy={isSaving}
