@@ -4,8 +4,17 @@ import { signInViaApi } from "./helpers";
 test("inbox supports capture, detail review, process, and archive actions", async ({
   page,
 }) => {
-  await signInViaApi(page, "/inbox");
-  await page.goto("/inbox");
+  await signInViaApi(page, "/");
+  await page.goto("/");
+
+  const capturedText = "E2E inbox capture item";
+  await page
+    .getByPlaceholder("Capture a thought, reminder, or draft plan.")
+    .fill(capturedText);
+  await page.getByRole("button", { name: "Capture" }).click();
+  await page.getByRole("link", { name: "Open Inbox" }).click();
+
+  await expect(page.getByRole("button", { name: new RegExp(capturedText) })).toBeVisible();
 
   await page
     .getByRole("button", {
@@ -22,12 +31,4 @@ test("inbox supports capture, detail review, process, and archive actions", asyn
   await page.getByRole("button", { name: "Archive" }).click();
 
   await expect(page.getByRole("button", { name: /Review this inbox entry/ })).toHaveCount(0);
-
-  const capturedText = "E2E inbox capture item";
-  await page
-    .getByPlaceholder("Capture a thought, reminder, or draft plan.")
-    .fill(capturedText);
-  await page.getByRole("button", { name: "Capture" }).click();
-
-  await expect(page.getByText(capturedText)).toBeVisible();
 });

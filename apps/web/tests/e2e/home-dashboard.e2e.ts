@@ -7,6 +7,8 @@ test("home dashboard renders populated cards by default", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByText(/Good (morning|afternoon|evening),/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open Inbox" })).toBeVisible();
+  await expect(page.getByPlaceholder("Capture a thought, reminder, or draft plan.")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Recent Projects" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Upcoming Tasks" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Library" })).toBeVisible();

@@ -1,6 +1,7 @@
 import { RecentProjects } from "@/components/home/recent-projects";
 import { UpcomingTasks } from "@/components/home/upcoming-tasks";
 import { RecentNotes } from "@/components/home/recent-notes";
+import { InboxCaptureCard } from "@/components/inbox/inbox-capture-card";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { requireApiSessionUser } from "@/lib/api/session";
@@ -50,6 +51,8 @@ export default async function Page() {
             </span>
           </div>
         </header>
+
+        <InboxCaptureCard />
 
         <Suspense fallback={<RecentProjectsSkeleton />}>
           <RecentProjects />
