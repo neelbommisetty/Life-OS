@@ -12,6 +12,7 @@ test("inbox supports capture, detail review, process, and archive actions", asyn
     .getByPlaceholder("Capture a thought, reminder, or draft plan.")
     .fill(capturedText);
   await page.getByRole("button", { name: "Capture" }).click();
+  await expect(page.getByText("Captured to Inbox.")).toBeVisible();
   await page.getByRole("link", { name: "Open Inbox" }).click();
 
   await expect(page.getByRole("button", { name: capturedText, exact: false })).toBeVisible();
