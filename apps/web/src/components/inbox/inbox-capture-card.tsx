@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { type KeyboardEvent, useState, useTransition } from "react";
 import { Inbox, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,19 @@ export function InboxCaptureCard() {
     });
   };
 
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== "Enter" || (!event.ctrlKey && !event.metaKey)) {
+      return;
+    }
+
+    if (isCreating || !contentDraft.trim()) {
+      return;
+    }
+
+    event.preventDefault();
+    handleCreate();
+  };
+
   return (
     <Card className="overflow-hidden border-primary/15 bg-gradient-to-br from-primary/[0.06] via-background to-background">
       <CardHeader className="gap-3 pb-3">
@@ -56,6 +69,7 @@ export function InboxCaptureCard() {
         <Textarea
           value={contentDraft}
           onChange={(event) => setContentDraft(event.target.value)}
+          onKeyDown={handleKeyDown}
           aria-label="Capture content"
           placeholder="Capture a thought, reminder, or draft plan."
           rows={4}
