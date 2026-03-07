@@ -7,14 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { toastApiError } from "@/lib/api/error-toast";
 import { inboxTodoPreviewPayloadSchema } from "@/lib/inbox/validations";
 import {
   approveAllInboxOutputs,
   approveInboxOutput,
   archiveInboxItem,
-  createInboxItem,
   declineAllInboxOutputs,
   declineInboxOutput,
   listInboxItems,
@@ -99,11 +97,9 @@ export function InboxClient({
 }) {
   const [items, setItems] = useState<InboxItem[]>(initialItems);
   const [selectedId, setSelectedId] = useState<string | null>(initialItems[0]?.id ?? null);
-  const [contentDraft, setContentDraft] = useState("");
   const [search, setSearch] = useState("");
   const [outputs, setOutputs] = useState<InboxProposalOutput[]>([]);
   const [isLoadingOutputs, setIsLoadingOutputs] = useState(false);
-  const [isCreating, startCreateTransition] = useTransition();
   const [isMutating, startMutatingTransition] = useTransition();
 
   const loadItems = useCallback(async () => {
@@ -187,25 +183,6 @@ export function InboxClient({
     },
     [loadItems, loadOutputs],
   );
-
-  const handleCreate = () => {
-    if (!contentDraft.trim()) {
-      return;
-    }
-
-    startCreateTransition(async () => {
-      try {
-        const created = await createInboxItem({
-          content: contentDraft.trim(),
-        });
-        setContentDraft("");
-        setSelectedId(created.id);
-        await refreshAfterMutation(created.id);
-      } catch (error) {
-        toastApiError(error, "Failed to capture inbox item");
-      }
-    });
-  };
 
   const handleResolveAllAsNo = () => {
     if (!selectedItem) {
@@ -360,27 +337,6 @@ export function InboxClient({
     <div className="h-full overflow-hidden p-6">
       <div className="grid h-full gap-6 lg:grid-cols-[340px_1fr]">
         <div className="flex h-full flex-col gap-4 overflow-hidden">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-lg">Capture</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Textarea
-                value={contentDraft}
-                onChange={(event) => setContentDraft(event.target.value)}
-                placeholder="Capture a thought, reminder, or draft plan."
-                rows={4}
-              />
-              <Button
-                className="w-full"
-                onClick={handleCreate}
-                disabled={isCreating || !contentDraft.trim()}
-              >
-                {isCreating ? "Capturing..." : "Capture"}
-              </Button>
-            </CardContent>
-          </Card>
-
           <div className="flex items-center justify-between">
             <div className="relative w-full">
               <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -402,7 +358,7 @@ export function InboxClient({
             {items.length === 0 ? (
               <Card>
                 <CardContent className="py-8 text-center text-sm text-muted-foreground">
-                  No inbox items yet. Capture a thought to get started.
+                  No inbox items to review yet. Capture something from Home to get started.
                 </CardContent>
               </Card>
             ) : (
