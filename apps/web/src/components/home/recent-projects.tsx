@@ -52,7 +52,7 @@ export async function RecentProjects() {
             </Card>
           </Link>
         ))}
-        <Link href="/projects">
+        <Link href="/projects/new">
           <Card className="h-full border-dashed flex flex-col items-center justify-center p-6 hover:bg-secondary/5 transition-colors cursor-pointer text-muted-foreground hover:text-primary min-h-[180px]">
             <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center mb-3">
               <Plus className="h-5 w-5" />

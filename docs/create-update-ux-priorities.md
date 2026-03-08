@@ -66,7 +66,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/projects-client.tsx`
 
 ### 8. Project create uses a cramped modal pattern for a primary workflow
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P1
 - Issue: An `AlertDialog` is doing the work of a multi-field form flow, which feels cramped on desktop and awkward on mobile.

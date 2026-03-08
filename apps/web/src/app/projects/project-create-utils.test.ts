@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildCreateProjectPayload,
+  getProjectCreateHref,
   getProjectDetailHref,
 } from "./project-create-utils";
 
@@ -45,5 +46,9 @@ describe("project create utils", () => {
     expect(getProjectDetailHref("c000000000000000000000042")).toBe(
       "/projects/c000000000000000000000042",
     );
+  });
+
+  test("getProjectCreateHref returns the dedicated create route", () => {
+    expect(getProjectCreateHref()).toBe("/projects/new");
   });
 });
