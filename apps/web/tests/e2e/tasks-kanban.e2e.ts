@@ -28,7 +28,8 @@ test("tasks page supports create, edit, search, and delete", async ({ page }) =>
   await expect(taskDialog.getByText("Active now. Needs attention. Add a deadline if timing matters.")).toBeVisible();
   await taskDialog.getByRole("button", { name: "Create task" }).click();
 
-  await expect(page.getByText("E2E Task Alpha")).toBeVisible();
+  await expect(page.getByText("Task created.").first()).toBeVisible();
+  await expect(taskCard(page, "E2E Task Alpha")).toBeVisible();
 
   await taskCard(page, "E2E Task Alpha").click();
   const editDialog = page.getByRole("dialog");
@@ -37,10 +38,11 @@ test("tasks page supports create, edit, search, and delete", async ({ page }) =>
   await editDialog.getByLabel("Title").fill("E2E Task Alpha Updated");
   await editDialog.getByRole("button", { name: "Save changes" }).click();
 
-  await expect(page.getByText("E2E Task Alpha Updated")).toBeVisible();
+  await expect(page.getByText("Task updated.").first()).toBeVisible();
+  await expect(taskCard(page, "E2E Task Alpha Updated")).toBeVisible();
 
   await page.getByPlaceholder("Search tasks...").fill("Alpha Updated");
-  await expect(page.getByText("E2E Task Alpha Updated")).toBeVisible();
+  await expect(taskCard(page, "E2E Task Alpha Updated")).toBeVisible();
 
   await taskCard(page, "E2E Task Alpha Updated").getByRole("button").first().click();
   await page

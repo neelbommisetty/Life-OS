@@ -37,6 +37,7 @@ import {
   Flag,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   listTasks,
   createTask,
@@ -49,6 +50,7 @@ import { KanbanColumn } from "./kanban-column";
 import { getTaskEditorSummary } from "./task-editor-utils";
 import { type TaskWithProject } from "./task-card";
 import { selectDisplayedTasks } from "./tasks-utils";
+import { getTaskSaveSuccessMessage } from "./task-save-feedback";
 import { couldnt } from "@/lib/brand";
 import { cn } from "@/lib/utils";
 
@@ -204,6 +206,7 @@ export function TasksClient({
           });
           setSheetOpen(false);
           await loadTasks();
+          toast.success(getTaskSaveSuccessMessage(true));
         } catch (error) {
           toastApiError(error, couldnt("update the task"));
         }
@@ -221,6 +224,7 @@ export function TasksClient({
           });
           setSheetOpen(false);
           await loadTasks();
+          toast.success(getTaskSaveSuccessMessage(false));
         } catch (error) {
           toastApiError(error, couldnt("create the task"));
         }

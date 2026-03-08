@@ -94,7 +94,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/[id]/project-detail-client.tsx`
 
 ### 12. Task create and edit have weak post-save confirmation
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P1
 - Issue: The sheet closes after save, but there is no explicit success confirmation, and stale renders make the result hard to trust.
