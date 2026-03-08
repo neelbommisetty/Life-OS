@@ -20,6 +20,10 @@ import { toast } from "sonner";
 import { brand, couldnt } from "@/lib/brand";
 import { getInitialNoteEditorPreviewMode } from "./note-editor-mode";
 import { getNoteDisplayTitle } from "@/lib/notes/note-title";
+import {
+  getNoteSaveSuccessMessage,
+  type NoteSaveReason,
+} from "./note-save-feedback";
 
 type NoteEditorProps = {
   noteId: string | null;
@@ -76,7 +80,7 @@ export function NoteEditor({
     setIsDirty(true);
   };
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (reason: NoteSaveReason = "manual") => {
     const currentTitle = titleRef.current;
     const currentContent = contentRef.current;
 
@@ -93,7 +97,10 @@ export function NoteEditor({
         contentRef.current === currentContent
       ) {
         setIsDirty(false);
-        toast.success("Saved.");
+        const successMessage = getNoteSaveSuccessMessage(reason);
+        if (successMessage) {
+          toast.success(successMessage);
+        }
       }
     } catch (error) {
       toastApiError(error, couldnt("save the note"));
@@ -114,8 +121,9 @@ export function NoteEditor({
 
         void onSave(noteId || undefined, titleToSave, contentToSave)
           .then((didSave) => {
-            if (didSave) {
-              toast.success("Saved.");
+            const successMessage = getNoteSaveSuccessMessage("switch");
+            if (didSave && successMessage) {
+              toast.success(successMessage);
             }
           })
           .catch((error) => {
@@ -130,7 +138,7 @@ export function NoteEditor({
     if (!isDirty || (!noteId && !isCreatingNew) || isSaving) return;
 
     const timeoutId = setTimeout(() => {
-      handleSave();
+      void handleSave("autosave");
     }, 5000);
 
     return () => clearTimeout(timeoutId);
@@ -139,7 +147,7 @@ export function NoteEditor({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "s") {
       e.preventDefault();
-      handleSave();
+      void handleSave();
     }
   };
 
@@ -250,7 +258,7 @@ export function NoteEditor({
 
           <Button
             size="sm"
-            onClick={handleSave}
+            onClick={() => void handleSave()}
             disabled={isSaving || !isDirty}
             className={cn(
               "h-8 transition-all",
