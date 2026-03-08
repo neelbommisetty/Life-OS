@@ -4,10 +4,11 @@ import { useDrag } from "react-dnd";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Trash2, Calendar } from "lucide-react";
+import { Calendar, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProjectBadge } from "@/components/projects/project-badge";
 import type { Task, Project, Priority } from "@life-os/db";
+import { getTaskCardActionLabels } from "./task-card-copy";
 
 export type TaskWithProject = Task & { project: Project | null };
 
@@ -46,6 +47,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
       isDragging: !!monitor.isDragging(),
     }),
   }));
+  const actionLabels = getTaskCardActionLabels(task.title);
 
   return (
     <div
@@ -72,11 +74,27 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
             )}>
               {task.title}
             </h3>
-            <div className="flex gap-1 shrink-0">
+            <div className="flex items-center gap-1 shrink-0">
               <Button
+                type="button"
+                variant="secondary"
+                size="xs"
+                className="rounded-full"
+                aria-label={actionLabels.edit}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(task);
+                }}
+              >
+                <Pencil className="h-3 w-3" />
+                <span>Edit</span>
+              </Button>
+              <Button
+                type="button"
                 variant="ghost"
-                size="icon"
-                className="h-6 w-6 text-destructive hover:text-destructive"
+                size="icon-xs"
+                className="text-muted-foreground hover:text-destructive"
+                aria-label={actionLabels.delete}
                 onClick={(e) => {
                   e.stopPropagation();
                   onDelete(task);
