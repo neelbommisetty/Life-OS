@@ -4,11 +4,20 @@ import { useDrag } from "react-dnd";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar, Pencil, Trash2 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Calendar, ChevronDown, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProjectBadge } from "@/components/projects/project-badge";
-import type { Task, Project, Priority } from "@life-os/db";
+import type { Task, Project, Priority, TaskStatus } from "@life-os/db";
 import { getTaskCardActionLabels } from "./task-card-copy";
+import { getTaskMoveOptions } from "./task-move-options";
 
 export type TaskWithProject = Task & { project: Project | null };
 
@@ -16,6 +25,7 @@ interface TaskCardProps {
   task: TaskWithProject;
   onEdit: (task: TaskWithProject) => void;
   onDelete: (task: TaskWithProject) => void;
+  onMove: (taskId: string, newStatus: TaskStatus) => void;
 }
 
 const PRIORITY_COLORS: Record<Priority, string> = {
@@ -39,7 +49,7 @@ function formatDateDisplay(date: Date | null | undefined): string {
   });
 }
 
-export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
+export function TaskCard({ task, onEdit, onDelete, onMove }: TaskCardProps) {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: "TASK",
     item: { id: task.id, status: task.status },
@@ -48,6 +58,7 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
     }),
   }));
   const actionLabels = getTaskCardActionLabels(task.title);
+  const moveOptions = getTaskMoveOptions(task.status);
 
   return (
     <div
@@ -89,19 +100,52 @@ export function TaskCard({ task, onEdit, onDelete }: TaskCardProps) {
                 <Pencil className="h-3 w-3" />
                 <span>Edit</span>
               </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="text-muted-foreground hover:text-destructive"
-                aria-label={actionLabels.delete}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(task);
-                }}
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    className="rounded-full"
+                    aria-label={actionLabels.move}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                  >
+                    <span>Move</span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-48"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <DropdownMenuLabel>Move task</DropdownMenuLabel>
+                  {moveOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.status}
+                      onSelect={() => {
+                        onMove(task.id, option.status);
+                      }}
+                    >
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onSelect={() => {
+                      onDelete(task);
+                    }}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete task
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 

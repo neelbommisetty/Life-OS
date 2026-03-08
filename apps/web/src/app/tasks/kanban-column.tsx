@@ -12,6 +12,7 @@ interface KanbanColumnProps {
   onDropTask: (taskId: string, newStatus: TaskStatus) => void;
   onEditTask: (task: TaskWithProject) => void;
   onDeleteTask: (task: TaskWithProject) => void;
+  onMoveTask: (taskId: string, newStatus: TaskStatus) => void;
 }
 
 const COLUMN_COLORS: Record<TaskStatus, string> = {
@@ -28,6 +29,7 @@ export function KanbanColumn({
   onDropTask,
   onEditTask,
   onDeleteTask,
+  onMoveTask,
 }: KanbanColumnProps) {
   const [{ isOver }, drop] = useDrop(() => ({
     accept: "TASK",
@@ -66,6 +68,7 @@ export function KanbanColumn({
             task={task}
             onEdit={onEditTask}
             onDelete={onDeleteTask}
+            onMove={onMoveTask}
           />
         ))}
         {tasks.length === 0 && (

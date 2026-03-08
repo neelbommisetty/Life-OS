@@ -317,6 +317,7 @@ export function TasksClient({
             onDropTask={handleDropTask}
             onEditTask={handleEdit}
             onDeleteTask={handleDeleteClick}
+            onMoveTask={handleDropTask}
           />
           <KanbanColumn
             title="In Progress"
@@ -325,6 +326,7 @@ export function TasksClient({
             onDropTask={handleDropTask}
             onEditTask={handleEdit}
             onDeleteTask={handleDeleteClick}
+            onMoveTask={handleDropTask}
           />
           <KanbanColumn
             title="Done"
@@ -333,6 +335,7 @@ export function TasksClient({
             onDropTask={handleDropTask}
             onEditTask={handleEdit}
             onDeleteTask={handleDeleteClick}
+            onMoveTask={handleDropTask}
           />
         </div>
 
