@@ -138,3 +138,18 @@ test("tasks header stays stacked below the desktop breakpoint", async ({ page })
   expect(searchBox!.width).toBeGreaterThan(240);
   expect(createBox!.y).toBeGreaterThan(headingBox!.y);
 });
+
+test("task editor shows save guidance on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signInViaApi(page, "/tasks");
+  await page.goto("/tasks");
+
+  await page.getByRole("button", { name: "Create task" }).click();
+  const taskDialog = page.getByRole("dialog");
+
+  await expect(taskDialog.getByText("Add a title to save this task.")).toBeVisible();
+
+  await taskDialog.getByLabel("Title").fill("Mobile guidance task");
+
+  await expect(taskDialog.getByText("Ready to save.")).toBeVisible();
+});

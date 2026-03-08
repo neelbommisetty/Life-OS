@@ -187,7 +187,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/tasks-client.tsx`
 
 ### 25. Task editor save-readiness guidance disappears on mobile
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P2
 - Issue: The `Ready to save.` helper is hidden behind `sm:block`, so a useful confidence cue disappears on small screens.
