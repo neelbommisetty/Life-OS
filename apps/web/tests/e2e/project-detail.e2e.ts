@@ -17,7 +17,6 @@ test("project detail supports metadata edit flows and embedded tabs", async ({
   await editDialog.getByRole("button", { name: "Save Changes" }).click({ force: true });
   await expect(editDialog).toBeVisible();
 
-  await page.reload();
   await expect(page.getByRole("heading", { name: "Life Admin" })).toBeVisible();
 
   await page.getByRole("button", { name: "Edit" }).click();
@@ -27,7 +26,6 @@ test("project detail supports metadata edit flows and embedded tabs", async ({
 
   await expect(editDialog).toBeHidden();
 
-  await page.reload();
   await expect(page.getByRole("heading", { name: "Life Admin Updated" })).toBeVisible();
 
   await page.getByRole("tab", { name: "Assistant" }).click();

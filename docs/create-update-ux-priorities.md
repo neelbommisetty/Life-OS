@@ -29,7 +29,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/projects-client.tsx`
 
 ### 3. Project detail stays visually stale after update
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P0
 - Issue: The detail page snapshots `initialProject` into state once, then relies on `router.refresh()`, so saved edits can fail to appear until a full reload.
