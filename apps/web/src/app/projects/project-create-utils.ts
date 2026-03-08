@@ -19,3 +19,7 @@ export function buildCreateProjectPayload(
 export function getProjectDetailHref(projectId: string): string {
   return `/projects/${projectId}`;
 }
+
+export function getProjectCreateHref(): string {
+  return "/projects/new";
+}
