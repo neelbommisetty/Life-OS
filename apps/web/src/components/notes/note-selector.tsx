@@ -13,6 +13,7 @@ import { useState, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { brand } from "@/lib/brand";
+import { getNoteDisplayTitle } from "@/lib/notes/note-title";
 
 type NoteOption = {
   id: string;
@@ -152,7 +153,7 @@ function NotesList({
                       )}
                     >
                       <span className="truncate flex-1 text-left min-w-0">
-                        {note.title || "Untitled note"}
+                        {getNoteDisplayTitle(note.title)}
                       </span>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
@@ -216,7 +217,7 @@ function NotesList({
                                   #
                                 </span>
                                 <span className="truncate">
-                                  {note.title || "Untitled note"}
+                                  {getNoteDisplayTitle(note.title)}
                                 </span>
                               </span>
                               <div className="flex items-center gap-1.5 shrink-0">

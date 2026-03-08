@@ -19,6 +19,7 @@ import { toastApiError } from "@/lib/api/error-toast";
 import { toast } from "sonner";
 import { brand, couldnt } from "@/lib/brand";
 import { getInitialNoteEditorPreviewMode } from "./note-editor-mode";
+import { getNoteDisplayTitle } from "@/lib/notes/note-title";
 
 type NoteEditorProps = {
   noteId: string | null;
@@ -54,6 +55,7 @@ export function NoteEditor({
   );
   const [isDirty, setIsDirty] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const displayTitle = getNoteDisplayTitle(title);
 
   // Refs for auto-save comparison
   const titleRef = useRef(title);
@@ -191,24 +193,27 @@ export function NoteEditor({
               }}
               autoFocus
               placeholder="Title"
+              aria-label="Note title"
               className="text-lg font-semibold border-none shadow-none focus-visible:ring-0 px-0 h-auto bg-transparent placeholder:text-muted-foreground/50 w-[200px] sm:w-[300px] md:w-[400px]"
             />
           ) : (
-            <div className="flex items-center gap-2 group">
-              <span
-                className="text-lg font-semibold truncate max-w-[200px] sm:max-w-[300px] md:max-w-[400px] cursor-pointer hover:opacity-70"
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="text-lg font-semibold truncate max-w-[200px] sm:max-w-[300px] md:max-w-[400px] cursor-pointer text-left hover:opacity-70"
                 onClick={() => setIsEditingTitle(true)}
               >
-                  {title || "Untitled note"}
-              </span>
+                {displayTitle}
+              </button>
               <Button
                 variant="ghost"
-                size="icon"
-                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                size="sm"
+                className="h-8 px-2 text-muted-foreground"
                 onClick={() => setIsEditingTitle(true)}
-                title="Edit title"
+                aria-label="Rename note"
               >
                 <Pencil className="h-3.5 w-3.5" />
+                <span>Rename</span>
               </Button>
             </div>
           )}
