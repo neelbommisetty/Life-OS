@@ -113,3 +113,23 @@ test("tasks header stacks controls on narrow screens", async ({ page }) => {
   expect(archiveBox!.y).toBeGreaterThan(searchBox!.y);
   expect(createBox!.y).toBeGreaterThan(archiveBox!.y);
 });
+
+test("tasks header stays stacked below the desktop breakpoint", async ({ page }) => {
+  await page.setViewportSize({ width: 820, height: 1180 });
+  await signInViaApi(page, "/tasks");
+  await page.goto("/tasks");
+
+  const heading = page.getByRole("heading", { name: "Tasks" });
+  const create = page.getByRole("button", { name: "Create task" });
+
+  await expect(heading).toBeVisible();
+  await expect(create).toBeVisible();
+
+  const headingBox = await heading.boundingBox();
+  const createBox = await create.boundingBox();
+
+  expect(headingBox).not.toBeNull();
+  expect(createBox).not.toBeNull();
+
+  expect(createBox!.y).toBeGreaterThan(headingBox!.y);
+});
