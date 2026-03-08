@@ -101,7 +101,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/tasks-client.tsx`
 
 ### 13. Task editing is implicit while deletion is explicit
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P1
 - Issue: The whole card opens edit on click, but the only always-visible action button is delete, which overweights the destructive action.
