@@ -108,7 +108,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/task-card.tsx`
 
 ### 14. Task drag and drop is mouse-first and weak on touch
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P1
 - Issue: Cards use `touch-none` and `HTML5Backend`, so the core kanban interaction is a poor fit for mobile and tablet.

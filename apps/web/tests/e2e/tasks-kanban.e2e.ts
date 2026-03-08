@@ -48,16 +48,20 @@ test("tasks page supports create, edit, search, and delete", async ({ page }) =>
   await expect(page.getByText("Task updated.").first()).toBeVisible();
   await expect(taskCard(page, "E2E Task Alpha Updated")).toBeVisible();
 
+  await taskCard(page, "E2E Task Alpha Updated")
+    .getByRole("button", { name: "Move E2E Task Alpha Updated" })
+    .click();
+  await page.getByRole("menuitem", { name: "Move to Done" }).click();
+  await expect(column(page, "Done").getByText("E2E Task Alpha Updated")).toBeVisible();
+
   await page.getByPlaceholder("Search tasks...").fill("Alpha Updated");
   await expect(taskCard(page, "E2E Task Alpha Updated")).toBeVisible();
 
   await taskCard(page, "E2E Task Alpha Updated")
-    .getByRole("button", { name: "Delete E2E Task Alpha Updated" })
+    .getByRole("button", { name: "Move E2E Task Alpha Updated" })
     .click();
-  await page
-    .getByRole("alertdialog")
-    .getByRole("button", { name: "Delete" })
-    .click();
+  await page.getByRole("menuitem", { name: "Delete task" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete" }).click();
   await page.reload();
 
   await expect(page.getByText("E2E Task Alpha Updated")).toHaveCount(0);
