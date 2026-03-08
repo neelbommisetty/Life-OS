@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -36,13 +36,18 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { updateProject, type UpdateProjectInput } from "@/lib/projects";
+import { updateProject } from "@/lib/projects";
 import { toastApiError } from "@/lib/api/error-toast";
 import type { Project, ChatThread, Task, Note } from "@life-os/db";
 import { TasksClient } from "@/app/tasks/tasks-client";
 import { NotesClient } from "@/app/notes/notes-client";
 import { ChatClient } from "@/app/chat/chat-client";
 import { brand, couldnt } from "@/lib/brand";
+import {
+  buildProjectUpdatePayload,
+  getProjectEditFormData,
+  type ProjectEditFormData,
+} from "../project-edit-utils";
 
 interface ProjectDetailClientProps {
   project: Project & {
@@ -56,23 +61,27 @@ export function ProjectDetailClient({
   project: initialProject,
 }: ProjectDetailClientProps) {
   const router = useRouter();
-  const [project] = useState(initialProject);
+  const project = initialProject;
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [editFormData, setEditFormData] = useState<
-    Omit<UpdateProjectInput, "id">
-  >({
-    name: project.name,
-    description: project.description || "",
-    aiInstructions: project.aiInstructions || "",
-  });
+  const [editFormData, setEditFormData] = useState<ProjectEditFormData>(() =>
+    getProjectEditFormData(initialProject),
+  );
+
+  useEffect(() => {
+    setEditFormData(getProjectEditFormData(initialProject));
+  }, [initialProject]);
 
   const handleEdit = async () => {
+    const payload = buildProjectUpdatePayload(editFormData);
+
+    if (!payload || isEditing) return;
+
     setIsEditing(true);
     try {
       await updateProject({
         id: project.id,
-        ...editFormData,
+        ...payload,
       });
       setIsEditOpen(false);
       router.refresh();
@@ -175,7 +184,7 @@ export function ProjectDetailClient({
                   </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleEdit}
-                    disabled={isEditing || !editFormData.name?.trim()}
+                    disabled={isEditing || !buildProjectUpdatePayload(editFormData)}
                   >
                     {isEditing ? "Saving..." : "Save Changes"}
                   </AlertDialogAction>
