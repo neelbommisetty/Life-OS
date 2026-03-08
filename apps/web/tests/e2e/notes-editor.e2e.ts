@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signInViaApi } from "./helpers";
+import { setScenarioCookie, signInViaApi } from "./helpers";
 
 test("notes editor supports preview toggle, keyboard save, autosave debounce, and save on note switch", async ({
   page,
@@ -11,7 +11,7 @@ test("notes editor supports preview toggle, keyboard save, autosave debounce, an
   await expect(page).toHaveURL(/\/notes\??$/);
 
   const togglePreview = page.getByRole("button", { name: "Toggle preview" });
-  const editor = page.getByPlaceholder("Write in Markdown...");
+  const editor = page.locator('textarea[placeholder="Write in Markdown..."]:visible').first();
   if ((await editor.count()) === 0) {
     await togglePreview.click();
   }
@@ -37,7 +37,7 @@ test("notes editor supports preview toggle, keyboard save, autosave debounce, an
   }
   await editor.fill(autosaveValue);
   await page.waitForTimeout(5600);
-  await expect(savedToast).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
 
   const unmountSaveValue = `Unmount save sentinel ${Date.now()}`;
   if ((await editor.count()) === 0) {
@@ -46,11 +46,36 @@ test("notes editor supports preview toggle, keyboard save, autosave debounce, an
   await editor.fill(unmountSaveValue);
 
   await page.getByText("Second note", { exact: true }).first().click();
-  await page.getByText("First note", { exact: true }).first().click();
+  await page.getByText(shortcutTitle, { exact: true }).first().click();
 
-  const editorAfterSwitch = page.getByPlaceholder("Write in Markdown...");
+  const editorAfterSwitch = page.locator('textarea[placeholder="Write in Markdown..."]:visible').first();
   if ((await editorAfterSwitch.count()) === 0) {
     await togglePreview.click();
   }
-  await expect(page.getByPlaceholder("Write in Markdown...")).toHaveValue(unmountSaveValue);
+  await expect(editorAfterSwitch).toHaveValue(unmountSaveValue);
+});
+
+test("notes capture opens an editable draft even when no notes exist", async ({
+  page,
+}) => {
+  await setScenarioCookie(page, "notes-empty");
+  await signInViaApi(page, "/notes");
+  await page.goto("/notes");
+
+  await page.getByRole("button", { name: "Capture note" }).click();
+
+  const togglePreview = page.getByRole("button", { name: "Toggle preview" });
+  const editor = page.locator('textarea[placeholder="Write in Markdown..."]:visible').first();
+  if ((await editor.count()) === 0) {
+    await togglePreview.click();
+  }
+
+  await expect(editor).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
+
+  const draftTitle = `Empty state note ${Date.now()}`;
+  await editor.fill(`${draftTitle}\nBody copy`);
+  await page.keyboard.press(process.platform === "darwin" ? "Meta+s" : "Control+s");
+
+  await expect(page.getByText(draftTitle, { exact: true }).first()).toBeVisible();
 });

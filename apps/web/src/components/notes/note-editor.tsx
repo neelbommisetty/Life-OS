@@ -48,7 +48,9 @@ export function NoteEditor({
 }: NoteEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
-  const [previewMode, setPreviewMode] = useState(true);
+  const [previewMode, setPreviewMode] = useState(
+    () => !isCreatingNew && initialContent.trim().length > 0,
+  );
   const [isDirty, setIsDirty] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
 
@@ -60,27 +62,6 @@ export function NoteEditor({
     titleRef.current = title;
     contentRef.current = content;
   }, [title, content]);
-
-  // Reset state when noteId changes - use key prop pattern to avoid setState in effect
-  const prevNoteIdRef = useRef(noteId);
-  if (prevNoteIdRef.current !== noteId) {
-    prevNoteIdRef.current = noteId;
-    // Reset will happen naturally on next render due to useState initialization
-  }
-
-  // Sync with initialTitle/initialContent when they change externally
-  useEffect(() => {
-    if (title !== initialTitle || content !== initialContent) {
-      // Only sync if we're not currently editing (not dirty)
-      if (!isDirty) {
-        setTitle(initialTitle);
-        setContent(initialContent);
-        setPreviewMode(initialContent.trim().length > 0);
-        setIsEditingTitle(false);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteId]);
 
   const handleTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setTitle(e.target.value);
