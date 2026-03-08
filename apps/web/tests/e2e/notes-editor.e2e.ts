@@ -69,7 +69,11 @@ test("notes capture opens an editable draft even when no notes exist", async ({
   await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
 
   const draftTitle = `Empty state note ${Date.now()}`;
-  await editor.fill(`${draftTitle}\nBody copy`);
+  await page.getByRole("button", { name: "Rename note" }).click();
+  const titleInput = page.getByLabel("Note title");
+  await titleInput.fill(draftTitle);
+  await titleInput.press("Enter");
+  await editor.fill("Body copy");
   await page.keyboard.press(process.platform === "darwin" ? "Meta+s" : "Control+s");
 
   await expect(page.getByText(draftTitle, { exact: true }).first()).toBeVisible();

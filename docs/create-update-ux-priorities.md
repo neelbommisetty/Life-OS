@@ -129,7 +129,7 @@ Status meaning:
 - References: `apps/web/src/components/notes/note-editor.tsx`
 
 ### 17. Note title editing is hidden on touch-first devices
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P1
 - Issue: The pencil affordance is hover-revealed and the title itself has weak edit discoverability.
