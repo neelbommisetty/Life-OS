@@ -20,10 +20,7 @@ describe("buildNoteSavePayload", () => {
     });
   });
 
-  test("falls back to the shared note-title fallback when content is empty", () => {
-    expect(buildNoteSavePayload("", "\n\n")).toEqual({
-      title: "Saved from chat",
-      content: "\n\n",
-    });
+  test("does not save a blank untitled draft", () => {
+    expect(buildNoteSavePayload("", "\n\n")).toBeNull();
   });
 });

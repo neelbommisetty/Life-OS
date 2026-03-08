@@ -5,7 +5,9 @@ export function buildNoteSavePayload(title: string, content: string): {
   content: string;
 } | null {
   const normalizedContent = content;
-  const normalizedTitle = title.trim() || deriveNoteTitle(normalizedContent);
+  const trimmedTitle = title.trim();
+  const hasContent = normalizedContent.trim().length > 0;
+  const normalizedTitle = trimmedTitle || (hasContent ? deriveNoteTitle(normalizedContent) : "");
 
   if (!normalizedTitle.trim()) {
     return null;
