@@ -180,7 +180,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/tasks-client.tsx`
 
 ### 24. Task search uses a fixed width that limits layout flexibility
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P2
 - Issue: The search field uses `w-[200px]`, which reduces responsiveness in tighter layouts.

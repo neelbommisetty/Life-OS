@@ -286,13 +286,13 @@ export function TasksClient({
             </p>
           </div>
           <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:flex-nowrap">
-            <div className="relative">
+            <div className="relative w-full sm:min-w-0 sm:flex-1 lg:w-[240px] lg:flex-none">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search tasks..."
-                className="pl-9 w-[200px]"
+                className="w-full pl-9"
               />
             </div>
             <Button className="w-full sm:w-auto" variant="outline" asChild>

@@ -110,6 +110,7 @@ test("tasks header stacks controls on narrow screens", async ({ page }) => {
   expect(archiveBox).not.toBeNull();
   expect(createBox).not.toBeNull();
 
+  expect(searchBox!.width).toBeGreaterThan(280);
   expect(archiveBox!.y).toBeGreaterThan(searchBox!.y);
   expect(createBox!.y).toBeGreaterThan(archiveBox!.y);
 });
@@ -131,5 +132,9 @@ test("tasks header stays stacked below the desktop breakpoint", async ({ page })
   expect(headingBox).not.toBeNull();
   expect(createBox).not.toBeNull();
 
+  const searchBox = await page.getByPlaceholder("Search tasks...").boundingBox();
+
+  expect(searchBox).not.toBeNull();
+  expect(searchBox!.width).toBeGreaterThan(240);
   expect(createBox!.y).toBeGreaterThan(headingBox!.y);
 });
