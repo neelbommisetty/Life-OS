@@ -278,14 +278,14 @@ export function TasksClient({
     <DndProvider backend={HTML5Backend}>
       <div className="h-full flex flex-col p-6 space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between shrink-0">
+        <div className="flex shrink-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
             <p className="text-muted-foreground mt-1">
               Keep tasks moving, with clear next steps.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center md:w-auto md:flex-nowrap">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -295,13 +295,13 @@ export function TasksClient({
                 className="pl-9 w-[200px]"
               />
             </div>
-            <Button variant="outline" asChild>
+            <Button className="w-full sm:w-auto" variant="outline" asChild>
               <Link href="/tasks/archive">
                 <Archive className="h-4 w-4 mr-2" />
                 Archive
               </Link>
             </Button>
-            <Button onClick={handleCreate}>
+            <Button className="w-full sm:w-auto" onClick={handleCreate}>
               <Plus className="h-4 w-4 mr-2" />
               Create task
             </Button>

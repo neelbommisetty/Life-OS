@@ -88,3 +88,28 @@ test("tasks drag/drop moves cards and rolls back on update failure", async ({ pa
     })
     .toBeGreaterThan(0);
 });
+
+test("tasks header stacks controls on narrow screens", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signInViaApi(page, "/tasks");
+  await page.goto("/tasks");
+
+  const search = page.getByPlaceholder("Search tasks...");
+  const archive = page.getByRole("link", { name: "Archive" });
+  const create = page.getByRole("button", { name: "Create task" });
+
+  await expect(search).toBeVisible();
+  await expect(archive).toBeVisible();
+  await expect(create).toBeVisible();
+
+  const searchBox = await search.boundingBox();
+  const archiveBox = await archive.boundingBox();
+  const createBox = await create.boundingBox();
+
+  expect(searchBox).not.toBeNull();
+  expect(archiveBox).not.toBeNull();
+  expect(createBox).not.toBeNull();
+
+  expect(archiveBox!.y).toBeGreaterThan(searchBox!.y);
+  expect(createBox!.y).toBeGreaterThan(archiveBox!.y);
+});
