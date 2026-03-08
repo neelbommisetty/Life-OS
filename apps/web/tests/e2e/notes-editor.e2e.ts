@@ -80,3 +80,25 @@ test("notes capture opens an editable draft even when no notes exist", async ({
 
   await expect(page.getByText(draftTitle, { exact: true }).first()).toBeVisible();
 });
+
+test("notes autosave and note-switch saves stay quiet", async ({ page }) => {
+  await signInViaApi(page, "/notes");
+  await page.goto("/notes");
+
+  const editor = page
+    .locator('textarea[placeholder="Write in Markdown..."]:visible')
+    .first();
+  const savedToast = page.getByText("Saved.").first();
+
+  const autosaveValue = `Quiet autosave sentinel ${Date.now()}`;
+  await editor.fill(autosaveValue);
+  await page.waitForTimeout(5600);
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  await expect(savedToast).toHaveCount(0);
+
+  const switchSaveValue = `Quiet switch sentinel ${Date.now()}`;
+  await editor.fill(switchSaveValue);
+  await page.getByText("Second note", { exact: true }).first().click();
+  await expect(savedToast).toHaveCount(0);
+  await expect(page.getByText("Second note body sentinel").first()).toBeVisible();
+});

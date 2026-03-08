@@ -201,7 +201,7 @@ Status meaning:
 - References: `apps/web/src/app/notes/notes-client.tsx`
 
 ### 27. Notes save UX is noisy because multiple save paths emit the same toast
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P2
 - Issue: Manual save, autosave, and save-on-switch can all emit `Saved.`, which can feel repetitive instead of reassuring.
