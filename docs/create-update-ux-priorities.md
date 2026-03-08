@@ -136,7 +136,7 @@ Status meaning:
 - References: `apps/web/src/components/notes/note-editor.tsx`
 
 ### 18. The immediate `Untitled note` default adds scanning noise
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P1
 - Issue: Saving notes under the default title makes the notes list harder to scan after accidental or rapid creation.
