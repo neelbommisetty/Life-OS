@@ -124,8 +124,6 @@ export function TasksClient({
   const isSaving = isCreating || isUpdating;
 
   const displayedTasks = selectDisplayedTasks({
-    search,
-    initialTasks,
     fetchedTasks: tasks,
   });
 

@@ -36,14 +36,14 @@ Status meaning:
 - References: `apps/web/src/app/projects/[id]/project-detail-client.tsx`
 
 ### 4. Task create and update can save but still render stale board data
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P0
 - Issue: `selectDisplayedTasks()` prefers `initialTasks` whenever present, so `loadTasks()` can fetch fresh data that the board never renders.
 - References: `apps/web/src/app/tasks/tasks-utils.ts`, `apps/web/src/app/tasks/tasks-client.tsx`
 
 ### 5. Existing end-to-end coverage depends on reloads to verify create and update success
-- Status: `not started`
+- Status: `started`
 - Surface: Projects, Tasks
 - Priority: P0
 - Issue: Project create, project update, task create, and task update tests all reload the page before asserting success, which signals real UX fragility in the immediate post-save state.
