@@ -208,7 +208,7 @@ Status meaning:
 - References: `apps/web/src/components/notes/note-editor.tsx`
 
 ### 28. The notes create flow contradicts its own stated state model
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P2
 - Issue: The component comments describe a draft-like `creating new` state, but the actual flow immediately persists a real note.
