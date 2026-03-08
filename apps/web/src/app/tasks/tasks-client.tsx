@@ -590,8 +590,8 @@ export function TasksClient({
                   </div>
                 </section>
                 </div>
-                <SheetFooter className="border-t border-border/60 bg-background/80 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="hidden text-xs text-muted-foreground sm:block">
+                <SheetFooter className="gap-3 border-t border-border/60 bg-background/80 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">
                     {draft.title.trim()
                       ? "Ready to save."
                       : "Add a title to save this task."}
