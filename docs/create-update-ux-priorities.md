@@ -50,7 +50,7 @@ Status meaning:
 - References: `apps/web/tests/e2e/projects-flows.e2e.ts`, `apps/web/tests/e2e/project-detail.e2e.ts`, `apps/web/tests/e2e/tasks-kanban.e2e.ts`
 
 ### 6. Note creation persists a blank note on the first click
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P0
 - Issue: `Capture note` immediately creates a persisted `Untitled note` instead of opening a draft-first flow, so accidental taps create clutter.

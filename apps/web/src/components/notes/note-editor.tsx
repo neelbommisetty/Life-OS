@@ -32,6 +32,7 @@ type NoteEditorProps = {
   isSaving: boolean;
   isDeleting: boolean;
   onMenuToggle?: () => void;
+  isCreatingNew?: boolean;
 };
 
 export function NoteEditor({
@@ -43,6 +44,7 @@ export function NoteEditor({
   isSaving,
   isDeleting,
   onMenuToggle,
+  isCreatingNew = false,
 }: NoteEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
@@ -94,8 +96,6 @@ export function NoteEditor({
     const currentTitle = titleRef.current;
     const currentContent = contentRef.current;
 
-    if (!currentTitle.trim()) return;
-
     try {
       const didSave = await onSave(noteId || undefined, currentTitle, currentContent);
 
@@ -124,11 +124,11 @@ export function NoteEditor({
   // Save on unmount / id change
   useEffect(() => {
     return () => {
-      if (isDirtyRef.current && noteId) {
+      if (isDirtyRef.current && (noteId || isCreatingNew)) {
         const titleToSave = titleRef.current;
         const contentToSave = contentRef.current;
 
-        void onSave(noteId, titleToSave, contentToSave)
+        void onSave(noteId || undefined, titleToSave, contentToSave)
           .then((didSave) => {
             if (didSave) {
               toast.success("Saved.");
@@ -139,18 +139,18 @@ export function NoteEditor({
           });
       }
     };
-  }, [noteId, onSave]);
+  }, [isCreatingNew, noteId, onSave]);
 
   // Auto-save with 5s debounce
   useEffect(() => {
-    if (!isDirty || !noteId || isSaving) return;
+    if (!isDirty || (!noteId && !isCreatingNew) || isSaving) return;
 
     const timeoutId = setTimeout(() => {
       handleSave();
     }, 5000);
 
     return () => clearTimeout(timeoutId);
-  }, [title, content, isDirty, noteId, isSaving, handleSave]);
+  }, [title, content, isDirty, noteId, isCreatingNew, isSaving, handleSave]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -159,7 +159,7 @@ export function NoteEditor({
     }
   };
 
-  if (!noteId && !title && !content) {
+  if (!noteId && !isCreatingNew && !title && !content) {
     return (
       <div className="flex h-full flex-col items-center justify-center text-muted-foreground p-8 text-center">
         <div className="max-w-md space-y-4">
@@ -217,7 +217,7 @@ export function NoteEditor({
                 className="text-lg font-semibold truncate max-w-[200px] sm:max-w-[300px] md:max-w-[400px] cursor-pointer hover:opacity-70"
                 onClick={() => setIsEditingTitle(true)}
               >
-                {title || "Untitled note"}
+                  {title || "Untitled note"}
               </span>
               <Button
                 variant="ghost"
@@ -264,7 +264,7 @@ export function NoteEditor({
           <Button
             size="sm"
             onClick={handleSave}
-            disabled={isSaving || !title.trim() || (!isDirty && !!noteId)}
+            disabled={isSaving || !isDirty}
             className={cn(
               "h-8 transition-all",
               isDirty ? "opacity-100" : "opacity-70",

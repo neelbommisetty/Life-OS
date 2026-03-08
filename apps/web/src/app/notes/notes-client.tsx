@@ -25,6 +25,7 @@ import type { Note, Project } from "@life-os/db";
 import { NoteSelector, NoteEditor } from "@/components/notes";
 import { FileText } from "lucide-react";
 import { brand, couldnt } from "@/lib/brand";
+import { buildNoteSavePayload } from "./note-create-utils";
 
 type NoteWithProject = Note & { project: Project | null };
 
@@ -98,21 +99,9 @@ export function NotesClient({
   };
 
   const handleCreateStart = () => {
-    startTransition(async () => {
-      try {
-        const created = await createNote({
-          title: "Untitled note",
-          content: "",
-          projectId,
-        });
-        const newNote: NoteWithProject = { ...created, project: null };
-        setNotes((prev) => [newNote, ...prev]);
-        setNoteIdInUrl(created.id);
-        setIsMobileDrawerOpen(false);
-      } catch (error) {
-        toastApiError(error, couldnt("create the note"));
-      }
-    });
+    setIsCreatingNew(true);
+    setNoteIdInUrl(null);
+    setIsMobileDrawerOpen(false);
   };
 
   const handleSave = useCallback(
@@ -121,13 +110,20 @@ export function NotesClient({
         startTransition(() => {
           void (async () => {
             try {
+              const payload = buildNoteSavePayload(title, content);
+
+              if (!payload) {
+                resolve(false);
+                return;
+              }
+
               if (id) {
-                const updated = await updateNote({ id, title, content });
+                const updated = await updateNote({ id, ...payload });
                 setNotes((prev) =>
                   prev.map((n) => (n.id === id ? { ...n, ...updated } : n)),
                 );
               } else {
-                const created = await createNote({ title, content, projectId });
+                const created = await createNote({ ...payload, projectId });
                 const newNote: NoteWithProject = { ...created, project: null };
                 setNotes((prev) => [newNote, ...prev]);
                 setNoteIdInUrl(created.id);
@@ -204,6 +200,7 @@ export function NotesClient({
               onDelete={handleDeleteClick}
               isSaving={isPending}
               isDeleting={isPending}
+              isCreatingNew={effectiveIsCreatingNew}
             />
           ) : (
             <div className="flex h-full flex-col items-center justify-center text-muted-foreground p-8 text-center">
@@ -238,6 +235,7 @@ export function NotesClient({
             isSaving={isPending}
             isDeleting={isPending}
             onMenuToggle={() => setIsMobileDrawerOpen(true)}
+            isCreatingNew={effectiveIsCreatingNew}
           />
         ) : (
           <div className="flex-1 flex flex-col">
