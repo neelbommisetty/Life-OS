@@ -173,7 +173,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/[id]/project-detail-client.tsx`
 
 ### 23. Task header controls crowd on smaller widths
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P2
 - Issue: Search, archive, and create all sit in one action row, which compresses quickly.
