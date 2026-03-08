@@ -194,7 +194,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/tasks-client.tsx`
 
 ### 26. Notes have no selector-level delete flow
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P2
 - Issue: The selector API suggests note deletion support, but deletion is only available inside the editor.
