@@ -5,13 +5,6 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutGrid,
-  Home,
-  FolderKanban,
-  CheckSquare,
-  FileText,
-  Inbox,
-  MessageSquare,
-  BarChart3,
 } from "lucide-react";
 import { AuthUserMenu, type SessionUser } from "./auth-user-menu";
 import {
@@ -20,17 +13,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { brand } from "@/lib/brand";
-
-const navItems = [
-  { icon: Home, label: "Home", href: "/" },
-  { icon: MessageSquare, label: brand.terms.assistant, href: "/chat" },
-  { icon: FolderKanban, label: "Projects", href: "/projects" },
-  { icon: CheckSquare, label: "Tasks", href: "/tasks" },
-  { icon: FileText, label: brand.terms.library, href: "/notes" },
-  { icon: Inbox, label: "Inbox", href: "/inbox" },
-  { icon: BarChart3, label: "Analytics", href: "/analytics" },
-];
+import { navigationItems } from "./navigation-items";
 
 type SideNavProps = {
   sessionUser: SessionUser | null;
@@ -41,7 +24,7 @@ export function SideNav({ sessionUser }: SideNavProps) {
 
   return (
     <TooltipProvider delayDuration={0}>
-      <aside className="fixed left-0 top-0 z-40 flex h-screen w-[64px] flex-col items-center bg-background border-r border-border/50 py-3 text-muted-foreground shadow-sm">
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-[64px] flex-col items-center border-r border-border/50 bg-background py-3 text-muted-foreground shadow-sm md:flex">
         {/* Top App Icon */}
         <div className="mb-8 flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-md shadow-primary/20 hover:scale-105 transition-transform cursor-pointer">
           <LayoutGrid className="size-5" />
@@ -49,7 +32,7 @@ export function SideNav({ sessionUser }: SideNavProps) {
 
         {/* Navigation Items */}
         <nav className="flex flex-1 flex-col items-center gap-4">
-          {navItems.map((item) => {
+          {navigationItems.map((item) => {
             const isActive = pathname === item.href || (item.href !== "/" && pathname?.startsWith(item.href));
             return (
               <Tooltip key={item.label}>
