@@ -22,4 +22,8 @@ test("projects create flow handles error and navigates on success", async ({ pag
 
   await expect(page).toHaveURL(/\/projects\/c[a-z0-9]+$/, { timeout: 10000 });
   await expect(page.getByRole("heading", { name: "E2E Project Created" })).toBeVisible();
+
+  await page.getByLabel("breadcrumb").getByRole("link", { name: "Projects" }).click();
+  await expect(page).toHaveURL(/\/projects$/);
+  await expect(page.getByText("E2E Project Created", { exact: true }).first()).toBeVisible();
 });

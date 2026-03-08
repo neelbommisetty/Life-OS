@@ -22,7 +22,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/projects-client.tsx`
 
 ### 2. Project list state goes stale immediately after create
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P0
 - Issue: The page snapshots `initialProjects` once and never reconciles local list state after creation, so the grid can drift from reality.
