@@ -159,7 +159,7 @@ Status meaning:
 - References: `apps/web/src/app/layout.tsx`, `apps/web/src/components/navigation/side-nav.tsx`
 
 ### 21. Project list header does not stack gracefully on small screens
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P2
 - Issue: The page title, helper copy, and create CTA compete for space on mobile widths.

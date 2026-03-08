@@ -14,14 +14,14 @@ interface ProjectsClientProps {
 export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
   return (
     <div className="flex h-full w-full flex-col p-6">
-      <div className="flex shrink-0 items-center justify-between mb-8">
-        <div>
+      <div className="mb-8 flex shrink-0 flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-1">
           <h1 className="text-3xl font-bold">Projects</h1>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground">
             Group assistant work, tasks, and notes.
           </p>
         </div>
-        <Button asChild>
+        <Button asChild className="w-full sm:w-auto">
           <Link href={getProjectCreateHref()}>
             <PlusIcon className="h-4 w-4 mr-2" />
             Create project
