@@ -204,22 +204,25 @@ export function ProjectDetailClient({
           onValueChange={setActiveTab}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <TabsList variant="line" className="shrink-0">
-            <TabsTrigger value="overview" className="gap-2">
+          <TabsList
+            variant="line"
+            className="shrink-0 w-full justify-between sm:w-fit sm:justify-center"
+          >
+            <TabsTrigger value="overview" className="gap-0 px-1.5 sm:gap-2 sm:px-2">
               <Info className="h-4 w-4" />
-              Overview
+              <span className="sr-only sm:not-sr-only">Overview</span>
             </TabsTrigger>
-            <TabsTrigger value="chat" className="gap-2">
+            <TabsTrigger value="chat" className="gap-0 px-1.5 sm:gap-2 sm:px-2">
               <MessageSquareIcon className="h-4 w-4" />
-              {brand.terms.assistant}
+              <span className="sr-only sm:not-sr-only">{brand.terms.assistant}</span>
             </TabsTrigger>
-            <TabsTrigger value="tasks" className="gap-2">
+            <TabsTrigger value="tasks" className="gap-0 px-1.5 sm:gap-2 sm:px-2">
               <CheckSquareIcon className="h-4 w-4" />
-              Tasks
+              <span className="sr-only sm:not-sr-only">Tasks</span>
             </TabsTrigger>
-            <TabsTrigger value="notes" className="gap-2">
+            <TabsTrigger value="notes" className="gap-0 px-1.5 sm:gap-2 sm:px-2">
               <FileTextIcon className="h-4 w-4" />
-              {brand.terms.library}
+              <span className="sr-only sm:not-sr-only">{brand.terms.library}</span>
             </TabsTrigger>
           </TabsList>
 

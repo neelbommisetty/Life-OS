@@ -50,3 +50,20 @@ test("project detail supports metadata edit flows and embedded tabs", async ({
   await page.getByRole("tab", { name: "Overview" }).click();
   await expect(page.getByText("Project Details")).toBeVisible();
 });
+
+test("project detail keeps the tab strip usable on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await signInViaApi(page, "/projects");
+  await page.goto("/projects");
+
+  await page.getByRole("link", { name: /Life Admin/i }).first().click();
+  await expect(page).toHaveURL(/\/projects\/c[a-z0-9]+$/);
+
+  await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Assistant" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Tasks" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Library" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Assistant" }).click();
+  await expect(page.locator('textarea[aria-label="Message input"]:visible').first()).toBeVisible();
+});
