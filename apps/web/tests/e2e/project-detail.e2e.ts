@@ -27,6 +27,16 @@ test("project detail supports metadata edit flows and embedded tabs", async ({
   await expect(editDialog).toBeHidden();
 
   await expect(page.getByRole("heading", { name: "Life Admin Updated" })).toBeVisible();
+  await expect(page.getByText("Continue work", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Assistant" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Tasks" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Open Library" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Open Tasks" }).click();
+  await expect(page.getByRole("button", { name: "Create task" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Overview" }).click();
+  await expect(page.getByText("Open tasks", { exact: true })).toBeVisible();
 
   await page.getByRole("tab", { name: "Assistant" }).click();
   await expect(page.getByLabel("Message input").first()).toBeVisible();

@@ -48,6 +48,7 @@ import {
   getProjectEditFormData,
   type ProjectEditFormData,
 } from "../project-edit-utils";
+import { getProjectOverviewStats } from "../project-overview-utils";
 
 interface ProjectDetailClientProps {
   project: Project & {
@@ -64,9 +65,11 @@ export function ProjectDetailClient({
   const project = initialProject;
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
   const [editFormData, setEditFormData] = useState<ProjectEditFormData>(() =>
     getProjectEditFormData(initialProject),
   );
+  const overviewStats = getProjectOverviewStats(project);
 
   useEffect(() => {
     setEditFormData(getProjectEditFormData(initialProject));
@@ -196,7 +199,11 @@ export function ProjectDetailClient({
       </div>
 
       <div className="flex min-h-0 w-full flex-1 flex-col px-6">
-        <Tabs defaultValue="overview" className="flex min-h-0 flex-1 flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <TabsList variant="line" className="shrink-0">
             <TabsTrigger value="overview" className="gap-2">
               <Info className="h-4 w-4" />
@@ -218,6 +225,59 @@ export function ProjectDetailClient({
 
           <TabsContent value="overview" className="min-h-0 flex-1 overflow-auto">
             <div className="grid gap-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Continue work</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <p className="text-sm text-muted-foreground">
+                    Jump back into the next likely action for this project.
+                  </p>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <Button
+                      variant="outline"
+                      className="justify-start"
+                      onClick={() => setActiveTab("chat")}
+                    >
+                      <MessageSquareIcon className="mr-2 h-4 w-4" />
+                      Open {brand.terms.assistant}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="justify-start"
+                      onClick={() => setActiveTab("tasks")}
+                    >
+                      <CheckSquareIcon className="mr-2 h-4 w-4" />
+                      Open Tasks
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="justify-start"
+                      onClick={() => setActiveTab("notes")}
+                    >
+                      <FileTextIcon className="mr-2 h-4 w-4" />
+                      Open {brand.terms.library}
+                    </Button>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {overviewStats.map((stat) => (
+                      <div
+                        key={stat.label}
+                        className="rounded-xl border border-border bg-muted/30 p-4"
+                      >
+                        <p className="text-sm text-muted-foreground">
+                          {stat.label}
+                        </p>
+                        <p className="mt-2 text-2xl font-semibold">{stat.value}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {stat.detail}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">

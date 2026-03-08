@@ -80,7 +80,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/projects-client.tsx`
 
 ### 10. Project detail leads with a sparse overview instead of likely next actions
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P1
 - Issue: After create or update, the page prioritizes passive overview content instead of the likely next actions: assistant work, task capture, or note capture.
