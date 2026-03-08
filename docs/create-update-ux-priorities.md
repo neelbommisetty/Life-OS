@@ -87,7 +87,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/[id]/project-detail-client.tsx`
 
 ### 11. Project detail tabs are cramped on mobile
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P1
 - Issue: Each tab combines icon and label in a constrained row, which makes the tab strip tight on small screens.
