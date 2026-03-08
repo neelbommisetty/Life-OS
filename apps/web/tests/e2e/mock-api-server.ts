@@ -1496,6 +1496,10 @@ const server = Bun.serve({
       const search = url.searchParams.get("search");
       const projectId = url.searchParams.get("projectId");
 
+      if (hasScenario(scenarios, "notes-empty")) {
+        return jsonResponse([]);
+      }
+
       let notes = session.notes.filter((note) => note.deletedAt === null);
       if (projectId) {
         notes = notes.filter((note) => note.projectId === projectId);

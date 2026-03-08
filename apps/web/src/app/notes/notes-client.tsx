@@ -173,6 +173,11 @@ export function NotesClient({
   }, [notes]);
 
   const showEditor = !!activeNote || effectiveIsCreatingNew;
+  const editorKey = activeNote
+    ? `${activeNote.id}:${activeNote.updatedAt.toISOString()}`
+    : effectiveIsCreatingNew
+      ? "draft-note"
+      : "empty-note";
 
   return (
     <>
@@ -193,6 +198,7 @@ export function NotesClient({
         <div className="h-full overflow-hidden flex flex-col bg-background">
           {showEditor ? (
             <NoteEditor
+              key={editorKey}
               noteId={activeNote?.id ?? null}
               initialTitle={activeNote?.title ?? ""}
               initialContent={activeNote?.content ?? ""}
@@ -227,6 +233,7 @@ export function NotesClient({
         {/* Mobile Header / Content */}
         {showEditor ? (
           <NoteEditor
+            key={editorKey}
             noteId={activeNote?.id ?? null}
             initialTitle={activeNote?.title ?? ""}
             initialContent={activeNote?.content ?? ""}
