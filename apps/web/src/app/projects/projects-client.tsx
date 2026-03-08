@@ -33,7 +33,6 @@ interface ProjectsClientProps {
 
 export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
   const router = useRouter();
-  const [projects] = useState(initialProjects);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<CreateProjectInput>({
@@ -137,7 +136,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
         </AlertDialog>
       </div>
 
-      {projects.length === 0 ? (
+      {initialProjects.length === 0 ? (
         <div className="flex flex-1 items-center justify-center">
           <div className="text-center py-12">
             <p className="text-muted-foreground mb-4">No projects yet.</p>
@@ -150,7 +149,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {projects.map((project) => (
+            {initialProjects.map((project) => (
               <ProjectCard key={project.id} project={project} />
             ))}
           </div>
