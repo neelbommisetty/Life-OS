@@ -3,23 +3,6 @@ import { selectDisplayedTasks } from "./tasks-utils";
 import type { TaskWithProject } from "./task-card";
 
 describe("selectDisplayedTasks", () => {
-  const initialTasks: TaskWithProject[] = [
-    {
-      id: "task-1",
-      title: "Initial",
-      status: "TODO",
-      priority: "MEDIUM",
-      createdAt: new Date("2026-01-01"),
-      updatedAt: new Date("2026-01-01"),
-      dueDate: null,
-      description: null,
-      projectId: null,
-      userId: "user-1",
-      project: null,
-      deletedAt: null,
-    },
-  ];
-
   const fetchedTasks: TaskWithProject[] = [
     {
       id: "task-2",
@@ -37,30 +20,24 @@ describe("selectDisplayedTasks", () => {
     },
   ];
 
-  test("uses initial tasks when search is empty", () => {
+  test("uses fetched tasks when search is empty", () => {
     const result = selectDisplayedTasks({
-      search: "",
-      initialTasks,
-      fetchedTasks,
-    });
-
-    expect(result).toBe(initialTasks);
-  });
-
-  test("uses fetched tasks when search is active", () => {
-    const result = selectDisplayedTasks({
-      search: "test",
-      initialTasks,
       fetchedTasks,
     });
 
     expect(result).toBe(fetchedTasks);
   });
 
-  test("falls back to fetched tasks when there are no initial tasks", () => {
+  test("uses fetched tasks when search is active", () => {
     const result = selectDisplayedTasks({
-      search: "",
-      initialTasks: [],
+      fetchedTasks,
+    });
+
+    expect(result).toBe(fetchedTasks);
+  });
+
+  test("still uses fetched tasks when no initial tasks exist", () => {
+    const result = selectDisplayedTasks({
       fetchedTasks,
     });
 
