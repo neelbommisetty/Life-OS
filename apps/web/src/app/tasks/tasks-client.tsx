@@ -278,14 +278,14 @@ export function TasksClient({
     <DndProvider backend={HTML5Backend}>
       <div className="h-full flex flex-col p-6 space-y-6">
         {/* Header */}
-        <div className="flex shrink-0 flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Tasks</h1>
             <p className="text-muted-foreground mt-1">
               Keep tasks moving, with clear next steps.
             </p>
           </div>
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center md:w-auto md:flex-nowrap">
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:w-auto lg:flex-nowrap">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
