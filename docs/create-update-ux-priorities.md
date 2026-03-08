@@ -122,7 +122,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/kanban-column.tsx`
 
 ### 16. Notes open in preview mode by default
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P1
 - Issue: The editor initially feels view-only instead of editable, which adds friction to updates.
