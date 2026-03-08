@@ -52,11 +52,6 @@ export function NotesClient({
 
   const [isPending, startTransition] = useTransition();
 
-  // Sync with initialNotes when server state changes (e.g. on navigation)
-  useEffect(() => {
-    setNotes(initialNotes);
-  }, [initialNotes]);
-
   // Sync URL with selection
   const setNoteIdInUrl = useCallback(
     (noteId: string | null) => {

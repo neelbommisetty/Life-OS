@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { toastApiError } from "@/lib/api/error-toast";
 import { toast } from "sonner";
 import { brand, couldnt } from "@/lib/brand";
+import { getInitialNoteEditorPreviewMode } from "./note-editor-mode";
 
 type NoteEditorProps = {
   noteId: string | null;
@@ -48,8 +49,8 @@ export function NoteEditor({
 }: NoteEditorProps) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
-  const [previewMode, setPreviewMode] = useState(
-    () => !isCreatingNew && initialContent.trim().length > 0,
+  const [previewMode, setPreviewMode] = useState(() =>
+    getInitialNoteEditorPreviewMode(),
   );
   const [isDirty, setIsDirty] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
