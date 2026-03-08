@@ -166,7 +166,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/projects-client.tsx`
 
 ### 22. Project detail exposes only `Edit` as a page-level action
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P2
 - Issue: The page-level action set does not foreground likely next steps such as starting assistant work, adding a task, or capturing a note.

@@ -112,7 +112,7 @@ export function ProjectDetailClient({
               </BreadcrumbItem>
             </BreadcrumbList>
           </Breadcrumb>
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex-1">
               <h1 className="text-3xl font-bold">{project.name}</h1>
               {project.description && (
@@ -121,79 +121,107 @@ export function ProjectDetailClient({
                 </p>
               )}
             </div>
-            <AlertDialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <SettingsIcon className="h-4 w-4 mr-2" />
-                  Edit
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Edit Project</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Update project details and assistant instructions.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <div className="space-y-4 py-4">
-                  <div>
-                    <Label htmlFor="edit-name">Name</Label>
-                    <Input
-                      id="edit-name"
-                      value={editFormData.name}
-                      onChange={(e) =>
-                        setEditFormData({
-                          ...editFormData,
-                          name: e.target.value,
-                        })
-                      }
-                      disabled={isEditing}
-                    />
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              <Button
+                size="sm"
+                className="w-full sm:w-auto"
+                onClick={() => setActiveTab("chat")}
+              >
+                <MessageSquareIcon className="mr-2 h-4 w-4" />
+                Continue in {brand.terms.assistant}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto"
+                onClick={() => setActiveTab("tasks")}
+              >
+                <CheckSquareIcon className="mr-2 h-4 w-4" />
+                Continue in Tasks
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full sm:w-auto"
+                onClick={() => setActiveTab("notes")}
+              >
+                <FileTextIcon className="mr-2 h-4 w-4" />
+                Continue in {brand.terms.library}
+              </Button>
+              <AlertDialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full sm:w-auto">
+                    <SettingsIcon className="mr-2 h-4 w-4" />
+                    Edit project
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Edit Project</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Update project details and assistant instructions.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div>
+                      <Label htmlFor="edit-name">Name</Label>
+                      <Input
+                        id="edit-name"
+                        value={editFormData.name}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            name: e.target.value,
+                          })
+                        }
+                        disabled={isEditing}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-description">Description</Label>
+                      <Textarea
+                        id="edit-description"
+                        value={editFormData.description}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            description: e.target.value,
+                          })
+                        }
+                        disabled={isEditing}
+                        rows={3}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="edit-aiInstructions">Assistant instructions</Label>
+                      <Textarea
+                        id="edit-aiInstructions"
+                        value={editFormData.aiInstructions}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            aiInstructions: e.target.value,
+                          })
+                        }
+                        disabled={isEditing}
+                        rows={3}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <Label htmlFor="edit-description">Description</Label>
-                    <Textarea
-                      id="edit-description"
-                      value={editFormData.description}
-                      onChange={(e) =>
-                        setEditFormData({
-                          ...editFormData,
-                          description: e.target.value,
-                        })
-                      }
-                      disabled={isEditing}
-                      rows={3}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="edit-aiInstructions">Assistant instructions</Label>
-                    <Textarea
-                      id="edit-aiInstructions"
-                      value={editFormData.aiInstructions}
-                      onChange={(e) =>
-                        setEditFormData({
-                          ...editFormData,
-                          aiInstructions: e.target.value,
-                        })
-                      }
-                      disabled={isEditing}
-                      rows={3}
-                    />
-                  </div>
-                </div>
-                <AlertDialogFooter>
-                  <AlertDialogCancel disabled={isEditing}>
-                    Cancel
-                  </AlertDialogCancel>
-                  <AlertDialogAction
-                    onClick={handleEdit}
-                    disabled={isEditing || !buildProjectUpdatePayload(editFormData)}
-                  >
-                    {isEditing ? "Saving..." : "Save Changes"}
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isEditing}>
+                      Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleEdit}
+                      disabled={isEditing || !buildProjectUpdatePayload(editFormData)}
+                    >
+                      {isEditing ? "Saving..." : "Save Changes"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
           </div>
         </div>
       </div>

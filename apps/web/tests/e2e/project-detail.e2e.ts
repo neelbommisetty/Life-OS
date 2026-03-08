@@ -11,7 +11,15 @@ test("project detail supports metadata edit flows and embedded tabs", async ({
   await expect(page).toHaveURL(/\/projects\/c[a-z0-9]+$/);
   await expect(page.getByRole("heading", { name: "Life Admin" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByRole("button", { name: "Continue in Assistant" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue in Tasks" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue in Library" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Continue in Tasks" }).click();
+  await expect(page.getByRole("button", { name: "Create task" })).toBeVisible();
+  await page.getByRole("tab", { name: "Overview" }).click();
+
+  await page.getByRole("button", { name: "Edit project" }).click();
   let editDialog = page.getByRole("alertdialog", { name: "Edit Project" });
   await editDialog.getByLabel("Name").fill("Fail Project Rename");
   await editDialog.getByRole("button", { name: "Save Changes" }).click({ force: true });
@@ -19,7 +27,7 @@ test("project detail supports metadata edit flows and embedded tabs", async ({
 
   await expect(page.getByRole("heading", { name: "Life Admin" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Edit" }).click();
+  await page.getByRole("button", { name: "Edit project" }).click();
   editDialog = page.getByRole("alertdialog", { name: "Edit Project" });
   await editDialog.getByLabel("Name").fill("Life Admin Updated");
   await editDialog.getByRole("button", { name: "Save Changes" }).click({ force: true });
@@ -59,6 +67,9 @@ test("project detail keeps the tab strip usable on mobile", async ({ page }) => 
   await page.getByRole("link", { name: /Life Admin/i }).first().click();
   await expect(page).toHaveURL(/\/projects\/c[a-z0-9]+$/);
 
+  await expect(page.getByRole("button", { name: "Continue in Assistant" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue in Tasks" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue in Library" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Assistant" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Tasks" })).toBeVisible();
