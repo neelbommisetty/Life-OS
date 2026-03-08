@@ -4,6 +4,7 @@ import { useDrop } from "react-dnd";
 import { cn } from "@/lib/utils";
 import { TaskCard, type TaskWithProject } from "./task-card";
 import type { TaskStatus } from "@life-os/db";
+import { getTaskColumnEmptyStateMessage } from "./task-column-empty-state";
 
 interface KanbanColumnProps {
   status: TaskStatus;
@@ -31,6 +32,7 @@ export function KanbanColumn({
   onDeleteTask,
   onMoveTask,
 }: KanbanColumnProps) {
+  const emptyStateMessage = getTaskColumnEmptyStateMessage();
   const [{ isOver }, drop] = useDrop(() => ({
     accept: "TASK",
     drop: (item: { id: string; status: TaskStatus }) => {
@@ -73,7 +75,7 @@ export function KanbanColumn({
         ))}
         {tasks.length === 0 && (
           <div className="h-24 border-2 border-dashed border-muted-foreground/20 rounded-lg flex items-center justify-center text-sm text-muted-foreground/50">
-            Drop to move.
+            {emptyStateMessage}
           </div>
         )}
       </div>

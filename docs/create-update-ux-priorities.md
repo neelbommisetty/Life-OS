@@ -115,7 +115,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/task-card.tsx`, `apps/web/src/app/tasks/tasks-client.tsx`
 
 ### 15. Empty task columns suggest a drag affordance that is weak on touch devices
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P1
 - Issue: Empty states say `Drop to move.` even where dragging is not a reliable interaction.
