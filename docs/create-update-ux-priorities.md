@@ -59,7 +59,7 @@ Status meaning:
 ## P1
 
 ### 7. Project create has weak inline success feedback
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P1
 - Issue: The only visible feedback is the button label changing to `Creating...`, which is too weak when navigation is delayed or fails.

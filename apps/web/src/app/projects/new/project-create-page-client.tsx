@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -15,34 +16,65 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { createProject, type CreateProjectInput } from "@/lib/projects";
-import { toastApiError } from "@/lib/api/error-toast";
+import type { CreateProjectInput } from "@/lib/projects";
+import {
+  toastApiError,
+  toastApiResponseError,
+} from "@/lib/api/error-toast";
 import { couldnt } from "@/lib/brand";
 import {
   buildCreateProjectPayload,
   getProjectDetailHref,
 } from "../project-create-utils";
+import { getProjectCreateFeedback } from "./project-create-page-utils";
+
+type CreateProjectResponse = {
+  id: string;
+};
 
 export function ProjectCreatePageClient() {
   const router = useRouter();
   const [isCreating, setIsCreating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateProjectInput>({
     name: "",
     description: "",
     aiInstructions: "",
   });
+  const feedback = getProjectCreateFeedback(isCreating, errorMessage);
 
   const handleCreate = async () => {
     const payload = buildCreateProjectPayload(formData);
 
     if (!payload || isCreating) return;
 
+    setErrorMessage(null);
     setIsCreating(true);
     try {
-      const project = await createProject(payload);
+      const response = await fetch("/api/projects", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const message = await toastApiResponseError(
+          response,
+          couldnt("create the project"),
+        );
+        setErrorMessage(message);
+        setIsCreating(false);
+        return;
+      }
+
+      const project = (await response.json()) as CreateProjectResponse;
       router.push(getProjectDetailHref(project.id));
     } catch (error) {
-      toastApiError(error, couldnt("create the project"));
+      const message = toastApiError(error, couldnt("create the project"));
+      setErrorMessage(message);
       setIsCreating(false);
     }
   };
@@ -78,9 +110,10 @@ export function ProjectCreatePageClient() {
               id="name"
               placeholder="Project name"
               value={formData.name}
-              onChange={(event) =>
-                setFormData({ ...formData, name: event.target.value })
-              }
+              onChange={(event) => {
+                setErrorMessage(null);
+                setFormData({ ...formData, name: event.target.value });
+              }}
               disabled={isCreating}
             />
           </div>
@@ -91,9 +124,10 @@ export function ProjectCreatePageClient() {
               id="description"
               placeholder="What is this project about?"
               value={formData.description}
-              onChange={(event) =>
-                setFormData({ ...formData, description: event.target.value })
-              }
+              onChange={(event) => {
+                setErrorMessage(null);
+                setFormData({ ...formData, description: event.target.value });
+              }}
               disabled={isCreating}
               rows={4}
             />
@@ -105,9 +139,10 @@ export function ProjectCreatePageClient() {
               id="aiInstructions"
               placeholder="How the assistant should behave in this project"
               value={formData.aiInstructions}
-              onChange={(event) =>
-                setFormData({ ...formData, aiInstructions: event.target.value })
-              }
+              onChange={(event) => {
+                setErrorMessage(null);
+                setFormData({ ...formData, aiInstructions: event.target.value });
+              }}
               disabled={isCreating}
               rows={5}
             />
@@ -115,7 +150,18 @@ export function ProjectCreatePageClient() {
         </div>
 
         <div className="flex flex-col gap-3 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <p className="text-sm text-muted-foreground">
+          <p
+            aria-live="polite"
+            className={cn(
+              "text-sm",
+              feedback.tone === "error"
+                ? "text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            {feedback.message}
+          </p>
+          <p className="text-sm text-muted-foreground sm:ml-auto">
             You can update the project details later.
           </p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
