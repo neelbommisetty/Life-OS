@@ -8,7 +8,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
@@ -23,6 +22,10 @@ import { ProjectCard } from "@/components/projects/project-card";
 import { toastApiError } from "@/lib/api/error-toast";
 import type { Project } from "@life-os/db";
 import { couldnt } from "@/lib/brand";
+import {
+  buildCreateProjectPayload,
+  getProjectDetailHref,
+} from "./project-create-utils";
 
 interface ProjectsClientProps {
   initialProjects: Project[];
@@ -40,15 +43,16 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
   });
 
   const handleCreate = async () => {
-    if (!formData.name.trim()) return;
+    const payload = buildCreateProjectPayload(formData);
+
+    if (!payload || isCreating) return;
 
     setIsCreating(true);
     try {
-      const project = await createProject(formData);
+      const project = await createProject(payload);
       setIsCreateOpen(false);
       setFormData({ name: "", description: "", aiInstructions: "" });
-      router.push(`/projects/${project.id}`);
-      router.refresh();
+      router.push(getProjectDetailHref(project.id));
     } catch (error) {
       toastApiError(error, couldnt("create the project"));
     } finally {
@@ -121,12 +125,13 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
             </div>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={isCreating}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
+              <Button
+                type="button"
                 onClick={handleCreate}
                 disabled={isCreating || !formData.name.trim()}
               >
                 {isCreating ? "Creating..." : "Create project"}
-              </AlertDialogAction>
+              </Button>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
