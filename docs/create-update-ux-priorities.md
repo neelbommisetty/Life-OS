@@ -73,7 +73,7 @@ Status meaning:
 - References: `apps/web/src/app/projects/projects-client.tsx`
 
 ### 9. Project terminology is inconsistent with the rest of the product
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P1
 - Issue: The page says `Group threads, tasks, and notes.` while the product elsewhere uses assistant and chat language.
