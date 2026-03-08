@@ -217,7 +217,7 @@ Status meaning:
 ## P3
 
 ### 29. Project cards provide limited visual confirmation after create
-- Status: `not started`
+- Status: `started`
 - Surface: Projects
 - Priority: P3
 - Issue: Cards show little beyond title, truncated description, and updated date, so the post-create state is not very informative.

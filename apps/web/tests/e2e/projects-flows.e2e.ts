@@ -25,6 +25,10 @@ test("projects create flow handles error and navigates on success", async ({ pag
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Create project" })).toBeEnabled();
   await page.getByLabel("Name").fill("E2E Project Created");
+  await page.getByLabel("Description (optional)").fill("Project card confirmation sentinel");
+  await page
+    .getByLabel("Assistant instructions (optional)")
+    .fill("Keep the setup focused");
   await page.getByRole("button", { name: "Create project" }).click();
 
   await expect(page).toHaveURL(/\/projects\/c[a-z0-9]+$/, { timeout: 10000 });
@@ -32,7 +36,12 @@ test("projects create flow handles error and navigates on success", async ({ pag
 
   await page.getByLabel("breadcrumb").getByRole("link", { name: "Projects" }).click();
   await expect(page).toHaveURL(/\/projects$/);
-  await expect(page.getByText("E2E Project Created", { exact: true }).first()).toBeVisible();
+  const createdCard = page.locator('a[href^="/projects/"]', {
+    has: page.getByText("E2E Project Created", { exact: true }),
+  });
+  await expect(createdCard.getByText("E2E Project Created", { exact: true })).toBeVisible();
+  await expect(createdCard.getByText("Brief added", { exact: true })).toBeVisible();
+  await expect(createdCard.getByText("Instructions added", { exact: true })).toBeVisible();
 });
 
 test("projects header stacks cleanly on mobile", async ({ page }) => {
