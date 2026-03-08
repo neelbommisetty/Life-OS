@@ -52,8 +52,8 @@ export default async function RootLayout({
         >
           <div className="flex min-h-screen bg-background">
             <SideNav sessionUser={sessionUser} />
-            <div className="flex flex-1 flex-col pl-[64px]">
-              <TopNav />
+            <div className="flex flex-1 flex-col md:pl-[64px]">
+              <TopNav sessionUser={sessionUser} />
               <main className="h-[calc(100dvh-4rem)] overflow-hidden">
                 {children}
               </main>

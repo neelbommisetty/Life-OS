@@ -152,7 +152,7 @@ Status meaning:
 ## P2
 
 ### 20. The global mobile shell makes all create and update surfaces narrower than necessary
-- Status: `not started`
+- Status: `started`
 - Surface: Projects, Tasks, Notes, Chat
 - Priority: P2
 - Issue: The fixed side rail and left padding reduce usable width on phones across all audited surfaces.
