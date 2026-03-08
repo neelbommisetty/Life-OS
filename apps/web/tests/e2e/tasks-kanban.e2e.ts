@@ -65,6 +65,11 @@ test("tasks page supports create, edit, search, and delete", async ({ page }) =>
   await page.reload();
 
   await expect(page.getByText("E2E Task Alpha Updated")).toHaveCount(0);
+
+  await page.getByPlaceholder("Search tasks...").fill("No matches here");
+  await expect(
+    page.getByText("Drag a task here or use Move on a card.").first(),
+  ).toBeVisible();
 });
 
 test("tasks drag/drop moves cards and rolls back on update failure", async ({ page }) => {
