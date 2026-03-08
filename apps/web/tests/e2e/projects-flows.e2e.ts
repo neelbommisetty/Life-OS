@@ -5,6 +5,10 @@ test("projects create flow handles error and navigates on success", async ({ pag
   await signInViaApi(page, "/projects");
   await page.goto("/projects");
 
+  await expect(
+    page.getByText("Group assistant work, tasks, and notes.", { exact: true }),
+  ).toBeVisible();
+
   await page.getByRole("link", { name: "Create project" }).first().click();
   await expect(page).toHaveURL(/\/projects\/new$/);
   await expect(page.getByRole("heading", { name: "Create project" })).toBeVisible();

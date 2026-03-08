@@ -18,7 +18,7 @@ export function ProjectsClient({ initialProjects }: ProjectsClientProps) {
         <div>
           <h1 className="text-3xl font-bold">Projects</h1>
           <p className="text-muted-foreground mt-1">
-            Group threads, tasks, and notes.
+            Group assistant work, tasks, and notes.
           </p>
         </div>
         <Button asChild>
