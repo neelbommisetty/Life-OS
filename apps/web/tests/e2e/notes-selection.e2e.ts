@@ -22,3 +22,18 @@ test("selecting a different note updates URL noteId and content", async ({ page 
   await expect(page).toHaveURL(/\/notes\?noteId=c[a-z0-9]+$/);
   await expect(page.getByText("Second note body sentinel").first()).toBeVisible();
 });
+
+test("notes selector can delete the selected note", async ({ page }) => {
+  await signInViaApi(page, "/notes");
+  await page.goto("/notes");
+
+  await page.getByText("Second note", { exact: true }).first().click();
+  await page.getByRole("button", { name: "Delete Second note" }).click();
+
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog.getByText("Delete Note")).toBeVisible();
+  await dialog.getByRole("button", { name: "Delete" }).click();
+
+  await expect(page.getByText("Second note", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("First note body sentinel").first()).toBeVisible();
+});

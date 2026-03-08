@@ -6,6 +6,7 @@ import {
   FileText,
   Plus,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
 import { cn, formatRelativeTime } from "@/lib/utils";
@@ -14,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { brand } from "@/lib/brand";
 import { getNoteDisplayTitle } from "@/lib/notes/note-title";
+import { getNoteSelectorActionLabels } from "./note-selector-actions";
 
 type NoteOption = {
   id: string;
@@ -30,7 +32,7 @@ type Props = {
   value: string | null;
   onChange: (noteId: string) => void;
   onCreate: () => void;
-  onDelete: () => void;
+  onDelete: (noteId: string) => void;
   isCreating?: boolean;
   isDeleting?: boolean;
   isMobile?: boolean;
@@ -55,6 +57,8 @@ type NotesListProps = {
   showSearch: boolean;
   collapsedProjects: Set<string>;
   toggleProjectCollapse: (projectId: string) => void;
+  onDelete: (noteId: string) => void;
+  isDeleting?: boolean;
 };
 
 function NotesHeader({
@@ -95,6 +99,8 @@ function NotesList({
   showSearch,
   collapsedProjects,
   toggleProjectCollapse,
+  onDelete,
+  isDeleting,
 }: NotesListProps) {
   return (
     <div className="flex flex-col flex-1 overflow-hidden min-h-0">
@@ -141,28 +147,51 @@ function NotesList({
                 </div>
                 {directNotes.map((note) => {
                   const isSelected = value === note.id;
+                  const actions = getNoteSelectorActionLabels(note.title);
                   return (
                     <div
                       key={note.id}
-                      onClick={() => onChange(note.id)}
                       className={cn(
-                        "w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors min-w-0",
+                        "group flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors min-w-0",
                         isSelected
                           ? "bg-primary/10 text-primary font-medium"
                           : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                       )}
                     >
-                      <span className="truncate flex-1 text-left min-w-0">
-                        {getNoteDisplayTitle(note.title)}
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
-                          {formatRelativeTime(note.updatedAt)}
+                      <button
+                        type="button"
+                        onClick={() => onChange(note.id)}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                      >
+                        <span className="truncate flex-1 text-left min-w-0">
+                          {getNoteDisplayTitle(note.title)}
                         </span>
-                        {isSelected && (
-                          <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
+                            {formatRelativeTime(note.updatedAt)}
+                          </span>
+                          {isSelected && (
+                            <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                          )}
+                        </div>
+                      </button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className={cn(
+                          "h-7 w-7 shrink-0 rounded-full text-muted-foreground transition-opacity",
+                          isSelected
+                            ? "opacity-100"
+                            : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
                         )}
-                      </div>
+                        aria-label={actions.delete}
+                        title={actions.delete}
+                        onClick={() => onDelete(note.id)}
+                        disabled={isDeleting}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
                   );
                 })}
@@ -201,33 +230,56 @@ function NotesList({
                       {!isCollapsed &&
                         projectNoteList.map((note) => {
                           const isSelected = value === note.id;
+                          const actions = getNoteSelectorActionLabels(note.title);
                           return (
                             <div
                               key={note.id}
-                              onClick={() => onChange(note.id)}
                               className={cn(
-                                "w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm cursor-pointer transition-colors ml-4 min-w-0",
+                                "group ml-4 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors min-w-0",
                                 isSelected
                                   ? "bg-primary/10 text-primary font-medium"
                                   : "text-muted-foreground hover:bg-muted/70 hover:text-foreground",
                               )}
                             >
-                              <span className="truncate flex-1 text-left flex items-center gap-1.5 min-w-0">
-                                <span className="text-muted-foreground/60 shrink-0">
-                                  #
+                              <button
+                                type="button"
+                                onClick={() => onChange(note.id)}
+                                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                              >
+                                <span className="truncate flex-1 text-left flex items-center gap-1.5 min-w-0">
+                                  <span className="text-muted-foreground/60 shrink-0">
+                                    #
+                                  </span>
+                                  <span className="truncate">
+                                    {getNoteDisplayTitle(note.title)}
+                                  </span>
                                 </span>
-                                <span className="truncate">
-                                  {getNoteDisplayTitle(note.title)}
-                                </span>
-                              </span>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
-                                  {formatRelativeTime(note.updatedAt)}
-                                </span>
-                                {isSelected && (
-                                  <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-[11px] text-muted-foreground/60 whitespace-nowrap">
+                                    {formatRelativeTime(note.updatedAt)}
+                                  </span>
+                                  {isSelected && (
+                                    <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                  )}
+                                </div>
+                              </button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                  "h-7 w-7 shrink-0 rounded-full text-muted-foreground transition-opacity",
+                                  isSelected
+                                    ? "opacity-100"
+                                    : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100",
                                 )}
-                              </div>
+                                aria-label={actions.delete}
+                                title={actions.delete}
+                                onClick={() => onDelete(note.id)}
+                                disabled={isDeleting}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             </div>
                           );
                         })}
@@ -248,7 +300,9 @@ export function NoteSelector({
   value,
   onChange,
   onCreate,
+  onDelete,
   isCreating,
+  isDeleting,
   isMobile = false,
   onNoteSelect,
 }: Props) {
@@ -327,6 +381,8 @@ export function NoteSelector({
           showSearch={showSearch}
           collapsedProjects={collapsedProjects}
           toggleProjectCollapse={toggleProjectCollapse}
+          onDelete={onDelete}
+          isDeleting={isDeleting}
         />
       </div>
     );
@@ -349,6 +405,8 @@ export function NoteSelector({
         showSearch={showSearch}
         collapsedProjects={collapsedProjects}
         toggleProjectCollapse={toggleProjectCollapse}
+        onDelete={onDelete}
+        isDeleting={isDeleting}
       />
     </>
   );

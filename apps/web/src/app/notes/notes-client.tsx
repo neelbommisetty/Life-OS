@@ -184,8 +184,9 @@ export function NotesClient({
             value={activeNote?.id ?? null}
             onChange={handleNoteSelect}
             onCreate={handleCreateStart}
-            onDelete={() => {}} // Selector delete action not implemented yet in UI
+            onDelete={handleDeleteClick}
             isCreating={isPending} // reusing pending state
+            isDeleting={isPending}
           />
         </div>
 
@@ -285,8 +286,9 @@ export function NotesClient({
             value={activeNote?.id ?? null}
             onChange={handleNoteSelect}
             onCreate={handleCreateStart}
-            onDelete={() => {}}
+            onDelete={handleDeleteClick}
             isCreating={isPending}
+            isDeleting={isPending}
             isMobile
             onNoteSelect={() => setIsMobileDrawerOpen(false)}
           />
