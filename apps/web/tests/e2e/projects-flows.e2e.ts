@@ -10,18 +10,16 @@ test("projects create flow handles error and navigates on success", async ({ pag
     return page.getByRole("alertdialog", { name: "Create project" });
   };
 
-  let createDialog = await openCreateDialog();
+  const createDialog = await openCreateDialog();
   await createDialog.getByLabel("Name").fill("Fail Project");
   await createDialog.getByRole("button", { name: "Create project" }).click({ force: true });
 
   await expect(page).toHaveURL(/\/projects$/);
-  await page.reload();
-  createDialog = await openCreateDialog();
+  await expect(createDialog).toBeVisible();
+  await expect(createDialog.getByRole("button", { name: "Create project" })).toBeEnabled();
   await createDialog.getByLabel("Name").fill("E2E Project Created");
   await createDialog.getByRole("button", { name: "Create project" }).click({ force: true });
-  await page.waitForTimeout(400);
-  await page.reload();
-  await page.getByRole("link", { name: /E2E Project Created/i }).first().click();
+
   await expect(page).toHaveURL(/\/projects\/c[a-z0-9]+$/, { timeout: 10000 });
   await expect(page.getByRole("heading", { name: "E2E Project Created" })).toBeVisible();
 });
