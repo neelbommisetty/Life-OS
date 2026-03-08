@@ -14,6 +14,11 @@ test("projects create flow handles error and navigates on success", async ({ pag
 
   await expect(page).toHaveURL(/\/projects\/new$/);
   await expect(page.getByRole("heading", { name: "Create project" })).toBeVisible();
+  await expect(
+    page.locator('p[aria-live="polite"]').getByText("Project creation failed", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(page.getByRole("button", { name: "Create project" })).toBeEnabled();
   await page.getByLabel("Name").fill("E2E Project Created");
   await page.getByRole("button", { name: "Create project" }).click();
