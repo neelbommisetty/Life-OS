@@ -143,7 +143,7 @@ Status meaning:
 - References: `apps/web/src/app/notes/notes-client.tsx`, `apps/web/src/components/notes/note-selector.tsx`
 
 ### 19. Chat composer helper text is inaccurate
-- Status: `not started`
+- Status: `started`
 - Surface: Chat
 - Priority: P1
 - Issue: The UI says `Ctrl/Cmd + Enter to send`, but plain `Enter` also sends, which breaks trust in the input behavior.

@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ModelSelector, type ModelOption } from "./model-selector";
+import { getChatInputShortcutHint } from "./chat-input-copy";
 
 type Props = {
   input: string;
@@ -42,6 +43,7 @@ export function ChatInput({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const [isMac, setIsMac] = useState(false);
+  const shortcutHint = getChatInputShortcutHint(isMac);
 
   useEffect(() => {
     const id = requestAnimationFrame(() => {
@@ -133,7 +135,7 @@ export function ChatInput({
 
         <div className="flex items-center gap-3 pr-1 shrink-0">
           <span className="hidden sm:block text-[10px] text-muted-foreground/50 font-medium uppercase tracking-wider whitespace-nowrap">
-            {isMac ? "⌘" : "Ctrl"} + Enter to send
+            {shortcutHint}
           </span>
 
           <Button

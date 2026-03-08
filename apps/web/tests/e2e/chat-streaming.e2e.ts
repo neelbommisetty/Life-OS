@@ -6,6 +6,24 @@ async function sendMessage(page: Page, content: string) {
   await page.getByRole("button", { name: "Send message" }).click();
 }
 
+test("chat input uses Enter to send and Shift+Enter for new lines", async ({
+  page,
+}) => {
+  await signInViaApi(page, "/chat");
+  await page.goto("/chat");
+
+  const input = page.getByLabel("Message input").first();
+  await input.click();
+  await input.fill("Line one");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("Line two");
+  await expect(input).toHaveValue("Line one\nLine two");
+
+  await page.keyboard.press("Enter");
+
+  await expect(page.getByText(/Line one\s+Line two/).first()).toBeVisible();
+});
+
 test("chat streaming shows optimistic user message and streamed assistant output", async ({
   page,
 }) => {
