@@ -35,6 +35,11 @@ test("tasks page supports create, edit, search, and delete", async ({ page }) =>
       name: "Edit E2E Task Alpha",
     }),
   ).toBeVisible();
+  await expect(
+    taskCard(page, "E2E Task Alpha").getByRole("button", {
+      name: "Edit E2E Task Alpha",
+    }),
+  ).toContainText("Edit task");
 
   await taskCard(page, "E2E Task Alpha")
     .getByRole("button", { name: "Edit E2E Task Alpha" })

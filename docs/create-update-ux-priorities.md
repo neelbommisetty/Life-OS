@@ -224,7 +224,7 @@ Status meaning:
 - References: `apps/web/src/components/projects/project-card.tsx`
 
 ### 30. Task card styling does not clearly advertise edit as the primary action
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P3
 - Issue: Strong drag and status styling are visible, but the edit affordance remains mostly implicit.

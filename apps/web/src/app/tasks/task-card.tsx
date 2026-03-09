@@ -70,83 +70,21 @@ export function TaskCard({ task, onEdit, onDelete, onMove }: TaskCardProps) {
     >
       <Card
         className={cn(
-          "mb-3 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing hover:border-primary/50 overflow-hidden border-l-4",
+          "mb-3 overflow-hidden border-l-4 transition-shadow hover:border-primary/50 hover:shadow-md",
           task.status === "TODO" && "border-l-blue-500",
           task.status === "IN_PROGRESS" && "border-l-yellow-500",
           task.status === "DONE" && "border-l-green-500 opacity-75"
         )}
         onClick={() => onEdit(task)}
       >
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-start justify-between gap-2">
+        <CardContent className="space-y-4 p-4">
+          <div className="flex items-start gap-2">
             <h3 className={cn(
-              "font-semibold text-sm line-clamp-2",
+              "flex-1 text-sm font-semibold line-clamp-2",
               task.status === "DONE" && "line-through text-muted-foreground"
             )}>
               {task.title}
             </h3>
-            <div className="flex items-center gap-1 shrink-0">
-              <Button
-                type="button"
-                variant="secondary"
-                size="xs"
-                className="rounded-full"
-                aria-label={actionLabels.edit}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(task);
-                }}
-              >
-                <Pencil className="h-3 w-3" />
-                <span>Edit</span>
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    className="rounded-full"
-                    aria-label={actionLabels.move}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                  >
-                    <span>Move</span>
-                    <ChevronDown className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  className="w-48"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
-                >
-                  <DropdownMenuLabel>Move task</DropdownMenuLabel>
-                  {moveOptions.map((option) => (
-                    <DropdownMenuItem
-                      key={option.status}
-                      onSelect={() => {
-                        onMove(task.id, option.status);
-                      }}
-                    >
-                      {option.label}
-                    </DropdownMenuItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onSelect={() => {
-                      onDelete(task);
-                    }}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    Delete task
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -168,6 +106,69 @@ export function TaskCard({ task, onEdit, onDelete, onMove }: TaskCardProps) {
               <span>{formatDateDisplay(task.dueDate)}</span>
             </div>
           )}
+
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="default"
+              size="xs"
+              className="flex-1 rounded-full"
+              aria-label={actionLabels.edit}
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(task);
+              }}
+            >
+              <Pencil className="h-3 w-3" />
+              <span>{actionLabels.editCta}</span>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="xs"
+                  className="rounded-full"
+                  aria-label={actionLabels.move}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <span>{actionLabels.moveCta}</span>
+                  <ChevronDown className="h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="end"
+                className="w-48"
+                onClick={(e) => {
+                  e.stopPropagation();
+                }}
+              >
+                <DropdownMenuLabel>Move task</DropdownMenuLabel>
+                {moveOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.status}
+                    onSelect={() => {
+                      onMove(task.id, option.status);
+                    }}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onSelect={() => {
+                    onDelete(task);
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  Delete task
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </CardContent>
       </Card>
     </div>
