@@ -238,7 +238,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/kanban-column.tsx`
 
 ### 32. Short notes leave an oversized editor canvas
-- Status: `not started`
+- Status: `started`
 - Surface: Notes
 - Priority: P3
 - Issue: For quick edits, the note workspace can feel visually sparse and oversized.

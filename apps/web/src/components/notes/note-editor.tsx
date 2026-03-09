@@ -272,20 +272,28 @@ export function NoteEditor({
       </div>
 
       {/* Editor/Preview Area */}
-      <div className="flex-1 overflow-hidden relative">
+      <div className="relative flex-1 overflow-y-auto bg-muted/20 px-4 py-4 sm:px-6 sm:py-6">
         {previewMode ? (
-          <div className="h-full w-full overflow-y-auto p-4 sm:p-8">
-            <div className="max-w-none prose prose-sm dark:prose-invert mx-auto w-full">
+          <div
+            data-testid="note-editor-surface"
+            className="mx-auto w-full max-w-4xl rounded-[28px] border border-border/60 bg-background p-5 shadow-sm sm:p-8"
+          >
+            <div className="prose prose-sm dark:prose-invert mx-auto w-full max-w-3xl">
               <ChatMarkdown content={content} />
             </div>
           </div>
         ) : (
-          <Textarea
-            value={content}
-            onChange={handleContentChange}
-            placeholder="Write in Markdown..."
-            className="h-full w-full resize-none border-0 p-4 sm:p-8 focus-visible:ring-0 text-base font-mono leading-relaxed"
-          />
+          <div
+            data-testid="note-editor-surface"
+            className="mx-auto flex min-h-full w-full max-w-4xl rounded-[28px] border border-border/60 bg-background shadow-sm"
+          >
+            <Textarea
+              value={content}
+              onChange={handleContentChange}
+              placeholder="Write in Markdown..."
+              className="min-h-[360px] h-full w-full resize-none border-0 bg-transparent p-5 text-base font-mono leading-relaxed focus-visible:ring-0 sm:p-8"
+            />
+          </div>
         )}
       </div>
     </div>
