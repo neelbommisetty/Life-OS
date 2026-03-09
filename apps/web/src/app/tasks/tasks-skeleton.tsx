@@ -17,9 +17,9 @@ export function TasksSkeleton() {
       </div>
 
       {/* Kanban Board Skeleton */}
-      <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-x-auto pb-4 min-h-0">
+      <div className="flex flex-1 flex-col gap-6 overflow-x-auto pb-4 min-h-0 lg:flex-row">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="flex-1 min-w-[300px] flex flex-col gap-4">
+          <div key={i} className="flex min-w-[260px] flex-1 flex-col gap-4">
             <div className="flex items-center justify-between">
               <Skeleton className="h-6 w-24" />
               <Skeleton className="h-6 w-6 rounded-full" />

@@ -309,7 +309,10 @@ export function TasksClient({
         </div>
 
         {/* Kanban Board */}
-        <div className="flex-1 flex flex-col md:flex-row gap-6 overflow-x-auto pb-4 min-h-0">
+        <div
+          data-testid="tasks-board"
+          className="flex min-h-0 flex-1 flex-col gap-6 overflow-x-auto pb-4 lg:flex-row"
+        >
           <KanbanColumn
             title="To Do"
             status="TODO"

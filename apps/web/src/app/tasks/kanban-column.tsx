@@ -49,7 +49,7 @@ export function KanbanColumn({
     <div
       ref={drop as unknown as React.Ref<HTMLDivElement>}
       className={cn(
-        "flex-1 min-w-[300px] h-full flex flex-col rounded-lg border p-4 transition-colors",
+        "flex h-full min-w-[260px] flex-1 flex-col rounded-lg border p-4 transition-colors",
         COLUMN_COLORS[status],
         isOver && "ring-2 ring-primary ring-inset",
       )}

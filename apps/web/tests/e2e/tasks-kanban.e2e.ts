@@ -158,3 +158,27 @@ test("task editor shows save guidance on mobile", async ({ page }) => {
 
   await expect(taskDialog.getByText("Ready to save.")).toBeVisible();
 });
+
+test("tasks board avoids horizontal overflow on tablet widths", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 1180 });
+  await signInViaApi(page, "/tasks");
+  await page.goto("/tasks");
+
+  const board = page.getByTestId("tasks-board");
+  const todo = page.getByRole("heading", { name: "To Do" });
+  const progress = page.getByRole("heading", { name: "In Progress" });
+
+  await expect(board).toBeVisible();
+  await expect(todo).toBeVisible();
+  await expect(progress).toBeVisible();
+
+  const boardMetrics = await board.evaluate((node) => ({
+    clientWidth: node.clientWidth,
+    scrollWidth: node.scrollWidth,
+  }));
+  const todoBox = await todo.boundingBox();
+  const progressBox = await progress.boundingBox();
+
+  expect(boardMetrics.scrollWidth).toBeLessThanOrEqual(boardMetrics.clientWidth);
+  expect(progressBox?.y ?? 0).toBeGreaterThan(todoBox?.y ?? 0);
+});
