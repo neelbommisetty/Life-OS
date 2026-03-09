@@ -231,7 +231,7 @@ Status meaning:
 - References: `apps/web/src/app/tasks/task-card.tsx`
 
 ### 31. Task board columns create horizontal-scroll pressure
-- Status: `not started`
+- Status: `started`
 - Surface: Tasks
 - Priority: P3
 - Issue: `min-w-[300px]` columns add layout pressure on smaller laptops and tablets.
