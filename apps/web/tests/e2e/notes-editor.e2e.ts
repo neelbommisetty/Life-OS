@@ -102,3 +102,28 @@ test("notes autosave and note-switch saves stay quiet", async ({ page }) => {
   await expect(savedToast).toHaveCount(0);
   await expect(page.getByText("Second note body sentinel").first()).toBeVisible();
 });
+
+test("notes editor keeps a constrained reading width on desktop", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await signInViaApi(page, "/notes");
+  await page.goto("/notes");
+
+  const editor = page
+    .locator('textarea[placeholder="Write in Markdown..."]:visible')
+    .first();
+  const surface = page.getByTestId("note-editor-surface").filter({
+    has: editor,
+  });
+
+  await expect(surface).toBeVisible();
+  await expect(editor).toBeVisible();
+
+  const surfaceBox = await surface.boundingBox();
+  const viewportWidth = page.viewportSize()?.width ?? 0;
+
+  expect(surfaceBox).not.toBeNull();
+  expect(surfaceBox!.width).toBeLessThan(viewportWidth * 0.85);
+  expect(surfaceBox!.width).toBeGreaterThan(640);
+});
