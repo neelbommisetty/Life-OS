@@ -34,8 +34,8 @@ export enum ModelKeyName {
   AnthropicClaudeOpus47 = 'anthropic.claude-opus-4-7',
   // Google Gemini models
   GoogleGemini31ProPreview = 'google.gemini-3.1-pro-preview',
+  GoogleGemini3FlashPreview = 'google.gemini-3-flash-preview',
   GoogleGemini31FlashLitePreview = 'google.gemini-3.1-flash-lite-preview',
-  GoogleGemini25Pro = 'google.gemini-2.5-pro',
   // xAI Grok models
   XAIGrok41Fast = 'xai.grok-4-1-fast',
   XAIGrok420Reasoning = 'xai.grok-4.20-reasoning',
