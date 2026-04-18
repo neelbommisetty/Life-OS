@@ -41,7 +41,7 @@ export function initializeChatServices(): void {
     registerServiceRoute("project_chat", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
-        ModelKeyName.OpenAIGpt5Mini,
+        ModelKeyName.OpenAIGpt54Mini,
         ModelKeyName.AnthropicClaudeHaiku45,
       ],
       retry: { retries: 2, delayMs: 500 },
@@ -51,11 +51,11 @@ export function initializeChatServices(): void {
     logger.info("Registered project_chat service route");
 
     // Register project_chat_summary service route
-    // Uses economy models for summarization (cheaper, faster; Gemini disabled)
+    // Uses the retained economy models for summarization.
     registerServiceRoute("project_chat_summary", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
-        ModelKeyName.OpenAIGpt5Nano,
+        ModelKeyName.OpenAIGpt54Nano,
         ModelKeyName.AnthropicClaudeHaiku45,
       ],
       retry: { retries: 2, delayMs: 500 },
@@ -65,12 +65,12 @@ export function initializeChatServices(): void {
     logger.info("Registered project_chat_summary service route");
 
     // Register inbox_kb_note service route
-    // Prefer balanced text quality for markdown note generation.
+    // Prefer the retained OpenAI economy model with Anthropic economy fallback.
     registerServiceRoute("inbox_kb_note", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
-        ModelKeyName.OpenAIGpt5Mini,
-        ModelKeyName.OpenAIGpt5Nano,
+        ModelKeyName.OpenAIGpt54Mini,
+        ModelKeyName.AnthropicClaudeHaiku45,
       ],
       retry: { retries: 2, delayMs: 500 },
       logging: {},
@@ -79,12 +79,12 @@ export function initializeChatServices(): void {
     logger.info("Registered inbox_kb_note service route");
 
     // Register inbox_todo_list service route
-    // Prefer economical extraction for structured task proposals.
+    // Prefer economical extraction with one retained model per provider tier.
     registerServiceRoute("inbox_todo_list", {
       strategy: ServiceRouteStrategy.Failover,
       models: [
-        ModelKeyName.OpenAIGpt5Nano,
-        ModelKeyName.OpenAIGpt5Mini,
+        ModelKeyName.AnthropicClaudeHaiku45,
+        ModelKeyName.OpenAIGpt54Nano,
       ],
       retry: { retries: 2, delayMs: 500 },
       logging: {},

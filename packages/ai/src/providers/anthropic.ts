@@ -506,32 +506,14 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
     tags: ['claude', 'sonnet', '4.6', 'responses', 'standard'],
   },
   {
-    key: ModelKeyName.AnthropicClaudeSonnet45,
-    modelId: 'claude-sonnet-4-5',
-    label: 'Anthropic Claude Sonnet 4.5',
+    key: ModelKeyName.AnthropicClaudeOpus47,
+    modelId: 'claude-opus-4-7',
+    label: 'Anthropic Claude Opus 4.7',
     description:
-      'Latest Claude Sonnet 4.5 release balancing quality reasoning, coding assistance, and long-context orchestration. Supports 1M token context window when using the context-1m-2025-08-07 beta header.',
+      'Current flagship Claude Opus 4.7 model for the deepest reasoning, strongest coding performance, and long-horizon agentic workflows.',
     releaseStage: 'ga',
     maxOutputTokens: 64000,
-    contextWindow: 200000,
-    costTier: CostTier.Standard,
-    pricing: {
-      inputUsdPer1m: 3,
-      outputUsdPer1m: 15,
-      cacheCreationInputUsdPer1m: 3.75,
-      cacheReadInputUsdPer1m: 0.3,
-    },
-    tags: ['claude', 'sonnet', '4.5', 'responses', 'standard'],
-  },
-  {
-    key: ModelKeyName.AnthropicClaudeOpus46,
-    modelId: 'claude-opus-4-6',
-    label: 'Anthropic Claude Opus 4.6',
-    description:
-      'Latest flagship Claude Opus 4.6 model for premium reasoning depth, coding reliability, and agentic workflows.',
-    releaseStage: 'ga',
-    maxOutputTokens: 64000,
-    contextWindow: 200000,
+    contextWindow: 1000000,
     costTier: CostTier.Premium,
     pricing: {
       inputUsdPer1m: 5,
@@ -539,25 +521,7 @@ const DEFAULT_ANTHROPIC_MODEL_CONFIGS: readonly AnthropicModelDefinitionConfig[]
       cacheCreationInputUsdPer1m: 6.25,
       cacheReadInputUsdPer1m: 0.5,
     },
-    tags: ['claude', 'opus', '4.6', 'responses', 'premium'],
-  },
-  {
-    key: ModelKeyName.AnthropicClaudeOpus45,
-    modelId: 'claude-opus-4-5',
-    label: 'Anthropic Claude Opus 4.5',
-    description:
-      'Flagship Claude Opus 4.5 tier delivering premium reasoning depth, reliability, and tool-use orchestration. Excels in complex reasoning, programming, and agentic tasks.',
-    releaseStage: 'ga',
-    maxOutputTokens: 64000,
-    contextWindow: 200000,
-    costTier: CostTier.Premium,
-    pricing: {
-      inputUsdPer1m: 5,
-      outputUsdPer1m: 25,
-      cacheCreationInputUsdPer1m: 6.25,
-      cacheReadInputUsdPer1m: 0.5,
-    },
-    tags: ['claude', 'opus', '4.5', 'responses', 'premium'],
+    tags: ['claude', 'opus', '4.7', 'responses', 'premium'],
   },
 ];
 
