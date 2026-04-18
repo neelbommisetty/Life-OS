@@ -63,12 +63,12 @@
     "lint": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.71.2",
+    "@anthropic-ai/sdk": "^0.90.0",
     "@google/generative-ai": "^0.24.1",
     "@life-os/db": "workspace:*",
     "@life-os/logger": "workspace:*",
     "@prisma/client": "^7.3.0",
-    "openai": "^6.17.0",
+    "openai": "^6.34.0",
     "server-only": "^0.0.1",
     "zod": "^4.3.6",
     "zod-to-json-schema": "^3.25.1"
