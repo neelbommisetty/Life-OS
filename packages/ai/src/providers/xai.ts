@@ -360,6 +360,7 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
       inputUsdPer1m: 0.2,
       outputUsdPer1m: 0.5,
       cacheReadInputUsdPer1m: 0.05,
+      effectiveAt: '2026-04-18',
     },
     tags: ['grok', 'grok-4.1', 'fast'],
   },
@@ -370,8 +371,14 @@ const DEFAULT_XAI_MODEL_CONFIGS: readonly XAIModelDefinitionConfig[] = [
     description: 'Current flagship Grok reasoning model for advanced analysis, coding, and deeper multi-step problem solving.',
     releaseStage: 'ga',
     maxOutputTokens: 65536,
-    contextWindow: 256000,
+    contextWindow: 2000000,
     costTier: CostTier.Premium,
+    pricing: {
+      inputUsdPer1m: 2,
+      outputUsdPer1m: 6,
+      cacheReadInputUsdPer1m: 0.2,
+      effectiveAt: '2026-04-18',
+    },
     tags: ['grok', 'grok-4.20', 'reasoning', 'flagship'],
   },
 ];
