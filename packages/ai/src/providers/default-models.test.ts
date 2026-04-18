@@ -71,8 +71,9 @@ describe("default AI model definitions", () => {
       key: ModelKeyName.AnthropicClaudeSonnet46,
       modelId: "claude-sonnet-4-6",
       label: "Anthropic Claude Sonnet 4.6",
-      description:
-        "Latest Claude Sonnet 4.6 release balancing coding performance, reasoning quality, and long-context orchestration.",
+      description: "Best combination of speed and intelligence.",
+      contextWindow: 1000000,
+      maxOutputTokens: 64000,
       pricing: {
         inputUsdPer1m: 3,
         outputUsdPer1m: 15,
@@ -84,7 +85,9 @@ describe("default AI model definitions", () => {
       modelId: "claude-opus-4-7",
       label: "Anthropic Claude Opus 4.7",
       description:
-        "Current flagship Claude Opus 4.7 model for the deepest reasoning, strongest coding performance, and long-horizon agentic workflows.",
+        "Most capable generally available model for complex reasoning and agentic coding.",
+      contextWindow: 1000000,
+      maxOutputTokens: 128000,
       pricing: {
         inputUsdPer1m: 5,
         outputUsdPer1m: 25,
