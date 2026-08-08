@@ -1,4 +1,0 @@
-#!/usr/bin/env sh
-set -eu
-
-bash ./.githooks/pre-commit
