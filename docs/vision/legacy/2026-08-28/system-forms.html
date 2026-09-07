@@ -1,0 +1,401 @@
+<title>Life-OS System Forms</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+  :root {
+    --bg: #F3F6F4;
+    --panel: #FFFFFF;
+    --panel-2: #EAF0ED;
+    --ink: #17231F;
+    --muted: #5D6D67;
+    --line: #C3CFC9;
+    --accent: #0B7A63;
+    --accent-dim: #0b7a6322;
+  }
+  :root:not([data-theme="light"]) { }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0E1513;
+      --panel: #151D1A;
+      --panel-2: #1B2622;
+      --ink: #E3EAE7;
+      --muted: #8CA098;
+      --line: #34423C;
+      --accent: #46C7A8;
+      --accent-dim: #46c7a826;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E1513;
+    --panel: #151D1A;
+    --panel-2: #1B2622;
+    --ink: #E3EAE7;
+    --muted: #8CA098;
+    --line: #34423C;
+    --accent: #46C7A8;
+    --accent-dim: #46c7a826;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Archivo", system-ui, sans-serif;
+    line-height: 1.55;
+    padding: 40px 28px 64px;
+  }
+  .wrap { max-width: 1160px; margin: 0 auto; }
+
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; font-weight: 600;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(28px, 4vw, 40px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    margin: 0 0 10px;
+    text-wrap: balance;
+  }
+  .lede { max-width: 62ch; color: var(--muted); font-size: 15.5px; margin: 0 0 6px; }
+  .meta {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; color: var(--muted);
+    margin: 0 0 28px;
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+
+  figure { margin: 0 0 8px; }
+  .scroller {
+    overflow-x: auto;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 18px 10px;
+  }
+  .scroller svg { display: block; min-width: 1080px; width: 100%; height: auto; margin: 0 auto; }
+  figcaption {
+    font-size: 13px; color: var(--muted);
+    padding: 10px 4px 0; max-width: 90ch;
+  }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 8px 18px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; color: var(--muted);
+    padding: 8px 4px 0; margin-bottom: 40px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 7px; }
+  .sw { width: 22px; height: 12px; border: 1.5px solid var(--muted); border-radius: 2px; display: inline-block; }
+  .sw.dashed { border-style: dashed; }
+  .sw.lean { border-color: var(--accent); background: var(--accent-dim); }
+
+  h2 {
+    font-size: 15px; font-weight: 700;
+    letter-spacing: 0.01em;
+    margin: 0 0 14px;
+  }
+  h2 .n {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    letter-spacing: 0.14em; text-transform: uppercase;
+    display: block; margin-bottom: 4px;
+  }
+
+  .couplings {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 10px;
+    margin-bottom: 44px;
+  }
+  .c {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .c b {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; font-weight: 600; color: var(--accent);
+    display: block; margin-bottom: 4px;
+  }
+  .c span { color: var(--muted); }
+
+  table {
+    width: 100%; border-collapse: collapse;
+    font-size: 13.5px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .tbl-scroll { overflow-x: auto; margin-bottom: 12px; border-radius: 8px; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: none; }
+  th {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 10.5px; font-weight: 600;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--muted);
+    background: var(--panel-2);
+  }
+  td.d {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; font-weight: 600; color: var(--accent);
+    white-space: nowrap;
+  }
+  td.nm { font-weight: 600; white-space: nowrap; }
+  td.one { color: var(--muted); }
+
+  .foot {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11.5px; color: var(--muted);
+    margin-top: 28px;
+  }
+
+  /* SVG text roles */
+  .bt { font: 600 12.5px "IBM Plex Mono", ui-monospace, monospace; fill: var(--ink); }
+  .bs { font: 400 10.5px "IBM Plex Mono", ui-monospace, monospace; fill: var(--muted); }
+  .ln { font: 600 10.5px "IBM Plex Mono", ui-monospace, monospace; fill: var(--accent); }
+  .al { font: 400 10px "IBM Plex Mono", ui-monospace, monospace; fill: var(--muted); }
+  .sec { font: 600 10px "IBM Plex Mono", ui-monospace, monospace; fill: var(--muted); letter-spacing: 1.5px; }
+  .box { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; rx: 6; }
+  .mod { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; rx: 5; }
+  .sat { fill: var(--panel); stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 5 4; rx: 5; }
+  .hero { fill: var(--panel); stroke: var(--accent); stroke-width: 1.6; rx: 8; }
+  .strip { fill: var(--accent-dim); stroke: var(--accent); stroke-width: 1; rx: 4; }
+  .arr { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+  .arr2 { stroke: var(--muted); stroke-width: 1.3; fill: none; stroke-dasharray: 5 4; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Life-OS v2 · concrete-form pass</p>
+  <h1>System Forms</h1>
+  <p class="lede">Every piece of SYSTEM-LAYOUT mapped to the kind of thing it is in the running system — one Bun daemon on the Mac, agents as database rows, artifacts as files plus rows, and three satellites the daemon leans on but doesn't contain.</p>
+  <p class="meta">DRAFT v0.1 · 2026-08-28 · companion to <b>SYSTEM-FORMS.md</b> / <b>SYSTEM-LAYOUT.md</b> · every green label = proposed working leaning <b>D37–D44</b>, revisable</p>
+
+  <figure>
+    <div class="scroller">
+      <svg viewBox="0 0 1240 850" role="img" aria-label="Life-OS running-system diagram: external services feed connector modules inside a single TypeScript-on-Bun daemon on Neel's Mac; the agent runner wraps a governance gate, an AI SDK agent loop, and a telemetry write; data lives in one SQLite file and a plain file tree; ai-sub-proxy, a signed Swift helper, and launchd/pmset are satellites; the shell is a PWA reached over Tailscale with web push for the morning brief.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+          </marker>
+        </defs>
+
+        <!-- ============ outside left: external services ============ -->
+        <text x="30" y="106" class="sec">EXTERNAL WORLD</text>
+        <rect x="30" y="120" width="160" height="44" class="mod"></rect>
+        <text x="42" y="138" class="bt">Gmail</text>
+        <text x="42" y="153" class="bs">in · Gmail API</text>
+        <rect x="30" y="178" width="160" height="44" class="mod"></rect>
+        <text x="42" y="196" class="bt">Google Calendar</text>
+        <text x="42" y="211" class="bs">mirror ⇄ · sync tokens</text>
+        <rect x="30" y="236" width="160" height="44" class="mod"></rect>
+        <text x="42" y="254" class="bt">Todoist</text>
+        <text x="42" y="269" class="bs">mirror ⇄ · poll · optional</text>
+        <rect x="30" y="294" width="160" height="44" class="mod"></rect>
+        <text x="42" y="312" class="bt">Bank / statements</text>
+        <text x="42" y="327" class="bs">Gmail-parse → Plaid later</text>
+        <rect x="30" y="352" width="160" height="44" class="mod"></rect>
+        <text x="42" y="370" class="bt">Steam · PSN</text>
+        <text x="42" y="385" class="bs">Steam API · PSN fragile</text>
+        <rect x="30" y="410" width="160" height="44" class="mod"></rect>
+        <text x="42" y="428" class="bt">Reading exports</text>
+        <text x="42" y="443" class="bs">Goodreads/StoryGraph files</text>
+
+        <rect x="30" y="620" width="160" height="56" class="sat"></rect>
+        <text x="42" y="640" class="bt">Claude · Codex</text>
+        <text x="42" y="656" class="bs">logged-in CLI subs (D28)</text>
+
+        <!-- ============ Mac boundary ============ -->
+        <rect x="230" y="70" width="760" height="710" fill="none" stroke="var(--muted)" stroke-width="1.4" stroke-dasharray="8 6" rx="10"></rect>
+        <text x="250" y="94" class="sec">NEEL'S MAC · D22 MAC-FIRST</text>
+
+        <!-- ============ the daemon ============ -->
+        <rect x="270" y="110" width="460" height="450" class="hero"></rect>
+        <text x="286" y="132" class="bt">LIFE-OS DAEMON — one process</text>
+        <text x="286" y="146" class="ln">TypeScript on Bun · D37 D38</text>
+
+        <!-- daemon / connectors -->
+        <rect x="290" y="160" width="160" height="170" class="mod"></rect>
+        <text x="300" y="180" class="bt">4 · CONNECTORS</text>
+        <text x="300" y="196" class="bs">in-process modules</text>
+        <text x="300" y="216" class="bs">Gmail · GCal · Todoist</text>
+        <text x="300" y="231" class="bs">Finance · Leisure</text>
+        <text x="300" y="246" class="bs">drop-dir watcher</text>
+        <text x="300" y="268" class="bs">filters at pull ·</text>
+        <text x="300" y="283" class="bs">no-signal records</text>
+        <text x="300" y="303" class="ln">one interface · D44</text>
+
+        <!-- daemon / http server -->
+        <rect x="290" y="355" width="160" height="90" class="mod"></rect>
+        <text x="300" y="375" class="bt">HTTP SERVER</text>
+        <text x="300" y="391" class="bs">API · shell assets</text>
+        <text x="300" y="406" class="bs">live queries (SSE)</text>
+        <text x="300" y="421" class="bs">web push (VAPID)</text>
+
+        <!-- daemon / scheduler -->
+        <rect x="290" y="470" width="160" height="70" class="mod"></rect>
+        <text x="300" y="490" class="bt">7 · SCHEDULER</text>
+        <text x="300" y="506" class="bs">schedule table ·</text>
+        <text x="300" y="521" class="bs">deps + readiness gates</text>
+
+        <!-- daemon / runner -->
+        <rect x="470" y="160" width="240" height="270" class="mod"></rect>
+        <text x="482" y="180" class="bt">6 · AGENT RUNNER</text>
+        <text x="482" y="194" class="bs">the one code path</text>
+        <rect x="482" y="204" width="216" height="42" class="strip"></rect>
+        <text x="492" y="221" class="bt">8 · governance — before</text>
+        <text x="492" y="236" class="bs">TS module + rulebook rows</text>
+        <rect x="482" y="256" width="216" height="70" class="strip"></rect>
+        <text x="492" y="274" class="bt">agent loop</text>
+        <text x="492" y="290" class="ln">thin loop · Vercel AI SDK · D40</text>
+        <text x="492" y="306" class="bs">1·2 agents = DB rows,</text>
+        <text x="492" y="319" class="bs">context assembled per turn</text>
+        <rect x="482" y="336" width="216" height="42" class="strip"></rect>
+        <text x="492" y="353" class="bt">9 · telemetry — after</text>
+        <text x="492" y="368" class="bs">append-only ledger tables</text>
+        <text x="482" y="400" class="bs">skills run 7 phases inside;</text>
+        <text x="482" y="414" class="bs">no execution outside this path</text>
+
+        <!-- daemon / factory -->
+        <rect x="560" y="455" width="150" height="85" class="mod"></rect>
+        <text x="572" y="475" class="bt">2b · FACTORY</text>
+        <text x="572" y="491" class="bs">module +</text>
+        <text x="572" y="506" class="bs">template rows</text>
+        <text x="572" y="524" class="bs">birth = insert rows</text>
+
+        <!-- ============ stores ============ -->
+        <ellipse cx="860" cy="142" rx="100" ry="13" fill="var(--panel)" stroke="var(--line)" stroke-width="1.2"></ellipse>
+        <path d="M760,142 L760,282 A100,13 0 0 0 960,282 L960,142" fill="var(--panel)" stroke="var(--line)" stroke-width="1.2"></path>
+        <text x="782" y="172" class="bt">3a · SQLITE (WAL)</text>
+        <text x="782" y="188" class="ln">+ 3b sqlite-vec · D39</text>
+        <text x="782" y="208" class="bs">claims · todos · projects</text>
+        <text x="782" y="223" class="bs">runs · policy · calendar</text>
+        <text x="782" y="238" class="bs">agent rows · templates</text>
+        <text x="782" y="253" class="bs">ledger · schedule table</text>
+        <text x="782" y="273" class="bs">one file = the backup</text>
+
+        <rect x="760" y="330" width="200" height="140" class="mod"></rect>
+        <text x="772" y="350" class="bt">3c · ~/LifeOS/</text>
+        <text x="772" y="366" class="ln">plain dirs · D39</text>
+        <text x="772" y="386" class="bs">evidence documents</text>
+        <text x="772" y="401" class="bs">artifact files (3d)</text>
+        <text x="772" y="416" class="bs">human-readable export</text>
+        <text x="772" y="436" class="bs">live artifacts = queries,</text>
+        <text x="772" y="451" class="bs">no file (todo · calendar)</text>
+
+        <!-- ============ satellites row ============ -->
+        <rect x="270" y="620" width="170" height="80" class="sat"></rect>
+        <text x="282" y="640" class="bt">OS · LAUNCHD+PMSET</text>
+        <text x="282" y="656" class="bs">KeepAlive daemon ·</text>
+        <text x="282" y="671" class="bs">pmset wakes Mac nightly</text>
+        <text x="282" y="686" class="bs">(admin · day zero) D42</text>
+
+        <rect x="480" y="620" width="180" height="80" class="sat"></rect>
+        <text x="492" y="640" class="bt">6b · AI-SUB-PROXY</text>
+        <text x="492" y="656" class="bs">:58242 · Bun · exists</text>
+        <text x="492" y="671" class="bs">OpenAI + Anthropic wire</text>
+        <text x="492" y="686" class="bs">no embeddings → open q</text>
+
+        <rect x="700" y="620" width="250" height="80" class="sat"></rect>
+        <text x="712" y="640" class="bt">4b · SWIFT HELPER (signed)</text>
+        <text x="712" y="656" class="bs">HealthKit (D16) ·</text>
+        <text x="712" y="671" class="bs">screen/app usage (sensitive)</text>
+        <text x="712" y="686" class="ln">all native reads · one binary</text>
+
+        <!-- ============ outside right: PWA ============ -->
+        <rect x="1030" y="440" width="180" height="110" class="mod"></rect>
+        <text x="1042" y="460" class="bt">5 · SHELL — PWA</text>
+        <text x="1042" y="476" class="ln">Vite+React SPA · D41</text>
+        <text x="1042" y="494" class="bs">iPhone / any browser</text>
+        <text x="1042" y="509" class="bs">Today · review queue ·</text>
+        <text x="1042" y="524" class="bs">chat · views · gallery</text>
+        <text x="1042" y="539" class="bs">push ≥ iOS 16.4</text>
+
+        <!-- ============ arrows ============ -->
+        <!-- external -> connectors -->
+        <line x1="190" y1="142" x2="290" y2="175" class="arr" marker-end="url(#ah)"></line>
+        <line x1="190" y1="200" x2="290" y2="205" class="arr" marker-start="url(#ah)" marker-end="url(#ah)"></line>
+        <line x1="190" y1="258" x2="290" y2="235" class="arr" marker-start="url(#ah)" marker-end="url(#ah)"></line>
+        <line x1="190" y1="316" x2="290" y2="265" class="arr" marker-end="url(#ah)"></line>
+        <line x1="190" y1="374" x2="290" y2="295" class="arr" marker-end="url(#ah)"></line>
+        <line x1="190" y1="432" x2="290" y2="322" class="arr" marker-end="url(#ah)"></line>
+
+        <!-- runner <-> sqlite -->
+        <line x1="710" y1="240" x2="758" y2="240" class="arr" marker-start="url(#ah)" marker-end="url(#ah)"></line>
+        <text x="734" y="230" class="al" text-anchor="middle">scoped r/w</text>
+
+        <!-- daemon -> file tree -->
+        <line x1="730" y1="392" x2="758" y2="392" class="arr" marker-end="url(#ah)"></line>
+        <text x="744" y="384" class="al" text-anchor="middle">files+rows</text>
+
+        <!-- scheduler -> runner -->
+        <line x1="450" y1="480" x2="498" y2="432" class="arr" marker-end="url(#ah)"></line>
+        <text x="452" y="462" class="al">fires routines</text>
+
+        <!-- runner -> proxy -->
+        <line x1="510" y1="430" x2="540" y2="618" class="arr" marker-end="url(#ah)"></line>
+        <text x="520" y="588" class="al" text-anchor="middle">model calls · stateless · 1 tool call/step</text>
+
+        <!-- proxy -> subscriptions -->
+        <line x1="478" y1="660" x2="192" y2="650" class="arr" marker-end="url(#ah)"></line>
+        <text x="335" y="642" class="al" text-anchor="middle">routes to logged-in subs</text>
+
+        <!-- launchd -> daemon -->
+        <line x1="355" y1="618" x2="355" y2="562" class="arr" marker-end="url(#ah)"></line>
+        <text x="363" y="596" class="al">KeepAlive</text>
+
+        <!-- helper -> file tree -->
+        <line x1="825" y1="618" x2="825" y2="472" class="arr" marker-end="url(#ah)"></line>
+        <text x="833" y="550" class="al">file drop → evidence</text>
+
+        <!-- daemon -> PWA (serve + push) -->
+        <line x1="730" y1="505" x2="1028" y2="490" class="arr" marker-end="url(#ah)"></line>
+        <text x="880" y="482" class="al" text-anchor="middle">Tailscale · private HTTPS · serves shell + API</text>
+        <line x1="730" y1="532" x2="1028" y2="522" class="arr2" marker-end="url(#ah)"></line>
+        <text x="880" y="546" class="al" text-anchor="middle">web push · the morning brief (D29/D30)</text>
+      </svg>
+    </div>
+    <figcaption>The running system: external services flow through in-process connector modules into one data layer (SQLite file + plain file tree); the agent runner — governance before, AI SDK loop, telemetry after — executes agents that exist only as rows; three dashed satellites (launchd/pmset, ai-sub-proxy, the Swift helper) do what the daemon can't; the shell reaches it all as a PWA over Tailscale.</figcaption>
+  </figure>
+
+  <div class="legend">
+    <span><span class="sw"></span> built in this repo</span>
+    <span><span class="sw dashed"></span> exists already / OS-provided</span>
+    <span><span class="sw lean"></span> runner-enforced (before/after every action)</span>
+    <span style="color: var(--accent); font-weight: 600;">green = working leaning (D37–D44)</span>
+    <span>⇄ = two-way mirror</span>
+  </div>
+
+  <h2><span class="n">the choices lean on each other</span>Cross-piece couplings</h2>
+  <div class="couplings">
+    <div class="c"><b>C1 · loop ↔ language</b><span>AI SDK / pi-mono → TypeScript; LangGraph → Python. §0 and §6 are one decision.</span></div>
+    <div class="c"><b>C2 · one process ↔ SQLite</b><span>A single writer process is what makes SQLite safe. A second writer process reopens Postgres.</span></div>
+    <div class="c"><b>C3 · proxy ↔ runner + vector</b><span>Stateless, one tool call per reply → runner owns transcripts, steps the loop. No embeddings endpoint → vector needs its own source.</span></div>
+    <div class="c"><b>C4 · Bun ↔ sqlite-vec</b><span>macOS extension loading needs a non-Apple SQLite build; LanceDB is the escape hatch.</span></div>
+    <div class="c"><b>C5 · shell ↔ process model</b><span>Next.js implies a second server; Vite static assets keep one process, one port, one origin.</span></div>
+    <div class="c"><b>C6 · helper ↔ Leisure</b><span>Usage sampling rides the HealthKit helper — one signed, auditable binary for every sensitive native read.</span></div>
+    <div class="c"><b>C7 · heartbeat ↔ day zero</b><span>pmset wake scheduling is admin-privileged — a day-zero install step beside policy v1 and the persona seed.</span></div>
+  </div>
+
+  <h2><span class="n">proposed · same standing as D33–D36</span>Working leanings register — D37–D44</h2>
+  <div class="tbl-scroll">
+    <table>
+      <tr><th>#</th><th>Name</th><th>One line</th></tr>
+      <tr><td class="d">D37</td><td class="nm">Process model</td><td class="one">One user-space daemon + three satellites (ai-sub-proxy, Swift helper, launchd/pmset).</td></tr>
+      <tr><td class="d">D38</td><td class="nm">Language/runtime</td><td class="one">TypeScript on Bun, daemon and shell.</td></tr>
+      <tr><td class="d">D39</td><td class="nm">Storage engines</td><td class="one">SQLite (WAL) · sqlite-vec, derived only · plain dirs under one user-data root.</td></tr>
+      <tr><td class="d">D40</td><td class="nm">Agent loop</td><td class="one">Own thin loop on the Vercel AI SDK through ai-sub-proxy; no framework owns the runner.</td></tr>
+      <tr><td class="d">D41</td><td class="nm">Shell stack</td><td class="one">Vite+React SPA/PWA served by the daemon · Tailscale · web-push.</td></tr>
+      <tr><td class="d">D42</td><td class="nm">Heartbeat form</td><td class="one">launchd + pmset at machine level; in-daemon scheduler owns the schedule table.</td></tr>
+      <tr><td class="d">D43</td><td class="nm">Gov/telemetry form</td><td class="one">Plain modules + versioned/append-only tables; no policy engine, no OTel.</td></tr>
+      <tr><td class="d">D44</td><td class="nm">Connector form</td><td class="one">In-process modules; all native reads in the one Swift helper via file drop.</td></tr>
+    </table>
+  </div>
+
+  <p class="foot">Working decisions — none confirmed. Full reasoning, per-piece candidates, and open questions: <b>docs/vision/SYSTEM-FORMS.md</b>.</p>
+</div>
