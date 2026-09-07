@@ -1,0 +1,27 @@
+{
+  "name": "@life-os/tools",
+  "private": true,
+  "type": "module",
+  "description": "Life-OS tools: the todo list core (and later the calendar), with the life CLI.",
+  "bin": {
+    "life": "./bin/life.js"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "pg": "8.16.3",
+    "zod": "4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "26.4.1",
+    "@types/pg": "8.15.5",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "~5.9.3"
+  }
+}
