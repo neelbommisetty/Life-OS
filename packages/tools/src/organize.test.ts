@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Ctx, Project, Receipt, Task } from "./contract.ts";
+import { ITEM_KEY_SEPARATOR } from "./core.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
 import {
   createOrganize,
@@ -315,7 +316,7 @@ test("project.reorder assigns 0..n-1 to siblings and rejects mixed scopes, unkno
   const receipts = await org.project.reorder([z.id, x.id, y.id], { actor: "neel", key: "reorder-1" });
   assert.deepEqual(receipts.map((r) => r.ok && [r.outcome, r.record.order]), [["updated", 0], ["updated", 1], ["updated", 2]]);
   assert.deepEqual((await org.project.tree()).find((n) => n.project.id === parent.id)!.children.map((n) => n.project.id), [z.id, x.id, y.id]);
-  assert.equal((await history("project", z.id))[1]!.key, "reorder-1:0", "per-item keys derive from the caller's");
+  assert.equal((await history("project", z.id))[1]!.key, `reorder-1${ITEM_KEY_SEPARATOR}0`, "per-item keys derive from the caller's");
   const again = await org.project.reorder([z.id, x.id, y.id], { actor: "neel", key: "reorder-1" });
   assert.deepEqual(again, receipts, "a retry returns the stored receipts");
   const noop = await org.project.reorder([z.id, x.id, y.id], neel);
@@ -690,4 +691,20 @@ test("filter.run evaluates a saved filter or an ad hoc query over open tasks wit
   assert.deepEqual((await org.filter.run(`#${child.id} & all`)).map((t) => t.id), ["t_run0000002", "t_run0000003"], "deleted tasks never appear");
   assert.deepEqual((await org.filter.run("@rush")).map((t) => t.id), ["t_run0000005"]);
   await assert.rejects(org.filter.run("nonsense term"), /neither a saved filter nor a valid query/);
+});
+
+test("project.add creates the Inbox only once the input has passed, so a rejection on an empty database writes nothing", async () => {
+  const fresh = await createTestDb();
+  try {
+    const o = createOrganize(fresh.store, clock);
+    rejectedWith(await o.project.add({ name: "Kid", parent: "nope/nowhere" }, neel), /parent: no project "nope\/nowhere"/);
+    rejectedWith(await o.project.add({ name: "Inbox" }, neel), /slug: "inbox" is already used by a sibling project/);
+    assert.deepEqual(await fresh.store.read((tx) => tx.all("project", { includeDeleted: true })), [], "no Inbox row");
+    assert.deepEqual(await fresh.store.read((tx) => tx.allLog()), []);
+    const health = okRecord(await o.project.add({ name: "Health" }, neel));
+    assert.equal(health.order, 1, "the Inbox is created first and holds order 0");
+    assert.equal((await fresh.store.read((tx) => tx.all("project"))).length, 2);
+  } finally {
+    await fresh.drop();
+  }
 });

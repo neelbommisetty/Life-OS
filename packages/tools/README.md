@@ -7,7 +7,7 @@ The todo list core of Life-OS (the calendar joins later), plus the `life` CLI. T
 - **Runtime.** Node 26 runs TypeScript directly, so there is no build step. Write erasable syntax only: no `enum`, no `namespace`, no constructor parameter properties. Relative imports carry the `.ts` extension. `verbatimModuleSyntax` is on: use `import type` for types. `tsconfig.json` enforces all of this; `npx tsc --noEmit` must pass.
 - **Tests.** `node:test` in `src/**/*.test.ts`. Run `node --test "src/**/*.test.ts"` from this directory (or `bun run test`). Tests that touch the database use `createTestDb()` from `src/db/testing.ts`, which creates a throwaway Postgres schema, migrates it, and drops it afterwards. Tests never touch the `public` schema. Inject a fixed clock; never depend on wall-clock time.
 - **Environment.** `LIFE_DATABASE_URL` is the only setting. It lives in the repository root `.env` (git-ignored). `src/db/client.ts` reads `process.env.LIFE_DATABASE_URL` and, if unset, loads the root `.env` with `process.loadEnvFile`, resolving the root from `import.meta.url`. `LIFE_TZ` optionally sets the timezone; otherwise the machine's.
-- **Database.** Postgres through the `pg` Pool and Drizzle ORM (`drizzle-orm/node-postgres`). The schema is declared in `src/db/schema.ts`; migration SQL in `drizzle/` is generated with `npx drizzle-kit generate` and applied by `migrate()` in `src/db/migrate.ts`, which accepts a schema name so tests can migrate a throwaway schema (Drizzle's `migrate` supports `migrationsSchema`). Tables are unqualified, so `search_path` decides where they live.
+- **Database.** Postgres through the `pg` Pool and Drizzle ORM (`drizzle-orm/node-postgres`). The schema is declared in `src/db/schema.ts`; migration SQL in `drizzle/` is generated with `npx drizzle-kit generate` and applied by `migrate()` in `src/db/migrate.ts`, which accepts a schema name so tests can migrate a throwaway schema (Drizzle's `migrate` supports `migrationsSchema`). Tables are unqualified, so `search_path` decides where they live; without a schema name the migration journal follows `search_path` too (`public` on a plain URL), so a URL that sets `search_path` never records a migration in `public`.
 - **Storage shape.** One table per record kind (`tasks`, `projects`, `sections`, `labels`, `filters`), each `id text primary key, version integer, json jsonb, updated_at timestamptz, deleted_at timestamptz null`, plus `log` (`seq bigserial`, `at`, `actor`, `op`, `record_kind`, `record_id`, `patch jsonb`, `reason`, `evidence jsonb`, `key`) and `receipts` (`key text primary key`, `receipt jsonb`, `at`). Add expression indexes where a query needs them (tasks: `(json->>'status')`, `(json->>'projectId')`, `(json->'due'->>'date')`). Filtering happens in SQL for `deleted_at` and obvious columns, in JS otherwise. Single user; thousands of rows, not millions.
 - **Writers are serialized.** Every write transaction starts with `select pg_advisory_xact_lock(4242)` so a CLI call and the app never interleave read-modify-write on the same rows. Reads do not take the lock.
 - **Everything is async.** Every operation returns a Promise.
@@ -78,7 +78,7 @@ export function mutate<K extends Kind>(store: Store, clock: Clock, kind: K, op: 
 export function applyIn<K extends Kind>(tx: Tx, clock: Clock, kind: K, op: string, ctx: Ctx, work: (tx: Tx, ctx: Ctx, now: string) => Promise<Mutation<RecordOf<K>>>): Promise<Receipt<RecordOf<K>>>;
 ```
 
-Rules inside `mutate`/`applyIn`: an invalid ctx is `rejected` before anything runs; a known idempotency key returns the stored receipt without running `work`; the record is validated against `taskSchema`/`projectSchema`/... after `work` and rejected if invalid; `unchanged` outcomes persist nothing and log nothing; every other ok outcome upserts the record, appends one log entry `{ at, actor, op, recordKind, recordId, patch: diff(before, after), reason, evidence, key }`, and stores the receipt under the key if one was given. Rejected and duplicate receipts are never stored under a key.
+Rules inside `mutate`/`applyIn`: an invalid ctx is `rejected` before anything runs; a known idempotency key returns the stored receipt without running `work`, and is `rejected` when the stored receipt answers a different kind or op (`key: "k" was already used by project.add`); the record is validated against `taskSchema`/`projectSchema`/... after `work` and rejected if invalid; `unchanged` outcomes persist nothing and log nothing; every other ok outcome upserts the record, appends one log entry `{ at, actor, op, recordKind, recordId, patch: diff(before, after), reason, evidence, key }`, and stores `{ kind, op, receipt }` in the `receipts` table under the key if one was given. Rejected and duplicate receipts are never stored under a key, and `unchanged` outcomes likewise store no receipt under an idempotency key. A rejection that comes after a nested `applyIn` already wrote (a cascade ran before a check failed) throws `RejectedAfterWrites`, which rolls the transaction back; `mutate` returns it as the rejected receipt, so a rejected mutation never commits anything. Multi-record operations (batch, reorder, import) derive one key per item with `itemCtx(ctx, index)`: the caller's key, U+001F, the index; caller keys may not contain control characters, so the two can never collide.
 
 ### Tools facade
 
@@ -107,9 +107,9 @@ class Tools {
 | `accept(id, ctx)` | proposed → accepted. |
 | `start(id, ctx)` | accepted → in_progress. |
 | `complete(id, ctx, opts?: { date?: string; subtasks?: "complete" \| "leave" })` | accepted or in_progress only. Repeating: append an occurrence `{ date, at, actor }` where `date` is `opts.date` or the due date, advance `due.date` with `nextOccurrence`, status back to `accepted`. Otherwise status `done`, `completedAt` set, occurrence appended. If the task has open, non-deleted sub-tasks and `opts.subtasks` is absent, reject with `needs: { field: "subtasks", options: ["complete", "leave"], message }` and change nothing. `"complete"` completes them recursively in the same transaction (each logs its own entry). |
-| `uncomplete(id, ctx)` | done → accepted with `completedAt` null. On a repeating task (status accepted, at least one occurrence): pop the last occurrence and restore `due.date` to it. Cancelled tasks are reopened with `uncomplete` as well. |
+| `uncomplete(id, ctx)` | done → accepted with `completedAt` null. On a repeating task (status accepted, at least one occurrence): pop the last occurrence and restore `due.date` to what it was before the completion that recorded it, read from that completion's log entry (HANDS D52); the occurrence's own date is only the fallback when the log has no such entry. Cancelled tasks are reopened with `uncomplete` as well. |
 | `cancel(id, ctx)` | Any open status → cancelled. `ctx.reason` required. |
-| `delete(id, ctx, opts?: { subtasks?: "delete" \| "leave" })` | Soft: sets `deletedAt`, leaves status alone. Same `needs` rule as complete when sub-tasks exist; `"delete"` deletes the subtree, `"leave"` re-parents children to the task's parent (or top level). |
+| `delete(id, ctx, opts?: { subtasks?: "delete" \| "leave" })` | Soft: sets `deletedAt`, leaves status alone. Same `needs` rule as complete, asked only when the task has open, non-deleted sub-tasks; closed sub-tasks are deleted along with the parent even when no choice is given. `"delete"` deletes the subtree, `"leave"` re-parents children to the task's parent (or top level). |
 | `restore(id, ctx)` | Clears `deletedAt`. If the parent is deleted, the task becomes top level in its project; if the project or section is deleted, it moves to Inbox / no section. Sub-tasks deleted with it stay deleted until restored individually. |
 | `assign(id, { executor?, bucket? }, ctx)` | Executor `neel` or `agent:<name>`; bucket `safe`, `review`, `unsafe`, or `null` to clear. |
 | `reschedule(id, due: Due \| null, ctx)` | Open statuses only. Repeating tasks cannot go undated. |
@@ -120,7 +120,7 @@ class Tools {
 
 `ProjectOps`, `SectionOps`, `LabelOps`, `FilterOps` (refs are ids, or for projects a slug path or `inbox`, for labels and filters a name):
 
-- `project.add(input: ProjectAdd, ctx)`: slug defaults to a kebab-case of the name; unique among siblings; `order` last among siblings. `project.get(ref)`, `project.tree(opts?: { includeArchived?: boolean }): Promise<ProjectNode[]>` (`{ project, sections, children }`), `project.update(ref, input, ctx)`, `project.move(ref, parent: string | null, ctx)` (no cycles; Inbox cannot move), `project.reorder(ids, ctx)` (siblings only), `project.archive(ref, ctx)`, `project.unarchive(ref, ctx)`, `project.delete(ref, ctx, opts?: { contents?: "delete" \| "inbox" })` (Inbox cannot be deleted; with non-deleted tasks or sub-projects and no choice, reject with `needs: { field: "contents", options: ["delete", "inbox"] }`; `delete` soft-deletes sub-projects, sections, and tasks recursively; `inbox` moves every task in the subtree to Inbox with no section and deletes the now-empty sub-projects and sections), `project.restore(id, ctx)` (if the parent is deleted, becomes top level), `project.history(id)`.
+- `project.add(input: ProjectAdd, ctx)`: slug defaults to a kebab-case of the name; unique among siblings; `order` last among siblings. Labels named on `project.add` and `project.update` are auto-registered the same as on `task.add`. `project.get(ref)`, `project.tree(opts?: { includeArchived?: boolean }): Promise<ProjectNode[]>` (`{ project, sections, children }`), `project.update(ref, input, ctx)`, `project.move(ref, parent: string | null, ctx)` (no cycles; Inbox cannot move), `project.reorder(ids, ctx)` (siblings only), `project.archive(ref, ctx)`, `project.unarchive(ref, ctx)`, `project.delete(ref, ctx, opts?: { contents?: "delete" \| "inbox" })` (Inbox cannot be deleted; with non-deleted tasks or sub-projects and no choice, reject with `needs: { field: "contents", options: ["delete", "inbox"] }`; `delete` soft-deletes sub-projects, sections, and tasks recursively; `inbox` moves every task in the subtree to Inbox with no section and deletes the now-empty sub-projects and sections), `project.restore(id, ctx)` (if the parent is deleted, becomes top level), `project.history(id)`.
 - `ensureInbox(tx, clock)` in `organize.ts` creates the Inbox on first use: name `Inbox`, slug `inbox`, `system: true`, actor `neel`.
 - `section.add(input: SectionAdd, ctx)`, `section.get(id)`, `section.list(projectRef)`, `section.update(id, input, ctx)`, `section.reorder(ids, ctx)`, `section.archive`, `section.unarchive`, `section.delete(id, ctx, opts?: { tasks?: "delete" \| "unsection" })` (same `needs` pattern), `section.restore(id, ctx)`.
 - `label.add(input: LabelAdd, ctx)` (name unique among non-deleted), `label.get(ref)`, `label.list()`, `label.update(ref, input, ctx)` (renaming rewrites the name on every task and project that carries it, each logged), `label.reorder(ids, ctx)`, `label.delete(ref, ctx)` (rejected while any non-deleted task or project carries it), `label.restore(id, ctx)`.
@@ -147,7 +147,7 @@ To build a `FilterSubject` for a task: `status`, `dueDate: due?.date ?? null`, `
 life task add <title> [--notes] [--project ref] [--section name|id] [--parent id] [--due date|today|tomorrow|+Nd] [--time HH:MM] [--tz] [--deadline date] [--duration min] [--repeat RRULE] [--priority 1-4] [--label name]... [--executor] [--bucket] [--status proposed|accepted] [--allow-duplicate]
 life task get <id>
 life task list [--filter "<query>"] [--project ref] [--with-subprojects] [--section name|id] [--label name] [--status a,b] [--all] [--due date] [--due-before date] [--due-after date] [--undated] [--text s] [--deleted] [--limit n]
-life task update <id> [--title] [--notes] [--priority n|--no-priority] [--due d|--no-due] [--time] [--tz] [--deadline d|--no-deadline] [--duration n|--no-duration] [--repeat r|--no-repeat] [--label name]...
+life task update <id> [--title] [--notes] [--priority n|--no-priority] [--due d|--no-due] [--time] [--tz] [--deadline d|--no-deadline] [--duration n|--no-duration] [--repeat r|--no-repeat] [--label name]...|--no-label
 life task move <id> [--project ref] [--section name|id|--no-section] [--parent id|--no-parent]
 life task reorder <id> <id>...
 life task duplicate <id> [--no-subtasks]
@@ -163,7 +163,7 @@ life task import <file.json> [--dry-run]
 life project add <name> [--parent ref] [--slug s] [--color c] [--layout list|board] [--label name]...
 life project tree [--archived]
 life project get|archive|unarchive|restore <ref>
-life project update <ref> [--name] [--slug] [--color|--no-color] [--layout] [--label]...
+life project update <ref> [--name] [--slug] [--color|--no-color] [--layout] [--label]...|--no-label
 life project move <ref> (--parent ref | --no-parent)
 life project delete <ref> [--contents delete|inbox]
 life project reorder <id> <id>...
@@ -183,12 +183,28 @@ life filter list
 life filter run <ref|query>
 life filter update <ref> [--name] [--query]
 life filter delete|restore <ref>
+life filter reorder <id> <id>...
 life today [--date d]
 life upcoming [days] [--from d]
 life search <text>
 life trash
 life export [file]
 life migrate
+life help
 ```
+
+### CLI ergonomics for agents (binding)
+
+The CLI's first user is an agent reading JSON, and its second is Neel debugging what the agent did. Every rule below is testable.
+
+- **Help at every layer.** `life --help`, `life <group> --help`, and `life <group> <command> --help` (also `-h`, and `life help [group] [command]`). Top level lists groups, global flags, environment variables, and exit codes. Group level lists its commands with one-line purposes. Command level lists positionals, every flag with its type, allowed values, default, and whether it repeats, plus two or three copy-pasteable examples and the exit codes that command can produce. `life --version` prints the package version.
+- **Unknown input is a usage error, never a guess.** An unknown group, command, or flag exits 64, names what was unknown, suggests the closest known names, and prints the help for the layer it failed at. Missing required positionals say which one is missing.
+- **One JSON envelope, always on stdout, nothing else on stdout.** With `--json` (or a non-TTY stdout), the CLI prints exactly one JSON object: `{ "ok": boolean, "command": "task add", "exitCode": number, "result"?: <the library's return value: receipt, record, list, view>, "error"?: { "code": "usage" | "rejected" | "duplicate" | "needs" | "not_found" | "db_unavailable" | "internal", "message": string, "issues": string[], "hint"?: string, "needs"?: { field, options, message }, "candidates"?: Task[] }, "warnings"?: string[] }`. Diagnostics and progress go to stderr. Nothing else may be printed to stdout in JSON mode, including from the database driver.
+- **Every failure carries a hint an agent can act on.** A `needs` rejection names the exact flag and values to pass (`--subtasks complete|leave`). A duplicate names `--allow-duplicate` and lists candidate ids and titles. A bad project or section ref suggests `life project tree`. A bad filter quotes the grammar cheat sheet line that applies. A validation issue keeps its field path (`due.time: Use HH:MM`). A missing actor says `--actor` or `LIFE_ACTOR`. A database failure says which variable it read, the host it tried (never the password), and to run `life doctor`.
+- **`life doctor`.** Reports, as a table or JSON: which env file was read, whether `LIFE_DATABASE_URL` is set, connectivity and server version, whether migrations are current, the effective timezone and where it came from, the effective actor and where it came from, and the Inbox id. Exit 0 when healthy, 3 when the database is unreachable, 1 for any other problem.
+- **Debuggability.** `--verbose` (or `LIFE_DEBUG=1`) adds stack traces, the SQL error code and detail on database errors, and the resolved refs (project path to id, section name to id) on stderr. Without it, messages stay one or two lines. Every success line in human mode includes the id; `life task get <id> --json` returns the full record.
+- **Determinism.** Lists are ordered as the brief's sort rules say, and identical inputs give identical output. Timestamps in output are the library's ISO strings, untouched.
+- **Human mode is a convenience, not a source of truth.** Anything an agent needs is in the JSON envelope.
+- **The CLI stands alone.** The skill says when to reach for the CLI and what Neel expects of agents; it is not the manual. An agent with no skill loaded, starting from `life --help`, must be able to discover every command, flag, ref format, filter term, and exit code and complete a task correctly. Test this by driving a flow from help output alone.
 
 Human output is plain aligned text: one line per task with id, status, title, due, project path, labels. JSON output is the receipt or result object exactly as the library returns it.

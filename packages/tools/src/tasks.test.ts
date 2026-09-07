@@ -1,6 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Ctx, Project, Receipt, Task, TaskAdd } from "./contract.ts";
+import { ITEM_KEY_SEPARATOR } from "./core.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
 import { createOrganize, type Organize } from "./organize.ts";
 import { childrenOf, createTasks, descendantsOf, findDuplicates, normalizeTitle, similarTitles, type TaskOps } from "./tasks.ts";
@@ -49,6 +50,8 @@ const section = async (projectRef: string, name: string) => okRecord(await org.s
 const history = (id: string) => db.store.read((tx) => tx.history("task", id));
 const ops = async (id: string) => (await history(id)).map((e) => e.op);
 const logCount = () => db.store.read(async (tx) => (await tx.allLog()).length);
+/** The key batch, reorder, and import store item `index` under. */
+const itemKey = (key: string, index: number): string => `${key}${ITEM_KEY_SEPARATOR}${index}`;
 const get = async (id: string): Promise<Task> => {
   const task = await tasks.get(id);
   assert.ok(task, `task ${id} exists`);
@@ -463,7 +466,7 @@ test("reorder assigns 0..n-1 within one scope and rejects mixed scopes, deleted 
   const receipts = await tasks.reorder([c.id, a.id, b.id], { actor: "neel", key: "reorder-1" });
   assert.deepEqual(receipts.map((r) => r.ok && [r.outcome, r.record.order]), [["updated", 0], ["updated", 1], ["updated", 2]]);
   assert.deepEqual((await tasks.list({ project: p.id, parent: null })).map((t) => t.id), [c.id, a.id, b.id]);
-  assert.equal((await history(c.id)).at(-1)!.key, "reorder-1:0");
+  assert.equal((await history(c.id)).at(-1)!.key, itemKey("reorder-1", 0));
   assert.equal((await history(c.id)).at(-1)!.op, "task.reorder");
   assert.deepEqual(await tasks.reorder([c.id, a.id, b.id], { actor: "neel", key: "reorder-1" }), receipts, "a retry returns the stored receipts");
   assert.deepEqual((await tasks.reorder([c.id, a.id, b.id], neel)).map((r) => r.ok && r.outcome), ["unchanged", "unchanged", "unchanged"]);
@@ -640,9 +643,13 @@ test("complete on a repeating task records the occurrence, advances due, and sta
   assert.deepEqual(late.occurrences.map((o) => o.date), ["2026-09-07", "2026-09-09", "2026-09-20"]);
 
   const rewound = okRecord(await tasks.uncomplete(t.id, neel));
-  assert.equal(rewound.due?.date, "2026-09-20", "the popped occurrence's date");
+  assert.equal(rewound.due?.date, "2026-09-14", "the due date the late completion advanced from, read from its log entry; not the 09-20 it recorded");
   assert.deepEqual(rewound.occurrences.map((o) => o.date), ["2026-09-07", "2026-09-09"]);
-  assert.equal(okRecord(await tasks.uncomplete(t.id, neel)).due?.date, "2026-09-09");
+  assert.deepEqual((await history(t.id)).at(-1)!.patch.due, {
+    from: { date: "2026-09-21", time: "09:00", timezone: "America/Los_Angeles" },
+    to: { date: "2026-09-14", time: "09:00", timezone: "America/Los_Angeles" },
+  });
+  assert.equal(okRecord(await tasks.uncomplete(t.id, neel)).due?.date, "2026-09-11", "before the early completion, not the 09-09 it recorded");
   const start = okRecord(await tasks.uncomplete(t.id, neel));
   assert.equal(start.due?.date, "2026-09-07");
   assert.deepEqual(start.occurrences, []);
@@ -935,8 +942,8 @@ test("batch runs every kind of item in one transaction; by default each item sta
   const six = await get(b6.id);
   assert.deepEqual([six.status, six.deletedAt], ["accepted", null]);
   assert.equal((await tasks.list({ project: "inbox", text: "B six" })).length, 2, "the duplicate landed");
-  assert.equal((await history(b1.id)).at(-1)!.key, "batch-1:0", "per-item keys derive from the caller's");
-  assert.equal((await history(b3.id)).at(-1)!.key, "batch-1:4");
+  assert.equal((await history(b1.id)).at(-1)!.key, itemKey("batch-1", 0), "per-item keys derive from the caller's");
+  assert.equal((await history(b3.id)).at(-1)!.key, itemKey("batch-1", 4));
   assert.deepEqual(await tasks.batch([{ op: "complete", id: b1.id, options: { date: "2026-09-05" } }], { actor: "neel", key: "batch-1" }), [receipts[0]], "a retry returns the stored receipt");
 
   assert.deepEqual(await tasks.batch([], neel), []);
@@ -966,7 +973,7 @@ test("an atomic batch rolls everything back on the first rejection and every rec
   assert.equal((await get(a.id)).status, "proposed", "rolled back");
   assert.equal((await get(b.id)).status, "accepted");
   assert.equal(await logCount(), before, "nothing logged");
-  assert.equal(await db.store.read((tx) => tx.getReceipt("atomic-1:0")), null, "receipts stored before the abort are rolled back too");
+  assert.equal(await db.store.read((tx) => tx.getReceipt(itemKey("atomic-1", 0))), null, "receipts stored before the abort are rolled back too");
 
   const p = await mk("Atomic parent");
   const c = await mk("Atomic child", { parent: p.id });
@@ -1031,7 +1038,7 @@ test("import creates each item in one transaction, reports per item, and a dry r
   const entry = (await history("t_import0001"))[0]!;
   assert.equal(entry.op, "task.import");
   assert.equal(entry.actor, "import:todoist");
-  assert.equal(entry.key, "import-1:1");
+  assert.equal(entry.key, itemKey("import-1", 1));
   assert.equal((await org.label.get("imported"))?.origin.actor, "import:todoist");
 
   const again = await tasks.import(items, { actor: "import:todoist" });
@@ -1103,4 +1110,83 @@ test("every mutation logs one entry with its op, and unchanged writes log nothin
     assert.equal(receipt.ok && receipt.outcome, "unchanged", JSON.stringify(receipt));
   }
   assert.equal(await logCount(), before);
+});
+
+// ------------------------------------------------------------------ review findings
+
+test("a rejected mutation writes nothing, even when a cascade ran before the check that failed", async () => {
+  const weekly = await mk("Side effect weekly", { due: { date: "2026-09-08" }, repeat: "FREQ=WEEKLY" });
+  const before = await logCount();
+  rejectedWith(await tasks.update(weekly.id, { labels: ["garden-side-effect"], due: null }, neel), /due: a repeating task needs a due date/);
+  assert.equal(await org.label.get("garden-side-effect"), null, "the label the update would have registered does not exist");
+  assert.equal(await logCount(), before, "nothing logged");
+  assert.deepEqual((await get(weekly.id)).labels, []);
+
+  rejectedWith(await tasks.add({ title: "Side effect add", labels: ["never-registered"], section: "No Such Section" }, neel), /section: no section "No Such Section"/);
+  assert.equal(await org.label.get("never-registered"), null);
+  assert.equal(await logCount(), before);
+
+  // On an empty database the Inbox itself is a write that add cascades; a rejection leaves it uncreated.
+  const fresh = await createTestDb();
+  try {
+    const ops = createTasks(fresh.store, clock);
+    rejectedWith(await ops.add({ title: "Fresh add", section: "Nope" }, neel), /section: no section "Nope" in project "inbox"/);
+    rejectedWith(await ops.add({ title: "Fresh add", project: "inbox", parent: "t_0000000000" }, neel), /parent: no task "t_0000000000"/);
+    assert.deepEqual(await fresh.store.read((tx) => tx.all("project", { includeDeleted: true })), [], "no Inbox row");
+    assert.deepEqual(await fresh.store.read((tx) => tx.allLog()), []);
+  } finally {
+    await fresh.drop();
+  }
+});
+
+test('add and move with the ref "inbox" create the Inbox on first use, like the default', async () => {
+  const fresh = await createTestDb();
+  try {
+    const ops = createTasks(fresh.store, clock);
+    const first = okRecord(await ops.add({ title: "Renew car registration", project: "inbox" }, codex));
+    const projects = await fresh.store.read((tx) => tx.all("project"));
+    assert.equal(projects.length, 1);
+    assert.equal(projects[0]!.system, true, "the Inbox");
+    assert.equal(first.projectId, projects[0]!.id);
+    assert.equal(first.status, "proposed");
+    const elsewhere = okRecord(await createOrganize(fresh.store, clock).project.add({ name: "Elsewhere" }, neel));
+    assert.equal(okRecord(await ops.move(first.id, { project: elsewhere.id }, neel)).projectId, elsewhere.id);
+    assert.equal(okRecord(await ops.move(first.id, { project: "Inbox" }, neel)).projectId, projects[0]!.id, "the ref is case-insensitive");
+  } finally {
+    await fresh.drop();
+  }
+});
+
+test("uncomplete on a repeating task restores the due date the completion advanced from, not the date it recorded", async () => {
+  const t = await mk("Rewind weekly", { due: { date: "2026-09-14" }, repeat: "FREQ=WEEKLY" });
+  const early = okRecord(await tasks.complete(t.id, neel, { date: "2026-09-10" }));
+  assert.equal(early.due?.date, "2026-09-21");
+  assert.deepEqual(early.occurrences.map((o) => o.date), ["2026-09-10"]);
+  const rewound = okRecord(await tasks.uncomplete(t.id, neel));
+  assert.equal(rewound.due?.date, "2026-09-14", "the due date before the completion, from its log entry");
+  assert.deepEqual(rewound.occurrences, []);
+  assert.deepEqual((await history(t.id)).at(-1)!.patch.due, { from: { date: "2026-09-21" }, to: { date: "2026-09-14" } });
+
+  // Completed twice more and rewound twice: each rewind pairs with its own completion's entry.
+  okRecord(await tasks.complete(t.id, codex, { date: "2026-09-16" }));
+  okRecord(await tasks.complete(t.id, neel));
+  assert.equal(okRecord(await tasks.uncomplete(t.id, neel)).due?.date, "2026-09-21");
+  assert.equal(okRecord(await tasks.uncomplete(t.id, neel)).due?.date, "2026-09-14");
+  assert.deepEqual((await get(t.id)).occurrences, []);
+});
+
+test("an idempotency key answers one operation, and item keys cannot collide with caller keys", async () => {
+  const receipt = await tasks.add({ title: "Key kind probe", allowDuplicate: true }, { actor: "neel", key: "shared-kind-key" });
+  okRecord(receipt);
+  const other = await mk("Key kind other", {}, codex);
+  rejectedWith(await tasks.accept(other.id, { actor: "neel", key: "shared-kind-key" }), /key: "shared-kind-key" was already used by task.add/);
+  assert.equal((await get(other.id)).status, "proposed", "the accept did not run");
+  assert.deepEqual(await tasks.add({ title: "Key kind probe", allowDuplicate: true }, { actor: "neel", key: "shared-kind-key" }), receipt, "the same op still replays");
+
+  const proposed = await mk("Key item probe", {}, codex);
+  okRecord(await tasks.add({ title: "Key colon zero", allowDuplicate: true }, { actor: "neel", key: "b:0" }));
+  const [accepted] = await tasks.batch([{ op: "accept", id: proposed.id }], { actor: "neel", key: "b" });
+  assert.equal(accepted!.ok && accepted!.outcome, "updated", 'item 0 of key "b" does not replay the receipt stored under "b:0"');
+  assert.equal((await get(proposed.id)).status, "accepted");
+  rejectedWith(await tasks.accept(proposed.id, { actor: "neel", key: itemKey("b", 0) }), /key: No control characters/);
 });

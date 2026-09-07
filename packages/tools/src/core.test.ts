@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Ctx, Label, Task } from "./contract.ts";
-import { applyIn, bump, checkVersion, diff, duplicate, fail, mutate, newId, nowIso, okMutation, rejected } from "./core.ts";
+import { ITEM_KEY_SEPARATOR, applyIn, bump, checkVersion, diff, duplicate, fail, itemCtx, mutate, newId, nowIso, okMutation, rejected } from "./core.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
 import type { Tx } from "./store.ts";
 
@@ -117,7 +117,46 @@ test("mutate creates, logs a full patch, and stores the receipt under the key", 
     evidence: ["msg:123"],
     key: "create-1",
   });
-  assert.deepEqual(await db.store.read((tx) => tx.getReceipt("create-1")), receipt);
+  assert.deepEqual(await db.store.read((tx) => tx.getReceipt("create-1")), { kind: "label", op: "label.add", receipt }, "stored with the kind and op it answers");
+});
+
+test("a key answers one kind and op: reuse for another operation is rejected without running work", async () => {
+  const { calls, work } = creator("l_keyop00001");
+  const first = await mutate(db.store, clock, "label", "label.add", { actor: "neel", key: "op-1" }, work);
+  assert.equal(first.ok, true);
+  const update = await mutate(db.store, clock, "label", "label.update", { actor: "neel", key: "op-1" }, updater("l_keyop00001", { color: "red" }));
+  assert.deepEqual(update, rejected(['key: "op-1" was already used by label.add']));
+  const filter = await mutate(db.store, clock, "filter", "filter.add", { actor: "neel", key: "op-1" }, async () => {
+    throw new Error("work must not run");
+  });
+  assert.deepEqual(filter, rejected(['key: "op-1" was already used by label.add']));
+  assert.equal(calls.n, 1);
+  assert.equal((await db.store.read((tx) => tx.get("label", "l_keyop00001")))?.color, undefined, "the update did not run");
+  assert.deepEqual(await mutate(db.store, clock, "label", "label.add", { actor: "neel", key: "op-1" }, work), first, "the same kind and op replay");
+});
+
+test("itemCtx derives per-item keys with a separator no caller key can carry", async () => {
+  assert.equal(ITEM_KEY_SEPARATOR.codePointAt(0), 0x1f, "U+001F, the unit separator");
+  assert.equal(itemCtx({ actor: "neel", key: "b" }, 3).key, `b${ITEM_KEY_SEPARATOR}3`);
+  assert.deepEqual(itemCtx({ actor: "neel", reason: "why" }, 3), { actor: "neel", reason: "why" }, "no key, nothing derived");
+  const { work } = creator("l_itemkey001");
+  const receipt = await mutate(db.store, clock, "label", "label.add", { actor: "neel", key: `b${ITEM_KEY_SEPARATOR}0` }, work);
+  assert.deepEqual(receipt, rejected(["key: No control characters"]));
+});
+
+test("a rejection after a nested applyIn wrote rolls the transaction back and comes out as the rejected receipt", async () => {
+  const nested = creator("l_nested0001");
+  const before = await db.store.read(async (tx) => (await tx.allLog()).length);
+  const receipt = await mutate(db.store, clock, "label", "label.update", { actor: "neel", key: "nested-1" }, async (tx) => {
+    const inner = await applyIn(tx, clock, "label", "label.add", { actor: "neel" }, nested.work);
+    assert.equal(inner.ok, true, "the cascade itself succeeds inside the transaction");
+    return fail<Label>(["late check failed"]);
+  });
+  assert.deepEqual(receipt, rejected(["late check failed"]));
+  assert.equal(nested.calls.n, 1);
+  assert.equal(await db.store.read((tx) => tx.get("label", "l_nested0001")), null, "the cascade's write was rolled back");
+  assert.equal(await db.store.read(async (tx) => (await tx.allLog()).length), before, "and its log entry with it");
+  assert.equal(await db.store.read((tx) => tx.getReceipt("nested-1")), null);
 });
 
 test("a repeated key returns the stored receipt without re-running work", async () => {

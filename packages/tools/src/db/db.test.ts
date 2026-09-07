@@ -64,6 +64,37 @@ test("migrate over a single client sets its search_path and migrates that schema
   }
 });
 
+test("migrate without a schema option journals where search_path points, not in public", async () => {
+  const schema = `t_${db.schema.slice(2, 8)}path`;
+  const client = new pg.Client({ connectionString: databaseUrl(), options: `-c search_path=${schema}` });
+  await client.connect();
+  try {
+    // The schema must exist for search_path to resolve; migrate() only creates one it is told about.
+    await client.query(`create schema "${schema}"`);
+    await migrate(createDb(client));
+    assert.deepEqual(await tablesIn(client, schema), EXPECTED_TABLES);
+    assert.deepEqual(await tablesIn(client, "public"), publicTablesBefore);
+    // A second run is a no-op because it reads the same journal.
+    await migrate(createDb(client));
+    const applied = await client.query<{ n: string }>("select count(*)::text as n from __drizzle_migrations");
+    assert.equal(applied.rows[0]!.n, "1");
+  } finally {
+    await client.query(`drop schema if exists "${schema}" cascade`);
+    await client.end();
+  }
+});
+
+test("migrate without a schema option fails plainly when search_path names no schema", async () => {
+  const client = new pg.Client({ connectionString: databaseUrl(), options: "-c search_path=t_does_not_exist" });
+  await client.connect();
+  try {
+    await assert.rejects(() => migrate(createDb(client)), /search_path names no existing schema/);
+    assert.deepEqual(await tablesIn(client, "public"), publicTablesBefore);
+  } finally {
+    await client.end();
+  }
+});
+
 test("databaseUrl prefers the argument, then the environment, then the root .env", () => {
   assert.equal(databaseUrl("postgres://x@localhost/y"), "postgres://x@localhost/y");
   const saved = process.env.LIFE_DATABASE_URL;

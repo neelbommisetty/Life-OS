@@ -289,11 +289,23 @@ export const filterUpdateSchema = z.strictObject({
   query: filterQuery.optional(),
 });
 
+/**
+ * An idempotency key as a caller passes it. No control characters: core.ts
+ * derives per-item keys for batch, reorder, and import with one, so a caller's
+ * key can never collide with a derived one.
+ */
+export const idempotencyKey = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .refine((value) => !/\p{Cc}/u.test(value), "No control characters");
+
 export const ctxSchema = z.strictObject({
   actor,
   reason: text.optional(),
   evidence: evidence.optional(),
-  key: z.string().trim().min(1).max(200).optional(),
+  key: idempotencyKey.optional(),
   ifVersion: z.number().int().positive().optional(),
 });
 

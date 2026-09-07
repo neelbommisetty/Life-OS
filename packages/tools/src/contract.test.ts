@@ -83,3 +83,11 @@ test("projects, filters and contexts validate their own rules", () => {
   assert.equal(ctxSchema.safeParse({ actor: "somebody" }).success, false);
   assert.equal(ctxSchema.safeParse({}).success, false);
 });
+
+test("a ctx key may carry ordinary punctuation but no control characters", () => {
+  assert.equal(ctxSchema.safeParse({ actor: "neel", key: "vault:Areas/Health.md#2026-09-04 (retry 2)" }).success, true);
+  const bad = ctxSchema.safeParse({ actor: "neel", key: `a${String.fromCodePoint(0x1f)}0` });
+  assert.equal(bad.success, false);
+  if (bad.success) throw new Error("unreachable");
+  assert.deepEqual(issuesOf(bad.error), ["key: No control characters"]);
+});

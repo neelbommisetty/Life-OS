@@ -422,7 +422,7 @@ test("an idempotency key returns the stored receipt and applies nothing twice", 
   ok(first);
   assert.equal((await liveProjects()).filter((p) => p.slug === "idempotent").length, 1);
   assert.equal((await historyOf("project", first.ok ? first.id : "")).length, 1);
-  assert.deepEqual(await db.store.read((tx) => tx.getReceipt("org-project-add-1")), first);
+  assert.deepEqual(await db.store.read((tx) => tx.getReceipt("org-project-add-1")), { kind: "project", op: "project.add", receipt: first }, "stored with what it answers");
 
   const labelCtx: Ctx = { actor: "neel", key: "org-label-add-1" };
   const l1 = await org.label.add({ name: "idem" }, labelCtx);

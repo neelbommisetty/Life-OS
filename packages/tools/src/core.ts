@@ -4,6 +4,7 @@
 // No other module writes a record or a log entry.
 
 import { randomBytes } from "node:crypto";
+import { z } from "zod";
 import {
   ID_PREFIXES,
   ctxSchema,
@@ -22,6 +23,52 @@ import type { Kind, RecordOf, Store, Tx } from "./store.ts";
 
 export type Clock = { now(): Date; timezone: string };
 export type Mutation<T> = { before: T | null; after: T | null; receipt: Receipt<T> };
+
+/**
+ * Separates a caller's idempotency key from an item index in multi-record
+ * operations: U+001F, the unit separator. A control character, which
+ * ctxSchema keeps out of caller keys, so a derived key can never collide with
+ * one a caller passes.
+ */
+export const ITEM_KEY_SEPARATOR = String.fromCodePoint(0x1f);
+
+/** The ctx for item `index` of a multi-record operation (batch, reorder, import): the caller's key plus the index, so each item replays on its own. */
+export function itemCtx(ctx: Ctx, index: number): Ctx {
+  return ctx.key === undefined ? ctx : { ...ctx, key: `${ctx.key}${ITEM_KEY_SEPARATOR}${index}` };
+}
+
+/**
+ * Thrown when work came back rejected after a nested applyIn had already
+ * written (a cascade ran before a check failed). The transaction rolls back
+ * and `mutate` hands the receipt out once it has, so a rejection never
+ * commits what its cascades wrote.
+ */
+export class RejectedAfterWrites extends Error {
+  readonly receipt: Receipt<unknown>;
+
+  constructor(receipt: Receipt<unknown>) {
+    super(`rejected after a cascade wrote: ${receipt.issues.join("; ")}`);
+    this.receipt = receipt;
+  }
+}
+
+/**
+ * What applyIn accepts: ctxSchema, except that the key may be one itemCtx
+ * derived, whose separator ctxSchema refuses from callers. The caller's key
+ * was bounded when mutate, batch, reorder, or import validated it.
+ */
+const appliedCtxSchema = ctxSchema.extend({ key: z.string().min(1).optional() });
+
+/** Writes applyIn made per transaction, so an outer mutation can tell whether a cascade wrote before its own check failed. */
+const writesByTx = new WeakMap<Tx, number>();
+const writesIn = (tx: Tx): number => writesByTx.get(tx) ?? 0;
+
+/** What the receipts table holds under a key: the receipt plus the kind and op it answers, so a key reused for another operation is caught instead of replayed. */
+type StoredReceipt = { kind: Kind; op: string; receipt: unknown };
+
+function isStoredReceipt(value: unknown): value is StoredReceipt {
+  return isPlainObject(value) && typeof value.kind === "string" && typeof value.op === "string" && "receipt" in value;
+}
 
 const SCHEMAS = {
   task: taskSchema,
@@ -138,7 +185,8 @@ function validateRecord<K extends Kind>(kind: K, record: unknown): { ok: true; r
 /**
  * Validate ctx, open a write transaction, run `work`, validate the resulting
  * record against its schema, persist, log, store the receipt under the
- * idempotency key.
+ * idempotency key. A rejection that came after a cascade wrote rolls the
+ * transaction back and is returned as the rejected receipt.
  */
 export async function mutate<K extends Kind>(
   store: Store,
@@ -150,7 +198,12 @@ export async function mutate<K extends Kind>(
 ): Promise<Receipt<RecordOf<K>>> {
   const parsed = ctxSchema.safeParse(ctx);
   if (!parsed.success) return rejected(issuesOf(parsed.error));
-  return store.transaction((tx) => applyIn(tx, clock, kind, op, parsed.data, work));
+  try {
+    return await store.transaction((tx) => applyIn(tx, clock, kind, op, parsed.data, work));
+  } catch (error) {
+    if (error instanceof RejectedAfterWrites) return error.receipt as Receipt<RecordOf<K>>;
+    throw error;
+  }
 }
 
 /** The same inside an already-open transaction, for batch and import. */
@@ -162,23 +215,34 @@ export async function applyIn<K extends Kind>(
   ctx: Ctx,
   work: (tx: Tx, ctx: Ctx, now: string) => Promise<Mutation<RecordOf<K>>>,
 ): Promise<Receipt<RecordOf<K>>> {
-  const parsedCtx = ctxSchema.safeParse(ctx);
+  const parsedCtx = appliedCtxSchema.safeParse(ctx);
   if (!parsedCtx.success) return rejected(issuesOf(parsedCtx.error));
   const context = parsedCtx.data;
 
   if (context.key !== undefined) {
     const stored = await tx.getReceipt(context.key);
-    if (stored !== null) return stored as Receipt<RecordOf<K>>;
+    if (stored !== null) {
+      // A receipt stored before kind and op were recorded replays as it is.
+      if (!isStoredReceipt(stored)) return stored as Receipt<RecordOf<K>>;
+      if (stored.kind !== kind || stored.op !== op) return rejected([`key: "${context.key}" was already used by ${stored.op}`]);
+      return stored.receipt as Receipt<RecordOf<K>>;
+    }
   }
 
   const now = nowIso(clock);
+  const writesBefore = writesIn(tx);
   const mutation = await work(tx, context, now);
-  if (!mutation.receipt.ok) return mutation.receipt;
+  /** A rejection after a cascade wrote must not commit the cascade: abort the transaction instead of returning. */
+  const refuse = (receipt: Receipt<RecordOf<K>>): Receipt<RecordOf<K>> => {
+    if (writesIn(tx) > writesBefore) throw new RejectedAfterWrites(receipt);
+    return receipt;
+  };
+  if (!mutation.receipt.ok) return refuse(mutation.receipt);
   if (mutation.receipt.outcome === "unchanged") return mutation.receipt;
-  if (mutation.after === null) return rejected([`${op}: internal error, an ok mutation produced no record`]);
+  if (mutation.after === null) return refuse(rejected([`${op}: internal error, an ok mutation produced no record`]));
 
   const validated = validateRecord(kind, mutation.after);
-  if (!validated.ok) return rejected(validated.issues, { id: mutation.after.id });
+  if (!validated.ok) return refuse(rejected(validated.issues, { id: mutation.after.id }));
   const record = validated.record;
 
   await tx.put(kind, record);
@@ -193,6 +257,7 @@ export async function applyIn<K extends Kind>(
     evidence: context.evidence ?? [],
     key: context.key ?? null,
   });
+  writesByTx.set(tx, writesIn(tx) + 1);
 
   const receipt: Receipt<RecordOf<K>> = {
     ok: true,
@@ -202,6 +267,9 @@ export async function applyIn<K extends Kind>(
     record,
     issues: [],
   };
-  if (context.key !== undefined) await tx.putReceipt(context.key, receipt, now);
+  if (context.key !== undefined) {
+    const stored: StoredReceipt = { kind, op, receipt };
+    await tx.putReceipt(context.key, stored, now);
+  }
   return receipt;
 }

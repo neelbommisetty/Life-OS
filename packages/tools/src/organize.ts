@@ -39,7 +39,7 @@ import {
   type SectionUpdate,
   type Task,
 } from "./contract.ts";
-import { applyIn, bump, checkVersion, diff, fail, mutate, newId, okMutation, rejected, type Clock, type Mutation } from "./core.ts";
+import { applyIn, bump, checkVersion, diff, fail, itemCtx, mutate, newId, okMutation, rejected, type Clock, type Mutation } from "./core.ts";
 import { matches, mentionsStatus, parseFilter, type FilterSubject } from "./filter.ts";
 import type { Kind, RecordOf, Store, Tx } from "./store.ts";
 import { todayIn } from "./time.ts";
@@ -142,9 +142,6 @@ export function cascadeCtx(ctx: Ctx): Ctx {
   const { key: _key, ifVersion: _ifVersion, ...rest } = ctx;
   return rest;
 }
-
-/** One idempotency key per item of a multi-record operation, derived from the caller's. */
-const itemCtx = (ctx: Ctx, index: number): Ctx => (ctx.key === undefined ? ctx : { ...ctx, key: `${ctx.key}:${index}` });
 
 type Bookkept = { id: string; version: number; updatedAt: string };
 
@@ -527,7 +524,6 @@ export function createOrganize(store: Store, clock: Clock): Organize {
   // ---------------------------------------------------------------- projects
 
   async function projectAdd(tx: Tx, input: ProjectAdd, ctx: Ctx, now: string): Promise<Mutation<Project>> {
-    await ensureInbox(tx, clock);
     let parentId: string | null = null;
     if (input.parent !== undefined && input.parent !== null) {
       const parent = await liveProject(tx, input.parent, "parent");
@@ -538,6 +534,9 @@ export function createOrganize(store: Store, clock: Clock): Organize {
     const slug = input.slug ?? slugify(input.name);
     if (!slug) return fail([`slug: cannot derive a slug from "${input.name}"; pass one`]);
     if (looksLikeId(slug)) return fail([`slug: "${slug}" looks like an id`]);
+    // The Inbox is created on first use, once the refs and the slug have passed. It is a root sibling, so it
+    // must exist before the slug and order checks below; a clash after this point rolls it back (core.ts).
+    await ensureInbox(tx, clock);
     const siblings = (await tx.all("project")).filter((p) => p.parentId === parentId);
     if (siblings.some((p) => p.slug === slug)) return fail([`slug: "${slug}" is already used by a sibling project`]);
     const labels = unique(input.labels ?? []);

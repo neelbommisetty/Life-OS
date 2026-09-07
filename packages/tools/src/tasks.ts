@@ -38,7 +38,7 @@ import {
   type TaskStatus,
   type TaskUpdate,
 } from "./contract.ts";
-import { applyIn, bump, checkVersion, diff, duplicate as duplicateMutation, fail, mutate, newId, okMutation, rejected, type Clock, type Mutation } from "./core.ts";
+import { RejectedAfterWrites, applyIn, bump, checkVersion, diff, duplicate as duplicateMutation, fail, itemCtx, mutate, newId, okMutation, rejected, type Clock, type Mutation } from "./core.ts";
 import { matches, mentionsStatus, parseFilter } from "./filter.ts";
 import {
   cascadeCtx,
@@ -136,6 +136,8 @@ const unique = (items: string[]): string[] => [...new Set(items)];
 const count = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? "" : "s"}`;
 const byOrder = (a: Task, b: Task): number => a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 const isTaskId = (value: string): boolean => taskIdSchema.safeParse(value).success;
+/** Whether a project ref names the Inbox, the way resolveProject reads it. */
+const isInboxRef = (ref: string): boolean => ref.trim().toLowerCase() === "inbox";
 
 /** The ordering scope of a task: its project, section, and parent. */
 const scopeOf = (task: { projectId: string; sectionId?: string; parentId?: string }): string =>
@@ -149,9 +151,6 @@ function originOf(ctx: Ctx, now: string): Task["origin"] {
     evidence: ctx.evidence ?? [],
   };
 }
-
-/** One idempotency key per item of a multi-record operation, derived from the caller's. */
-const itemCtx = (ctx: Ctx, index: number): Ctx => (ctx.key === undefined ? ctx : { ...ctx, key: `${ctx.key}:${index}` });
 
 /** `updated` with a bump when anything outside version/updatedAt differs, else `unchanged`. */
 function updatedOrUnchanged(before: Task, next: Task, now: string): Mutation<Task> {
@@ -327,23 +326,25 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
       if (!found.ok) return failed(found);
       parent = found.record;
     }
-    let project: Project;
-    if (input.project !== undefined) {
+    // The project: the ref, the parent's, or the Inbox. The Inbox is created on first use, but only
+    // once the input has passed every check below, so a rejection leaves nothing behind.
+    let project: Project | null;
+    if (input.project !== undefined && !isInboxRef(input.project)) {
       const found = await liveProject(tx, input.project);
       if (!found.ok) return failed(found);
       project = found.record;
-      if (parent && parent.projectId !== project.id) return fail([`parent: task "${parent.id}" is not in project "${input.project}"`]);
-    } else if (parent) {
+    } else if (input.project === undefined && parent) {
       const found = await liveProject(tx, parent.projectId, "parent");
       if (!found.ok) return failed(found);
       project = found.record;
     } else {
-      project = await ensureInbox(tx, clock);
+      project = await findInbox(tx);
     }
+    if (parent && parent.projectId !== project?.id) return fail([`parent: task "${parent.id}" is not in project "${input.project}"`]);
     let sectionId = parent?.sectionId;
     if (input.section !== undefined) {
-      const section = await resolveSection(tx, project.id, input.section);
-      if (!section) return fail([`section: no section "${input.section}" in project "${await pathOf(tx, project)}"`]);
+      const section = project ? await resolveSection(tx, project.id, input.section) : null;
+      if (!section) return fail([`section: no section "${input.section}" in project "${project ? await pathOf(tx, project) : "inbox"}"`]);
       if (parent && section.id !== parent.sectionId) return fail([`section: a sub-task lives in its parent's section; leave section out or pass parent null`]);
       sectionId = section.id;
     }
@@ -354,6 +355,8 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
         return duplicateMutation(candidates, [`Similar open tasks exist (${candidates.map((t) => t.id).join(", ")}); pass allowDuplicate to add anyway`]);
       }
     }
+    // Every check has passed: the writes the new task depends on come last.
+    project ??= await ensureInbox(tx, clock);
     const labels = unique(input.labels ?? []);
     const ensured = await ensureLabels(tx, clock, ctx, labels);
     if (ensured.issues.length) return fail(ensured.issues);
@@ -412,13 +415,14 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
       if (input.duration === null) delete next.duration;
       else next.duration = input.duration;
     }
+    if (next.repeat && !next.due) return fail(["due: a repeating task needs a due date; clear repeat first"], { id: before.id, record: before });
+    // Checked; registering labels is the one write this update cascades, so it comes last.
     if (input.labels !== undefined) {
       const labels = unique(input.labels);
       const ensured = await ensureLabels(tx, clock, ctx, labels);
       if (ensured.issues.length) return fail(ensured.issues, { id: before.id });
       next.labels = labels;
     }
-    if (next.repeat && !next.due) return fail(["due: a repeating task needs a due date; clear repeat first"], { id: before.id, record: before });
     return updatedOrUnchanged(before, next, now);
   }
 
@@ -434,9 +438,14 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     let projectId = before.projectId;
     let project: Project | null = null;
     if (input.project !== undefined) {
-      const target = await liveProject(tx, input.project);
-      if (!target.ok) return failed(target);
-      project = target.record;
+      // "inbox" creates the Inbox on first use, like add. Every task already has a project, and creating
+      // any project creates the Inbox, so in practice this only reads.
+      if (isInboxRef(input.project)) project = await ensureInbox(tx, clock);
+      else {
+        const target = await liveProject(tx, input.project);
+        if (!target.ok) return failed(target);
+        project = target.record;
+      }
       projectId = project.id;
     }
     const projectChanged = projectId !== before.projectId;
@@ -637,13 +646,32 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
       const message = `Task "${before.title}" has ${count(openBelow.length, "open sub-task")}; pass subtasks "complete" to complete them too, or "leave" to leave them open`;
       return fail([message], { id: before.id, record: before, needs: { field: "subtasks", options: ["complete", "leave"], message } });
     }
+    // The task's own completion is settled before anything below it is written.
+    const primary = completion(before, ctx, now, opts.date);
+    if (!primary.receipt.ok) return primary;
     if (opts.subtasks === "complete") {
       const cascade = cascadeCtx(ctx);
       for (const sub of openBelow) {
         must(await applyIn(tx, clock, "task", "task.complete", cascade, async (_tx, c, at) => completion(sub, c, at, opts.date)), `task ${sub.id}`);
       }
     }
-    return completion(before, ctx, now, opts.date);
+    return primary;
+  }
+
+  /**
+   * The due date the task had before the completion that recorded its last
+   * occurrence, from that completion's own log entry (HANDS D52: a log-based
+   * rewind). Null when the log holds no such entry.
+   */
+  async function dueBeforeLastCompletion(tx: Tx, task: Task): Promise<string | null> {
+    for (const entry of (await tx.history("task", task.id)).toReversed()) {
+      if (entry.op !== "task.complete") continue;
+      const recorded = entry.patch.occurrences?.to;
+      if (!Array.isArray(recorded) || recorded.length !== task.occurrences.length) continue;
+      const from = dueSchema.safeParse(entry.patch.due?.from);
+      return from.success ? from.data.date : null;
+    }
+    return null;
   }
 
   async function uncompleteTask(tx: Tx, id: string, ctx: Ctx, now: string): Promise<Mutation<Task>> {
@@ -658,7 +686,10 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     if (before.status === "cancelled") return okMutation("updated", before, bump({ ...before, status: "accepted", completedAt: null }, now));
     const last = before.occurrences[before.occurrences.length - 1];
     if (before.status === "accepted" && before.repeat && before.due && last) {
-      return okMutation("updated", before, bump({ ...before, due: { ...before.due, date: last.date }, occurrences: before.occurrences.slice(0, -1) }, now));
+      // Rewind the last completion: the due date it advanced from comes back and its occurrence goes.
+      // An early or late completion recorded a different date, so the occurrence is only the fallback.
+      const date = (await dueBeforeLastCompletion(tx, before)) ?? last.date;
+      return okMutation("updated", before, bump({ ...before, due: { ...before.due, date }, occurrences: before.occurrences.slice(0, -1) }, now));
     }
     const why = before.repeat ? "no recorded occurrence to rewind" : `task is ${before.status}`;
     return fail([`status: uncomplete needs done, cancelled, or a repeating task with an occurrence; ${why}`], { id: before.id, record: before });
@@ -920,11 +951,17 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     const context = parsed.data;
     if (!items.length) return [];
     const prepared = items.map(prepareItem);
+    /** An item rejected after its cascade wrote cannot stand on its own: the whole batch rolls back and names it. */
+    const abortedBy =
+      (index: number) =>
+      (error: unknown): never => {
+        throw error instanceof RejectedAfterWrites ? new BatchAborted(index, error.receipt as Receipt<Task>) : error;
+      };
     try {
       return await store.transaction(async (tx) => {
         const receipts: Receipt<Task>[] = [];
         for (const [index, item] of prepared.entries()) {
-          const receipt = item.ok ? await applyIn(tx, clock, "task", item.op, itemCtx(context, index), item.work) : rejected<Task>(item.issues);
+          const receipt = item.ok ? await applyIn(tx, clock, "task", item.op, itemCtx(context, index), item.work).catch(abortedBy(index)) : rejected<Task>(item.issues);
           receipts.push(receipt);
           if (opts.atomic && !receipt.ok) throw new BatchAborted(index, receipt);
         }
@@ -984,6 +1021,10 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
       });
     } catch (error) {
       if (error instanceof ImportDryRun) return error.result;
+      if (error instanceof RejectedAfterWrites) {
+        const issues = [`import: rolled back; an item was rejected after its cascade wrote: ${error.receipt.issues.join("; ")}`];
+        return { dryRun, created: 0, duplicate: 0, rejected: items.length, items: items.map((_, index) => ({ index, outcome: "rejected", issues })) };
+      }
       throw error;
     }
   }

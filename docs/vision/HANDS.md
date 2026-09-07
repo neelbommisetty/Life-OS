@@ -1,6 +1,6 @@
 # Hands: the todo list and calendar core
 
-Working design, September 6, 2026. Status: todo list spec agreed; code follows it. Calendar not yet discussed. This is the details level for the piece Neel calls **hands**: an agnostic, Life-OS-owned todo list, and later a calendar, with one contract that Codex, future agents, the app, and Neel from a shell all use to populate, read, update, and act. It is orthogonal to the Health and life-area experiences in [Current Vision](VISION.md); those interface with it later. It is not fancy and not published as a product: one hosted database, one repository, and that is enough.
+Working design, September 6, 2026. Status: todo list spec agreed and implemented in `packages/tools` (library, `life` CLI, and `skills/todo`). Calendar not yet discussed. This is the details level for the piece Neel calls **hands**: an agnostic, Life-OS-owned todo list, and later a calendar, with one contract that Codex, future agents, the app, and Neel from a shell all use to populate, read, update, and act. It is orthogonal to the Health and life-area experiences in [Current Vision](VISION.md); those interface with it later. It is not fancy and not published as a product: one hosted database, one repository, and that is enough.
 
 D-numbering continues from D36 in the [August dump](legacy/2026-08-28/raw-dump.md). Each decision is marked **confirmed** (Neel said it) or **proposed** (a working position until he confirms or corrects).
 
