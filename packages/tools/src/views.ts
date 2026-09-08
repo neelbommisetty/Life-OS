@@ -6,7 +6,7 @@
 // Bad input throws (an invalid date, an unknown label, an empty search): a
 // view never returns an empty result for a failed read.
 
-import { OPEN_STATUSES, type Filter, type Label, type Project, type Section, type Task } from "./contract.ts";
+import type { Filter, Label, Project, Section, Task } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import { sortTasks, type Organize } from "./organize.ts";
 import type { Store } from "./store.ts";
@@ -36,7 +36,12 @@ export type TrashView = { tasks: Task[]; projects: Project[]; sections: Section[
 export interface Views {
   /** `date` defaults to today in the clock's timezone; accepts YYYY-MM-DD, today, tomorrow, yesterday, +Nd, -Nw. */
   today(opts?: { date?: string }): Promise<TodayView>;
-  /** One entry per day from `from` (default today) for `days` days, empty days included; undated excluded; overdue under the first day. */
+  /**
+   * One entry per day from `from` (default today) for `days` days, empty days
+   * included; undated excluded; overdue under the first day. Accepted and
+   * in-progress tasks only, like `today`: a proposed task appears in today's
+   * `proposed` list and nowhere in upcoming until it is accepted.
+   */
   upcoming(days?: number, opts?: { from?: string }): Promise<UpcomingView>;
   /** Open tasks carrying the label (name or id) directly or through their project, sorted like `list`. Throws for an unknown label. */
   label(ref: string): Promise<Task[]>;
@@ -53,9 +58,7 @@ export const MAX_UPCOMING_DAYS = 366;
 
 // ------------------------------------------------------------------ helpers
 
-const OPEN = new Set<string>(OPEN_STATUSES);
-const isOpen = (task: Task): boolean => OPEN.has(task.status);
-/** The statuses `today` reports under overdue, due, and deadlines: committed work, not proposals. */
+/** The statuses `today` reports under overdue, due, and deadlines, and `upcoming` lays out: committed work, not proposals. */
 const isCommitted = (task: Task): boolean => task.status === "accepted" || task.status === "in_progress";
 
 /** A date argument: YYYY-MM-DD or a relative word, resolved against `today`. Throws with the field named. */
@@ -104,7 +107,7 @@ export function createViews(store: Store, clock: Clock, tasks: TaskOps, organize
       const from = resolveDate("upcoming", "from", opts.from, today());
       const to = addDays(from, days - 1);
       return store.read(async (tx) => {
-        const dated = (await tx.all("task")).filter((t) => isOpen(t) && t.due !== null);
+        const dated = (await tx.all("task")).filter((t) => isCommitted(t) && t.due !== null);
         const byDay: UpcomingDay[] = Array.from({ length: days }, (_, i) => ({ date: addDays(from, i), tasks: [] }));
         for (const task of dated) {
           const dueDate = task.due!.date;

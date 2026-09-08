@@ -708,3 +708,103 @@ test("project.add creates the Inbox only once the input has passed, so a rejecti
     await fresh.drop();
   }
 });
+
+test("order counts deleted siblings for projects, sections, labels, and filters, so a restore never collides with what was added meanwhile", async () => {
+  const slots = okRecord(await org.project.add({ name: "Slots" }, neel));
+  const one = okRecord(await org.project.add({ name: "Slot One", parent: slots.id }, neel));
+  const two = okRecord(await org.project.add({ name: "Slot Two", parent: slots.id }, neel));
+  assert.deepEqual([one.order, two.order], [0, 1]);
+  okRecord(await org.project.delete(two.id, neel));
+  const three = okRecord(await org.project.add({ name: "Slot Three", parent: slots.id }, neel));
+  assert.equal(three.order, 2, "the deleted sibling keeps slot 1");
+  assert.equal(okRecord(await org.project.restore(two.id, neel)).order, 1, "and comes back to it");
+  okRecord(await org.project.delete(three.id, neel));
+  const mover = okRecord(await org.project.add({ name: "Slot Mover" }, neel));
+  assert.equal(okRecord(await org.project.move(mover.id, slots.id, neel)).order, 3, "a move lands after the deleted sibling's slot too");
+  assert.equal(okRecord(await org.project.restore(three.id, neel)).order, 2);
+  const tree = (await org.project.tree()).find((n) => n.project.id === slots.id)!;
+  assert.deepEqual(tree.children.map((n) => [n.project.id, n.project.order]), [[one.id, 0], [two.id, 1], [three.id, 2], [mover.id, 3]], "no two siblings share an order");
+
+  const s1 = okRecord(await org.section.add({ project: slots.id, name: "Slot S1" }, neel));
+  const s2 = okRecord(await org.section.add({ project: slots.id, name: "Slot S2" }, neel));
+  okRecord(await org.section.delete(s2.id, neel));
+  const s3 = okRecord(await org.section.add({ project: slots.id, name: "Slot S3" }, neel));
+  assert.deepEqual([s1.order, s2.order, s3.order], [0, 1, 2]);
+  assert.equal(okRecord(await org.section.restore(s2.id, neel)).order, 1);
+  assert.deepEqual((await org.section.list(slots.id)).map((s) => [s.id, s.order]), [[s1.id, 0], [s2.id, 1], [s3.id, 2]]);
+
+  // Labels and filters share one scope each; the next slot is one past the highest order any of them, deleted included, holds.
+  const nextSlot = async (kind: "label" | "filter") => Math.max(-1, ...(await db.store.read((tx) => tx.all(kind, { includeDeleted: true }))).map((r) => r.order)) + 1;
+  const labelBase = await nextSlot("label");
+  const l1 = okRecord(await org.label.add({ name: "slot-l1" }, neel));
+  const l2 = okRecord(await org.label.add({ name: "slot-l2" }, neel));
+  okRecord(await org.label.delete(l2.id, neel));
+  const l3 = okRecord(await org.label.add({ name: "slot-l3" }, neel));
+  assert.deepEqual([l1.order, l2.order, l3.order], [labelBase, labelBase + 1, labelBase + 2]);
+  assert.equal(okRecord(await org.label.restore(l2.id, neel)).order, labelBase + 1);
+
+  const filterBase = await nextSlot("filter");
+  const f1 = okRecord(await org.filter.add({ name: "Slot F1", query: "today" }, neel));
+  const f2 = okRecord(await org.filter.add({ name: "Slot F2", query: "today" }, neel));
+  okRecord(await org.filter.delete(f2.id, neel));
+  const f3 = okRecord(await org.filter.add({ name: "Slot F3", query: "today" }, neel));
+  assert.deepEqual([f1.order, f2.order, f3.order], [filterBase, filterBase + 1, filterBase + 2]);
+  assert.equal(okRecord(await org.filter.restore(f2.id, neel)).order, filterBase + 1);
+});
+
+test("label.update rewrites @old to @new in every non-deleted saved filter, each logged with the cascade ctx", async () => {
+  okRecord(await org.label.add({ name: "recovry" }, neel));
+  const f1 = okRecord(await org.filter.add({ name: "Recovery today", query: "today & @recovry" }, neel));
+  const f2 = okRecord(await org.filter.add({ name: "Recovery quoted", query: '@"recovry" | (@RECOVRY & !@recovry-plan)' }, neel));
+  const f3 = okRecord(await org.filter.add({ name: "Recovery bystander", query: "@recovry-plan & search: recovry" }, neel));
+  const f4 = okRecord(await org.filter.add({ name: "Recovery gone", query: "@recovry" }, neel));
+  okRecord(await org.filter.delete(f4.id, neel));
+  const ctx: Ctx = { actor: "codex", reason: "typo", evidence: ["msg:9"], key: "rename-filters-1" };
+  okRecord(await org.label.update("recovry", { name: "recovery" }, ctx));
+
+  const first = (await org.filter.get(f1.id))!;
+  assert.equal(first.query, "today & @recovery");
+  assert.equal(first.version, 2);
+  assert.equal((await org.filter.get(f2.id))?.query, "@recovery | (@recovery & !@recovry-plan)", "quoted and differently cased terms are rewritten; other labels are not");
+  assert.equal((await org.filter.get(f3.id))?.version, 1, "a filter that does not name the label is untouched");
+  assert.equal((await org.filter.get(f3.id))?.query, "@recovry-plan & search: recovry");
+  assert.equal((await org.filter.get(f4.id))?.query, "@recovry", "a deleted filter is left alone");
+  const entry = (await history("filter", f1.id)).at(-1)!;
+  assert.equal(entry.op, "label.update");
+  assert.equal(entry.recordKind, "filter");
+  assert.equal(entry.actor, "codex");
+  assert.equal(entry.reason, "typo");
+  assert.deepEqual(entry.evidence, ["msg:9"]);
+  assert.equal(entry.key, null, "cascaded writes carry no key");
+  assert.deepEqual(entry.patch, { query: { from: "today & @recovry", to: "today & @recovery" } });
+  assert.deepEqual(await org.filter.run(f2.id), [], "the rewritten query still parses and runs");
+  assert.equal((await history("filter", f2.id)).length, 2);
+});
+
+test("project.update with a new slug rewrites #path and ##path, and every path below them, in saved filters", async () => {
+  const home = okRecord(await org.project.add({ name: "Home Base", slug: "homebase" }, neel));
+  const garage = okRecord(await org.project.add({ name: "Garage", parent: home.id }, neel));
+  const f1 = okRecord(await org.filter.add({ name: "Home only", query: "#homebase" }, neel));
+  const f2 = okRecord(await org.filter.add({ name: "Home tree", query: "##HomeBase & (today | #homebase/garage)" }, neel));
+  const f3 = okRecord(await org.filter.add({ name: "Home bystander", query: `#${garage.id} | #homebase-annex | @homebase` }, neel));
+  okRecord(await org.project.update("homebase", { slug: "home" }, { actor: "neel", reason: "shorter", key: "slug-1" }));
+  assert.equal((await org.filter.get(f1.id))?.query, "#home");
+  assert.equal((await org.filter.get(f2.id))?.query, "##home & (today | #home/garage)", "the sub-project's path follows its parent's slug");
+  assert.equal((await org.filter.get(f3.id))?.version, 1, "ids, other slugs, and labels are untouched");
+  assert.equal((await org.project.get("home/garage"))?.id, garage.id);
+
+  okRecord(await org.project.update(garage.id, { slug: "shed" }, { actor: "codex", reason: "moved the bikes" }));
+  assert.equal((await org.filter.get(f2.id))?.query, "##home & (today | #home/shed)");
+  assert.equal((await org.filter.get(f1.id))?.version, 2, "#home does not name the sub-project");
+  const entry = (await history("filter", f2.id)).at(-1)!;
+  assert.equal(entry.op, "project.update");
+  assert.equal(entry.actor, "codex");
+  assert.equal(entry.reason, "moved the bikes");
+  assert.equal(entry.key, null);
+  assert.deepEqual(entry.patch, { query: { from: "##home & (today | #home/garage)", to: "##home & (today | #home/shed)" } });
+  assert.deepEqual(await org.filter.run(f2.id), [], "the rewritten query still parses and runs");
+
+  okRecord(await org.project.update("home", { name: "Home", color: "teal" }, neel));
+  assert.equal((await org.filter.get(f1.id))?.version, 2, "an update that keeps the slug touches no filter");
+  assert.equal((await org.filter.get(f2.id))?.version, 3);
+});

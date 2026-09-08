@@ -148,16 +148,31 @@ test("upcoming lays out one entry per day, empty days included, with overdue und
   assert.deepEqual(
     view.days.map((day) => ({ date: day.date, tasks: ids(day.tasks) })),
     [
-      { date: "2026-09-06", tasks: [rent.id, passport.id, dentist.id, walk.id, labs.id] },
+      { date: "2026-09-06", tasks: [rent.id, passport.id, dentist.id, walk.id] },
       { date: "2026-09-07", tasks: [] },
       { date: "2026-09-08", tasks: [sprint.id] },
     ],
-    "overdue first (by due date), then today's timed task, then by priority; the cancelled task on the 7th is gone; proposed open tasks are included",
+    "overdue first (by due date), then today's timed task, then by priority; the cancelled task on the 7th is gone; the proposed task due today is not laid out",
   );
   const allListed = view.days.flatMap((day) => ids(day.tasks));
   for (const undated of [book.id, physio.id, report.id, far.id, milk.id]) assert.ok(!allListed.includes(undated), `${undated} is undated and excluded`);
   assert.ok(!allListed.includes(chore.id) && !allListed.includes(trashed.id), "done and deleted tasks are excluded");
   assert.ok(!allListed.includes(taxes.id), "a task due after the window is excluded");
+  assert.ok(!allListed.includes(labs.id), "a proposed task is not upcoming, like today's overdue and due lists");
+  assert.ok(ids((await views.today()).proposed).includes(labs.id), "it is in today's proposed list instead");
+});
+
+test("upcoming lays out the same statuses as today: a proposed task joins it once accepted", async () => {
+  const review = await mk("Review the proposal", { due: { date: "2026-09-07" } }, codex);
+  assert.equal(review.status, "proposed");
+  assert.deepEqual(ids((await views.upcoming(3)).days[1]!.tasks), [], "proposed: not on its day");
+  assert.ok(ids((await views.today()).proposed).includes(review.id), "only in today's proposed list");
+  okRecord(await tasks.accept(review.id, neel));
+  assert.deepEqual(ids((await views.upcoming(3)).days[1]!.tasks), [review.id], "accepted: on its day");
+  okRecord(await tasks.start(review.id, neel));
+  assert.deepEqual(ids((await views.upcoming(3)).days[1]!.tasks), [review.id], "in progress: still on its day");
+  okRecord(await tasks.cancel(review.id, { actor: "neel", reason: "fixture, not needed" }));
+  assert.deepEqual(ids((await views.upcoming(3)).days[1]!.tasks), []);
 });
 
 test("upcoming defaults to seven days from today and accepts a from date", async () => {
@@ -174,7 +189,7 @@ test("upcoming defaults to seven days from today and accepts a from date", async
   const shifted = await views.upcoming(2, { from: "2026-09-08" });
   assert.equal(shifted.from, "2026-09-08");
   assert.equal(shifted.to, "2026-09-09");
-  assert.deepEqual(ids(shifted.days[0]!.tasks), [rent.id, passport.id, dentist.id, walk.id, labs.id, sprint.id], "everything before the from date is overdue under the first day");
+  assert.deepEqual(ids(shifted.days[0]!.tasks), [rent.id, passport.id, dentist.id, walk.id, sprint.id], "everything accepted or in progress before the from date is overdue under the first day");
   assert.deepEqual(ids(shifted.days[1]!.tasks), []);
   assert.deepEqual(await views.upcoming(2, { from: "+2d" }), shifted, "relative from dates resolve against the clock's today");
 

@@ -121,15 +121,22 @@ function same(a: unknown, b: unknown): boolean {
   return false;
 }
 
-/** Field-by-field changes from `before` to `after`, ignoring version and updatedAt. Absent reads as null. */
+/**
+ * Field-by-field changes from `before` to `after`, ignoring version and
+ * updatedAt. Absent reads as null, so a field that is null or missing on both
+ * sides is not a change: a create entry lists what the record holds, not every
+ * nullable field it does not.
+ */
 export function diff(before: object | null, after: object): Record<string, { from: unknown; to: unknown }> {
   const from = (before ?? {}) as Record<string, unknown>;
   const to = after as Record<string, unknown>;
   const patch: Record<string, { from: unknown; to: unknown }> = {};
   for (const key of new Set([...Object.keys(from), ...Object.keys(to)])) {
     if (DIFF_IGNORED.has(key)) continue;
-    if (same(from[key], to[key])) continue;
-    patch[key] = { from: from[key] ?? null, to: to[key] ?? null };
+    const was = from[key] ?? null;
+    const is = to[key] ?? null;
+    if (same(was, is)) continue;
+    patch[key] = { from: was, to: is };
   }
   return patch;
 }

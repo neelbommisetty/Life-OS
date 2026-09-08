@@ -545,10 +545,10 @@ test("duplicate copies the fields and the subtree, not comments or occurrences, 
   assert.deepEqual(grandchildren.map((t) => t.title), ["D grandchild"]);
   assert.equal((await history(children[0]!.id))[0]!.op, "task.duplicate");
   assert.equal((await history(children[0]!.id))[0]!.key, null);
-  assert.equal(await logCount(), before + 4, "the copy and three sub-task copies, the deleted one skipped");
+  assert.equal(await logCount(), before + 5, "the copy, three sub-task copies (the deleted one skipped), and the sibling shifted after the copy");
   assert.deepEqual((await tasks.list({ parent: source.id })).map((t) => t.id), [c1.id], "the original subtree is untouched");
   assert.equal((await get(g.id)).parentId, c1.id);
-  assert.equal((await get(sibling.id)).version, 1);
+  assert.deepEqual([(await get(sibling.id)).order, (await get(sibling.id)).version], [2, 2], "the sibling after the original moved up one to make room for the copy");
 
   const flat = okRecord(await tasks.duplicate(source.id, neel, { subtasks: false }));
   assert.equal(flat.status, "accepted");
@@ -770,7 +770,7 @@ test("delete is soft, asks about sub-tasks, deletes the subtree or re-parents th
   assert.equal(child.parentId, undefined, "its parent is deleted, so it becomes top level");
   assert.equal(child.projectId, p.id);
   assert.equal(child.sectionId, s.id);
-  assert.equal(child.order, 0, "first among the live top-level tasks in the section; deleted tasks hold no slot");
+  assert.equal(child.order, 1, "after its deleted parent, which keeps slot 0 in the section");
   assert.equal((await get(g.id)).deletedAt, now, "sub-tasks deleted with it stay deleted");
   const restoredParent = okRecord(await tasks.restore(parent.id, neel));
   assert.equal(restoredParent.deletedAt, null);
@@ -1189,4 +1189,149 @@ test("an idempotency key answers one operation, and item keys cannot collide wit
   assert.equal(accepted!.ok && accepted!.outcome, "updated", 'item 0 of key "b" does not replay the receipt stored under "b:0"');
   assert.equal((await get(proposed.id)).status, "accepted");
   rejectedWith(await tasks.accept(proposed.id, { actor: "neel", key: itemKey("b", 0) }), /key: No control characters/);
+});
+
+test("order counts deleted siblings, so a task added after a deletion takes a fresh slot and a restore never collides", async () => {
+  const p = await project("Slots P");
+  const a = await mk("Slot a", { project: p.id });
+  const b = await mk("Slot b", { project: p.id });
+  assert.deepEqual([a.order, b.order], [0, 1]);
+  okRecord(await tasks.delete(b.id, neel));
+  const c = await mk("Slot c", { project: p.id });
+  assert.equal(c.order, 2, "the deleted sibling keeps slot 1");
+  assert.equal(okRecord(await tasks.restore(b.id, neel)).order, 1, "and comes back to it");
+  assert.deepEqual((await tasks.list({ project: p.id })).map((t) => [t.id, t.order]), [[a.id, 0], [b.id, 1], [c.id, 2]], "no two siblings share an order");
+
+  const s = await section(p.id, "Slot S");
+  const d = await mk("Slot d", { project: p.id, section: "Slot S" });
+  okRecord(await tasks.delete(d.id, neel));
+  assert.equal(okRecord(await tasks.move(a.id, { section: s.id }, neel)).order, 1, "move: after the deleted task's slot in the new scope");
+
+  const parent = await mk("Slot parent", { project: p.id });
+  const k1 = await mk("Slot child 1", { parent: parent.id });
+  const k2 = await mk("Slot child 2", { parent: parent.id });
+  okRecord(await tasks.delete(k2.id, neel));
+  okRecord(await tasks.delete(parent.id, neel, { subtasks: "leave" }));
+  assert.equal((await get(k1.id)).order, 4, "leave: after every top-level slot, the deleted parent's included");
+  okRecord(await tasks.restore(k2.id, neel));
+  assert.equal((await get(k2.id)).order, 5, "a child restored after its parent went lands after the slot the leave handed out");
+});
+
+test("duplicate inserts the copy right after the original and shifts every following sibling up one, each logged", async () => {
+  const p = await project("Shift P");
+  const a = await mk("Shift a", { project: p.id });
+  const b = await mk("Shift b", { project: p.id });
+  const c = await mk("Shift c", { project: p.id });
+  const d = await mk("Shift d", { project: p.id });
+  okRecord(await tasks.delete(d.id, neel));
+  const before = await logCount();
+  const copy = okRecord(await tasks.duplicate(b.id, { actor: "neel", reason: "again", key: "shift-1" }));
+  assert.equal(copy.order, 2);
+  assert.deepEqual(
+    (await tasks.list({ project: p.id, includeDeleted: true })).map((t) => [t.id, t.order]),
+    [[a.id, 0], [b.id, 1], [copy.id, 2], [c.id, 3], [d.id, 4]],
+    "the copy sorts immediately after the original; the deleted sibling keeps its place behind it",
+  );
+  assert.equal((await get(a.id)).version, 1, "siblings before the original are untouched");
+  assert.equal((await get(b.id)).version, 1, "so is the original");
+  const shifted = (await history(c.id)).at(-1)!;
+  assert.equal(shifted.op, "task.duplicate");
+  assert.deepEqual(shifted.patch, { order: { from: 2, to: 3 } });
+  assert.equal(shifted.reason, "again");
+  assert.equal(shifted.key, null, "cascaded shifts carry no key");
+  assert.deepEqual((await history(d.id)).at(-1)!.patch, { order: { from: 3, to: 4 } });
+  assert.equal(await logCount(), before + 3, "the copy and two shifts");
+  assert.equal((await tasks.duplicate(b.id, { actor: "neel", reason: "again", key: "shift-1" })).id, copy.id, "the key replays without shifting again");
+  assert.equal((await get(c.id)).order, 3);
+
+  const k1 = await mk("Shift child 1", { parent: a.id });
+  const k2 = await mk("Shift child 2", { parent: a.id });
+  const childCopy = okRecord(await tasks.duplicate(k1.id, neel));
+  assert.deepEqual((await tasks.list({ parent: a.id })).map((t) => [t.id, t.order]), [[k1.id, 0], [childCopy.id, 1], [k2.id, 2]], "within a parent the same rule applies");
+  assert.equal((await get(c.id)).order, 3, "and only that scope moves");
+});
+
+test("uncomplete rewinds a repeating task that was started after its completion, back to accepted", async () => {
+  const t = await mk("Daily stretch", { due: { date: "2026-09-06" }, repeat: "FREQ=DAILY" });
+  const completed = okRecord(await tasks.complete(t.id, neel));
+  assert.equal(completed.due?.date, "2026-09-07");
+  assert.equal(okRecord(await tasks.start(t.id, neel)).status, "in_progress");
+  const rewound = okRecord(await tasks.uncomplete(t.id, neel));
+  assert.equal(rewound.status, "accepted");
+  assert.equal(rewound.due?.date, "2026-09-06", "the due date the completion advanced from");
+  assert.deepEqual(rewound.occurrences, []);
+  assert.deepEqual((await history(t.id)).at(-1)!.patch, {
+    status: { from: "in_progress", to: "accepted" },
+    due: { from: { date: "2026-09-07" }, to: { date: "2026-09-06" } },
+    occurrences: { from: [{ date: "2026-09-06", at: now, actor: "neel" }], to: [] },
+  });
+  okRecord(await tasks.start(t.id, neel));
+  rejectedWith(await tasks.uncomplete(t.id, neel), /no recorded occurrence to rewind/);
+  assert.equal((await get(t.id)).status, "in_progress", "in progress with nothing to rewind is left alone");
+  assert.deepEqual(await ops(t.id), ["task.add", "task.complete", "task.start", "task.uncomplete", "task.start"]);
+});
+
+test("batch: ctx.ifVersion guards the first item on each task; later items on the same task take the version it left", async () => {
+  const a = await mk("Version a", {}, codex);
+  const b = await mk("Version b");
+  const receipts = await tasks.batch(
+    [{ op: "accept", id: a.id }, { op: "start", id: a.id }, { op: "complete", id: a.id }, { op: "start", id: b.id }],
+    { actor: "neel", ifVersion: 1 },
+  );
+  assert.deepEqual(receipts.map((r) => r.ok && [r.outcome, r.version]), [["updated", 2], ["updated", 3], ["updated", 4], ["updated", 2]]);
+  assert.equal((await get(a.id)).status, "done");
+
+  const stale = await tasks.batch([{ op: "uncomplete", id: a.id }, { op: "cancel", id: a.id }, { op: "complete", id: b.id }], { actor: "neel", reason: "stale", ifVersion: 1 });
+  rejectedWith(stale[0]!, /version: expected 1, current is 4/);
+  rejectedWith(stale[1]!, /version: expected 1, current is 4/);
+  rejectedWith(stale[2]!, /version: expected 1, current is 2/);
+  assert.equal((await get(a.id)).status, "done", "a guard that was not met keeps guarding the later items");
+  assert.equal((await get(b.id)).status, "in_progress");
+
+  const atomic = await tasks.batch([{ op: "uncomplete", id: a.id }, { op: "start", id: a.id }], { actor: "neel", ifVersion: 4 }, { atomic: true });
+  assert.deepEqual(atomic.map((r) => r.ok && r.outcome), ["updated", "updated"]);
+  assert.equal((await get(a.id)).status, "in_progress");
+  const atomicStale = await tasks.batch([{ op: "complete", id: a.id }, { op: "uncomplete", id: a.id }], { actor: "neel", ifVersion: 4 }, { atomic: true });
+  rejectedWith(atomicStale[0]!, /version: expected 4, current is 6/);
+  rejectedWith(atomicStale[1]!, /batch: rolled back; item 0/);
+  assert.equal((await get(a.id)).status, "in_progress");
+});
+
+test("batch: an item rejected after its own cascade wrote is undone on its own; the rest of the batch stands", async () => {
+  const p = await project("Savepoint P");
+  const parent = await mk("Savepoint parent", { project: p.id });
+  const fine = await mk("Savepoint fine child", { parent: parent.id });
+  // A sub-task whose stored rule the parser no longer accepts: completing it is rejected after its sibling's completion was written.
+  const stale = fixture("t_stalerul01", { title: "Savepoint stale child", projectId: p.id, parentId: parent.id, order: 1, due: { date: "2026-09-06" }, repeat: "FREQ=HOURLY" });
+  await db.store.transaction((tx) => tx.put("task", stale));
+  const other = await mk("Savepoint other", { project: p.id });
+  const before = await logCount();
+
+  const receipts = await tasks.batch(
+    [
+      { op: "start", id: other.id },
+      { op: "complete", id: parent.id, options: { subtasks: "complete" } },
+      { op: "complete", id: other.id },
+    ],
+    { actor: "neel", key: "savepoint-1" },
+  );
+  assert.equal(receipts[0]!.ok && receipts[0]!.outcome, "updated");
+  rejectedWith(receipts[1]!, /^task t_stalerul01: repeat: Unsupported FREQ HOURLY$/m);
+  assert.equal(receipts[2]!.ok && receipts[2]!.outcome, "updated");
+  assert.equal((await get(other.id)).status, "done", "the items around it stand");
+  assert.equal((await get(parent.id)).status, "accepted", "the rejected item changed nothing");
+  assert.equal((await get(fine.id)).status, "accepted", "what its cascade wrote was undone");
+  assert.equal((await get(fine.id)).version, 1);
+  assert.deepEqual(await ops(fine.id), ["task.add"]);
+  assert.equal(await logCount(), before + 2, "start and complete on the other task; nothing from the rejected item");
+  assert.equal(await db.store.read((tx) => tx.getReceipt(itemKey("savepoint-1", 1))), null, "no receipt for the rejected item");
+  assert.ok(await db.store.read((tx) => tx.getReceipt(itemKey("savepoint-1", 2))), "the item after it kept its receipt");
+  assert.deepEqual(await tasks.batch([{ op: "start", id: other.id }], { actor: "neel", key: "savepoint-1" }), [receipts[0]], "the key still replays");
+
+  const atomic = await tasks.batch([{ op: "uncomplete", id: other.id }, { op: "complete", id: parent.id, options: { subtasks: "complete" } }], neel, { atomic: true });
+  rejectedWith(atomic[0]!, /batch: rolled back; item 1 \(complete t_[a-z0-9]{10}\) was rejected: task t_stalerul01: repeat: Unsupported FREQ HOURLY/);
+  rejectedWith(atomic[1]!, /Unsupported FREQ HOURLY/);
+  assert.equal((await get(other.id)).status, "done", "atomic: everything rolled back");
+  assert.equal((await get(fine.id)).version, 1);
+  assert.equal(await logCount(), before + 2);
 });

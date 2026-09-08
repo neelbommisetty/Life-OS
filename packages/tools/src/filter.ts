@@ -74,6 +74,55 @@ function tokenize(input: string): Token[] | string {
   return tokens;
 }
 
+/**
+ * The query with every term replaced by what `rewrite` returns for it, or kept
+ * verbatim when it returns null. Terms are found the way `tokenize` finds them
+ * (operators and quotes), and `rewrite` sees the term as the parser would:
+ * quotes stripped, trimmed. Operators, whitespace, and untouched terms keep
+ * their original text, so a saved query survives a rename with its shape
+ * intact.
+ */
+export function rewriteTerms(query: string, rewrite: (term: string) => string | null): string {
+  let out = "";
+  let raw = "";
+  let value = "";
+  let quote: string | null = null;
+  const flush = () => {
+    const term = value.trim();
+    const replacement = term ? rewrite(term) : null;
+    if (replacement === null) out += raw;
+    else {
+      const lead = raw.length - raw.trimStart().length;
+      const trail = raw.length - raw.trimEnd().length;
+      out += raw.slice(0, lead) + replacement + raw.slice(raw.length - trail);
+    }
+    raw = "";
+    value = "";
+  };
+  for (const ch of query) {
+    if (quote) {
+      raw += ch;
+      if (ch === quote) quote = null;
+      else value += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      raw += ch;
+      continue;
+    }
+    if ("&|!()".includes(ch)) {
+      flush();
+      out += ch;
+    } else {
+      raw += ch;
+      value += ch;
+    }
+  }
+  flush();
+  return out;
+}
+
 function dateArg(raw: string): string | null {
   const value = raw.trim();
   if (!value) return null;

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseFilter, matches, mentionsStatus, type FilterSubject } from "./filter.ts";
+import { parseFilter, matches, mentionsStatus, rewriteTerms, type FilterSubject } from "./filter.ts";
 
 const today = "2026-09-06";
 const base: FilterSubject = {
@@ -85,4 +85,16 @@ test("mentionsStatus decides whether the open-only default applies", () => {
   assert.equal(ok("done & @health"), true);
   assert.equal(ok("!(status: cancelled)"), true);
   assert.equal(ok("all"), true);
+});
+
+test("rewriteTerms replaces the terms the callback claims and keeps operators, spacing, and every other term verbatim", () => {
+  const upper = (term: string) => (term.startsWith("@") ? term.toUpperCase() : null);
+  assert.equal(rewriteTerms("today & @health | (!@work & p1)", upper), "today & @HEALTH | (!@WORK & p1)");
+  assert.equal(rewriteTerms('@"health" &  @work ', upper), "@HEALTH &  @WORK ", "quotes are folded into the term the callback sees; surrounding spacing survives");
+  assert.equal(rewriteTerms("search: @health", upper), "search: @health", "the callback sees whole terms, not words inside them");
+  assert.equal(rewriteTerms("today", () => null), "today");
+  assert.equal(rewriteTerms("", () => "x"), "");
+  const rewritten = rewriteTerms("##health/dental & @health", (term) => (term === "##health/dental" ? "##wellness/dental" : null));
+  assert.equal(rewritten, "##wellness/dental & @health");
+  assert.ok(parseFilter(rewritten).ok, "what comes out still parses");
 });

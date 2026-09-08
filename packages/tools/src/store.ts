@@ -24,7 +24,7 @@ export interface Tx {
 }
 export interface Store {
   transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T>; // BEGIN, advisory lock, work, COMMIT; ROLLBACK and rethrow on error
-  read<T>(work: (tx: Tx) => Promise<T>): Promise<T>;        // one client, no transaction, no lock
+  read<T>(work: (tx: Tx) => Promise<T>): Promise<T>;        // one client, one read-only snapshot (REPEATABLE READ), no lock
   close(): Promise<void>;
 }
 
@@ -57,12 +57,39 @@ function toLogEntry(row: LogRow): LogEntry {
   };
 }
 
+/**
+ * Run `work` inside a savepoint on the transaction behind `tx`: released when
+ * it resolves, rolled back to when it throws (the error is rethrown), so a
+ * caller can undo one step of a transaction without giving up the rest. Only a
+ * Tx over a Postgres client can do this; any other Tx is refused rather than
+ * run without the isolation the caller asked for.
+ */
+export async function withSavepoint<T>(tx: Tx, work: () => Promise<T>): Promise<T> {
+  if (!(tx instanceof PgTx)) throw new Error("withSavepoint: this Tx has no Postgres client to set a savepoint on");
+  return tx.savepoint(work);
+}
+
 /** A Tx bound to one Drizzle instance, itself bound to one checked-out client. */
 export class PgTx implements Tx {
   readonly db: Db;
+  #savepoints = 0;
 
   constructor(db: Db) {
     this.db = db;
+  }
+
+  /** SAVEPOINT, work, RELEASE; ROLLBACK TO on a throw, which is rethrown. Names count up so savepoints nest. */
+  async savepoint<T>(work: () => Promise<T>): Promise<T> {
+    const name = `sp_${++this.#savepoints}`;
+    await this.db.$client.query(`savepoint ${name}`);
+    try {
+      const result = await work();
+      await this.db.$client.query(`release savepoint ${name}`);
+      return result;
+    } catch (error) {
+      await this.db.$client.query(`rollback to savepoint ${name}`);
+      throw error;
+    }
   }
 
   async get<K extends Kind>(kind: K, id: string): Promise<RecordOf<K> | null> {
@@ -177,12 +204,28 @@ export class PgStore implements Store {
     }
   }
 
+  /**
+   * One read-only transaction at REPEATABLE READ, so every query `work` runs
+   * sees the same snapshot even when a writer commits in between. No advisory
+   * lock: reads never wait on writers.
+   */
   async read<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
     const client: PoolClient = await this.pool.connect();
+    let broken = false;
     try {
-      return await work(new PgTx(createDb(client)));
+      await client.query("begin isolation level repeatable read read only");
+      const result = await work(new PgTx(createDb(client)));
+      await client.query("commit");
+      return result;
+    } catch (error) {
+      try {
+        await client.query("rollback");
+      } catch {
+        broken = true; // The connection is unusable; drop it from the pool.
+      }
+      throw error;
     } finally {
-      client.release();
+      client.release(broken || undefined);
     }
   }
 

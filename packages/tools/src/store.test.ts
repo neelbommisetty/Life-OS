@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { Label, LogEntry, Task } from "./contract.ts";
 import { createTestDb, type TestDb } from "./db/testing.ts";
+import { withSavepoint, type Tx } from "./store.ts";
 
 const now = "2026-09-06T12:00:00Z";
 const origin = { actor: "neel", at: now, evidence: [] };
@@ -204,4 +205,76 @@ test("reads take no lock and run while a write transaction is open", async () =>
   release();
   await writer;
   assert.equal(seen, "read-ran");
+});
+
+test("read sees one snapshot: a writer's commit between its queries is invisible until the next read, and a read cannot write", async () => {
+  const seen = await db.store.read(async (tx) => {
+    const first = await tx.get("label", "l_snapshot01");
+    await db.store.transaction((writer) => writer.put("label", label("l_snapshot01")));
+    const second = await tx.get("label", "l_snapshot01");
+    const listed = (await tx.all("label")).some((l) => l.id === "l_snapshot01");
+    return { first, second, listed };
+  });
+  assert.deepEqual(seen, { first: null, second: null, listed: false }, "every query in the read saw the snapshot it started with");
+  assert.equal((await db.store.read((tx) => tx.get("label", "l_snapshot01")))?.id, "l_snapshot01", "the next read sees the commit");
+
+  await assert.rejects(
+    db.store.read((tx) => tx.put("label", label("l_readonly01"))),
+    (error: unknown) => {
+      // Drizzle wraps the driver's error; Postgres refuses the write with SQLSTATE 25006.
+      const cause = (error as { cause?: unknown }).cause;
+      assert.ok(cause instanceof Error, `a wrapped driver error: ${String(error)}`);
+      assert.match(cause.message, /read-only transaction/);
+      assert.equal((cause as { code?: string }).code, "25006");
+      return true;
+    },
+  );
+  assert.equal(await db.store.read((tx) => tx.get("label", "l_readonly01")), null);
+  await assert.rejects(
+    db.store.read(async () => {
+      throw new Error("read failed");
+    }),
+    /read failed/,
+  );
+  // The pool is healthy afterwards.
+  await db.store.transaction((tx) => tx.put("label", label("l_afterread1")));
+  assert.equal((await db.store.read((tx) => tx.get("label", "l_afterread1")))?.id, "l_afterread1");
+});
+
+test("withSavepoint undoes only the step that threw and keeps the transaction usable, nesting included", async () => {
+  await db.store.transaction(async (tx) => {
+    await tx.put("label", label("l_savept0001"));
+    await assert.rejects(
+      withSavepoint(tx, async () => {
+        await tx.put("label", label("l_savept0002"));
+        await tx.appendLog(entry("l_savept0002"));
+        await tx.putReceipt("savept-key", { ok: true }, now);
+        throw new Error("undo this step");
+      }),
+      /undo this step/,
+    );
+    assert.equal(await tx.get("label", "l_savept0002"), null, "rolled back to the savepoint");
+    assert.equal((await tx.get("label", "l_savept0001"))?.id, "l_savept0001", "earlier work in the transaction stands");
+    assert.equal(await withSavepoint(tx, async () => {
+      await tx.put("label", label("l_savept0003"));
+      return "released";
+    }), "released");
+    await withSavepoint(tx, async () => {
+      await tx.put("label", label("l_savept0004"));
+      await assert.rejects(
+        withSavepoint(tx, async () => {
+          await tx.put("label", label("l_savept0005"));
+          throw new Error("inner");
+        }),
+        /inner/,
+      );
+      assert.equal(await tx.get("label", "l_savept0005"), null, "the inner savepoint undid only its own write");
+      assert.equal((await tx.get("label", "l_savept0004"))?.id, "l_savept0004");
+    });
+  });
+  const ids = (await db.store.read((tx) => tx.all("label"))).map((l) => l.id).filter((id) => id.startsWith("l_savept")).sort();
+  assert.deepEqual(ids, ["l_savept0001", "l_savept0003", "l_savept0004"]);
+  assert.deepEqual(await db.store.read((tx) => tx.history("label", "l_savept0002")), [], "the log entry went with it");
+  assert.equal(await db.store.read((tx) => tx.getReceipt("savept-key")), null, "and the receipt");
+  await assert.rejects(withSavepoint({} as Tx, async () => 1), /no Postgres client/);
 });

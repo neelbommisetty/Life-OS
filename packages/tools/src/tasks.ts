@@ -57,7 +57,7 @@ import {
   type ProjectIndex,
 } from "./organize.ts";
 import { nextOccurrence, parseRule } from "./recurrence.ts";
-import type { Store, Tx } from "./store.ts";
+import { withSavepoint, type Store, type Tx } from "./store.ts";
 import { todayIn } from "./time.ts";
 
 // ------------------------------------------------------------------ types
@@ -157,7 +157,11 @@ function updatedOrUnchanged(before: Task, next: Task, now: string): Mutation<Tas
   return Object.keys(diff(before, next)).length ? okMutation("updated", before, bump(next, now)) : okMutation("unchanged", before, before);
 }
 
-/** Hands out the next `order` per scope, counting up as tasks land in it. */
+/**
+ * Hands out the next `order` per scope, counting up as tasks land in it. Give
+ * it every task, deleted ones included: a deleted task keeps its slot, so a
+ * restore never collides with what was added meanwhile.
+ */
 function orderAllocator(tasks: Task[]) {
   const counters = new Map<string, number>();
   return (projectId: string, sectionId: string | undefined, parentId: string | undefined): number => {
@@ -348,7 +352,7 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
       if (parent && section.id !== parent.sectionId) return fail([`section: a sub-task lives in its parent's section; leave section out or pass parent null`]);
       sectionId = section.id;
     }
-    const tasks = await tx.all("task");
+    const tasks = await tx.all("task", { includeDeleted: true });
     if (!input.allowDuplicate) {
       const candidates = findDuplicates(input.title, tasks);
       if (candidates.length) {
@@ -487,7 +491,7 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     else next.sectionId = sectionId;
     if (parent === undefined) delete next.parentId;
     else next.parentId = parent.id;
-    if (scopeOf(next) !== scopeOf(before)) next.order = orderAllocator(live)(projectId, sectionId, parent?.id);
+    if (scopeOf(next) !== scopeOf(before)) next.order = orderAllocator(everything)(projectId, sectionId, parent?.id);
     if (!Object.keys(diff(before, next)).length) return okMutation("unchanged", before, before);
 
     const cascade = cascadeCtx(ctx);
@@ -540,7 +544,8 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     const before = found.record;
     const mismatch = checkVersion(before, ctx);
     if (mismatch) return mismatch;
-    const live = await tx.all("task");
+    const everything = await tx.all("task", { includeDeleted: true });
+    const live = everything.filter((t) => !t.deletedAt);
     const status: TaskStatus = ctx.actor === "neel" ? "accepted" : "proposed";
     const copyOf = (source: Task, parentId: string | undefined, order: number): Task => ({
       id: newId("task"),
@@ -570,8 +575,17 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
       deletedAt: null,
     });
     const copy = copyOf(before, before.parentId, before.order + 1);
+    const cascade = cascadeCtx(ctx);
+    // The copy sits right after the original: every sibling after it moves up one, deleted siblings
+    // included so a restore lands where it was, not on the copy.
+    const scope = scopeOf(before);
+    for (const sibling of everything.filter((t) => t.id !== before.id && scopeOf(t) === scope && t.order > before.order).sort(byOrder)) {
+      must(
+        await applyIn(tx, clock, "task", "task.duplicate", cascade, async (_tx, _ctx, at) => okMutation("updated", sibling, bump({ ...sibling, order: sibling.order + 1 }, at))),
+        `task ${sibling.id}`,
+      );
+    }
     if (opts.subtasks !== false) {
-      const cascade = cascadeCtx(ctx);
       const visit = async (sourceId: string, targetId: string): Promise<void> => {
         for (const child of childrenOf(sourceId, live)) {
           const childCopy = copyOf(child, targetId, child.order);
@@ -685,13 +699,14 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     }
     if (before.status === "cancelled") return okMutation("updated", before, bump({ ...before, status: "accepted", completedAt: null }, now));
     const last = before.occurrences[before.occurrences.length - 1];
-    if (before.status === "accepted" && before.repeat && before.due && last) {
+    if ((before.status === "accepted" || before.status === "in_progress") && before.repeat && before.due && last) {
       // Rewind the last completion: the due date it advanced from comes back and its occurrence goes.
       // An early or late completion recorded a different date, so the occurrence is only the fallback.
+      // A task started since that completion goes back to accepted, the status the completion left it in.
       const date = (await dueBeforeLastCompletion(tx, before)) ?? last.date;
-      return okMutation("updated", before, bump({ ...before, due: { ...before.due, date }, occurrences: before.occurrences.slice(0, -1) }, now));
+      return okMutation("updated", before, bump({ ...before, status: "accepted", due: { ...before.due, date }, occurrences: before.occurrences.slice(0, -1) }, now));
     }
-    const why = before.repeat ? "no recorded occurrence to rewind" : `task is ${before.status}`;
+    const why = before.repeat && !last ? "no recorded occurrence to rewind" : `task is ${before.status}`;
     return fail([`status: uncomplete needs done, cancelled, or a repeating task with an occurrence; ${why}`], { id: before.id, record: before });
   }
 
@@ -708,7 +723,8 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     const before = found.record;
     const mismatch = checkVersion(before, ctx);
     if (mismatch) return mismatch;
-    const live = await tx.all("task");
+    const everything = await tx.all("task", { includeDeleted: true });
+    const live = everything.filter((t) => !t.deletedAt);
     // The same question complete asks (HANDS D54): open, non-deleted sub-tasks anywhere below need a choice.
     const below = descendantsOf(before.id, live);
     const openBelow = below.filter(isOpen);
@@ -718,7 +734,7 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
     }
     const cascade = cascadeCtx(ctx);
     if (opts.subtasks === "leave") {
-      const allocate = orderAllocator(live);
+      const allocate = orderAllocator(everything);
       for (const child of childrenOf(before.id, live)) {
         const next: Task = { ...child };
         if (before.parentId === undefined) delete next.parentId;
@@ -757,7 +773,7 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
       else if (parent.sectionId === undefined) delete next.sectionId;
       else next.sectionId = parent.sectionId;
     }
-    if (scopeOf(next) !== scopeOf(before)) next.order = orderAllocator(await tx.all("task"))(next.projectId, next.sectionId, next.parentId);
+    if (scopeOf(next) !== scopeOf(before)) next.order = orderAllocator(await tx.all("task", { includeDeleted: true }))(next.projectId, next.sectionId, next.parentId);
     return okMutation("updated", before, bump(next, now));
   }
 
@@ -945,23 +961,46 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
 
   // ---------------------------------------------------------------- batch and import
 
+  /** The ctx without its version guard, for a batch item on a record an earlier item already changed. */
+  const withoutVersion = (ctx: Ctx): Ctx => {
+    const { ifVersion: _ifVersion, ...rest } = ctx;
+    return rest;
+  };
+
+  /**
+   * An item's throw as its receipt: a rejection that came after its cascade
+   * wrote, or a cascade that was itself rejected. Anything else propagates.
+   * What the cascade wrote is undone by the caller: the item's savepoint in a
+   * non-atomic batch, the whole transaction in an atomic one.
+   */
+  const thrownAsReceipt = (error: unknown): Receipt<Task> => {
+    if (error instanceof RejectedAfterWrites) return error.receipt as Receipt<Task>;
+    if (error instanceof CascadeRejected) return rejected(error.issues);
+    throw error;
+  };
+
   async function batch(items: BatchItem[], ctx: Ctx, opts: { atomic?: boolean } = {}): Promise<Receipt<Task>[]> {
     const parsed = ctxSchema.safeParse(ctx);
     if (!parsed.success) return items.map(() => rejected(issuesOf(parsed.error)));
     const context = parsed.data;
     if (!items.length) return [];
     const prepared = items.map(prepareItem);
-    /** An item rejected after its cascade wrote cannot stand on its own: the whole batch rolls back and names it. */
-    const abortedBy =
-      (index: number) =>
-      (error: unknown): never => {
-        throw error instanceof RejectedAfterWrites ? new BatchAborted(index, error.receipt as Receipt<Task>) : error;
-      };
     try {
       return await store.transaction(async (tx) => {
         const receipts: Receipt<Task>[] = [];
+        /** Records an earlier item already applied to: ctx.ifVersion guards the first item on each, later ones take the version that item left. */
+        const applied = new Set<string>();
         for (const [index, item] of prepared.entries()) {
-          const receipt = item.ok ? await applyIn(tx, clock, "task", item.op, itemCtx(context, index), item.work).catch(abortedBy(index)) : rejected<Task>(item.issues);
+          let receipt: Receipt<Task>;
+          if (!item.ok) receipt = rejected(item.issues);
+          else {
+            const id = items[index]!.id;
+            const itemContext = itemCtx(applied.has(id) ? withoutVersion(context) : context, index);
+            const run = () => applyIn(tx, clock, "task", item.op, itemContext, item.work);
+            // Each non-atomic item stands on its own: a savepoint undoes what a rejected item's cascade wrote and nothing else.
+            receipt = await (opts.atomic ? run() : withSavepoint(tx, run)).catch(thrownAsReceipt);
+            if (receipt.ok) applied.add(id);
+          }
           receipts.push(receipt);
           if (opts.atomic && !receipt.ok) throw new BatchAborted(index, receipt);
         }
@@ -973,7 +1012,6 @@ export function createTasks(store: Store, clock: Clock, _organize?: Organize): T
         const why = `batch: rolled back; item ${error.index} (${String(culprit.op)} ${String(culprit.id)}) was rejected: ${error.receipt.issues.join("; ")}`;
         return items.map((_, index) => (index === error.index ? error.receipt : rejected<Task>([why])));
       }
-      if (error instanceof CascadeRejected) return items.map(() => rejected<Task>([`batch: rolled back; ${error.issues.join("; ")}`]));
       throw error;
     }
   }

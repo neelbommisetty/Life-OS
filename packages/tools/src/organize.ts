@@ -40,7 +40,7 @@ import {
   type Task,
 } from "./contract.ts";
 import { applyIn, bump, checkVersion, diff, fail, itemCtx, mutate, newId, okMutation, rejected, type Clock, type Mutation } from "./core.ts";
-import { matches, mentionsStatus, parseFilter, type FilterSubject } from "./filter.ts";
+import { matches, mentionsStatus, parseFilter, rewriteTerms, type FilterSubject } from "./filter.ts";
 import type { Kind, RecordOf, Store, Tx } from "./store.ts";
 import { todayIn } from "./time.ts";
 
@@ -110,6 +110,7 @@ export type Organize = { project: ProjectOps; section: SectionOps; label: LabelO
 // ------------------------------------------------------------------ small helpers
 
 const unique = (items: string[]): string[] => [...new Set(items)];
+/** The order after every record given. Callers pass deleted siblings too: a deleted record keeps its slot, so a restore never collides with what was added meanwhile. */
 const nextOrder = (records: { order: number }[]): number => records.reduce((max, r) => Math.max(max, r.order + 1), 0);
 const byOrder = <T extends { order: number; createdAt: string; id: string }>(a: T, b: T): number =>
   a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
@@ -409,8 +410,8 @@ export async function ensureInbox(tx: Tx, clock: Clock): Promise<Project> {
 }
 
 async function addLabelWork(tx: Tx, input: LabelAdd, ctx: Ctx, now: string): Promise<Mutation<Label>> {
-  const labels = await tx.all("label");
-  if (labels.some((l) => l.name === input.name)) return fail([`name: label "${input.name}" already exists`]);
+  const labels = await tx.all("label", { includeDeleted: true });
+  if (labels.some((l) => !l.deletedAt && l.name === input.name)) return fail([`name: label "${input.name}" already exists`]);
   return okMutation("created", null, {
     id: newId("label"),
     name: input.name,
@@ -446,7 +447,7 @@ export async function ensureLabels(tx: Tx, clock: Clock, ctx: Ctx, names: string
 type Work<K extends Kind> = (tx: Tx, ctx: Ctx, now: string) => Promise<Mutation<RecordOf<K>>>;
 type Ordered = { id: string; order: number; version: number; updatedAt: string; deletedAt: string | null };
 
-/** Hands out the next `order` per task scope (project, section, parent), counting up as tasks land in it. */
+/** Hands out the next `order` per task scope (project, section, parent), counting up as tasks land in it. Give it every task, deleted ones included. */
 function orderAllocator(tasks: Task[]) {
   const counters = new Map<string, number>();
   return (projectId: string, sectionId: string | undefined, parentId: string | undefined): number => {
@@ -466,6 +467,25 @@ function freeName(wanted: string, taken: (candidate: string) => boolean, join: s
     const candidate = `${wanted}${join}${n}`;
     if (!taken(candidate)) return candidate;
   }
+}
+
+/** `@old` → `@new` in a filter query; other terms untouched. Label terms compare lowercased, the way the parser reads them. */
+export function renameLabelInQuery(query: string, from: string, to: string): string {
+  return rewriteTerms(query, (term) => {
+    const match = /^@(.+)$/.exec(term);
+    return match && match[1]!.trim().toLowerCase() === from ? `@${to}` : null;
+  });
+}
+
+/** `#old/path` and `##old/path`, and any path below them, → the new path in a filter query; ids and other terms untouched. */
+export function renameProjectPathInQuery(query: string, from: string, to: string): string {
+  return rewriteTerms(query, (term) => {
+    const match = /^(##?)(.+)$/.exec(term);
+    if (!match) return null;
+    const ref = match[2]!.trim().toLowerCase();
+    if (ref === from) return `${match[1]}${to}`;
+    return ref.startsWith(`${from}/`) ? `${match[1]}${to}${ref.slice(from.length)}` : null;
+  });
 }
 
 // ------------------------------------------------------------------ the factory
@@ -537,8 +557,8 @@ export function createOrganize(store: Store, clock: Clock): Organize {
     // The Inbox is created on first use, once the refs and the slug have passed. It is a root sibling, so it
     // must exist before the slug and order checks below; a clash after this point rolls it back (core.ts).
     await ensureInbox(tx, clock);
-    const siblings = (await tx.all("project")).filter((p) => p.parentId === parentId);
-    if (siblings.some((p) => p.slug === slug)) return fail([`slug: "${slug}" is already used by a sibling project`]);
+    const siblings = (await tx.all("project", { includeDeleted: true })).filter((p) => p.parentId === parentId);
+    if (siblings.some((p) => !p.deletedAt && p.slug === slug)) return fail([`slug: "${slug}" is already used by a sibling project`]);
     const labels = unique(input.labels ?? []);
     const ensured = await ensureLabels(tx, clock, ctx, labels);
     if (ensured.issues.length) return fail(ensured.issues);
@@ -585,13 +605,34 @@ export function createOrganize(store: Store, clock: Clock): Organize {
       else next.color = input.color;
     }
     if (input.layout !== undefined) next.layout = input.layout;
+    // Every check has passed; what follows writes.
     if (input.labels !== undefined) {
       const labels = unique(input.labels);
       const ensured = await ensureLabels(tx, clock, ctx, labels);
       if (ensured.issues.length) return fail(ensured.issues, { id: before.id });
       next.labels = labels;
     }
+    if (next.slug !== before.slug) {
+      // Saved filters name projects by slug path, so the old path (and every path below it) is rewritten in them.
+      const index = indexProjects(await tx.all("project", { includeDeleted: true }));
+      const oldPath = projectPath(before, index);
+      const newPath = projectPath(next, index);
+      await rewriteFilters(tx, ctx, "project.update", (query) => renameProjectPathInQuery(query, oldPath, newPath));
+    }
     return updatedOrUnchanged(before, next, now);
+  }
+
+  /** Rewrite every non-deleted filter whose query `rewrite` changes, each logged under `op` with the cascade ctx. */
+  async function rewriteFilters(tx: Tx, ctx: Ctx, op: string, rewrite: (query: string) => string): Promise<void> {
+    const cascade = cascadeCtx(ctx);
+    for (const f of await tx.all("filter")) {
+      const query = rewrite(f.query);
+      if (query === f.query) continue;
+      must(
+        await applyIn(tx, clock, "filter", op, cascade, async (_tx, _ctx, at) => okMutation("updated", f, bump({ ...f, query }, at))),
+        `filter ${f.id}`,
+      );
+    }
   }
 
   async function projectMove(tx: Tx, ref: string, parent: string | null, ctx: Ctx, now: string): Promise<Mutation<Project>> {
@@ -618,7 +659,8 @@ export function createOrganize(store: Store, clock: Clock): Organize {
     if (siblings.some((p) => p.slug === before.slug)) {
       return fail([`slug: "${before.slug}" is already used by a project under the new parent; change the slug first`], { id: before.id });
     }
-    return okMutation("updated", before, bump({ ...before, parentId, order: nextOrder(siblings) }, now));
+    const everySibling = (await tx.all("project", { includeDeleted: true })).filter((p) => p.parentId === parentId && p.id !== before.id);
+    return okMutation("updated", before, bump({ ...before, parentId, order: nextOrder(everySibling) }, now));
   }
 
   async function projectSetArchived(tx: Tx, ref: string, archived: boolean, ctx: Ctx, now: string): Promise<Mutation<Project>> {
@@ -644,8 +686,8 @@ export function createOrganize(store: Store, clock: Clock): Organize {
     const projects = await tx.all("project");
     const subprojects = projectDescendants(before.id, projects);
     const subtree = new Set([before.id, ...subprojects.map((p) => p.id)]);
-    const allTasks = await tx.all("task");
-    const tasks = allTasks.filter((t) => subtree.has(t.projectId)).sort(byOrder);
+    const allTasks = await tx.all("task", { includeDeleted: true });
+    const tasks = allTasks.filter((t) => !t.deletedAt && subtree.has(t.projectId)).sort(byOrder);
     const sections = (await tx.all("section")).filter((s) => subtree.has(s.projectId));
     if ((tasks.length || subprojects.length) && opts.contents === undefined) {
       const message = `Project "${projectPath(before, indexProjects(projects))}" has ${count(tasks.length, "task")} and ${count(subprojects.length, "sub-project")}; pass contents "delete" to delete them too, or "inbox" to move the tasks to the Inbox`;
@@ -694,11 +736,12 @@ export function createOrganize(store: Store, clock: Clock): Organize {
     const mismatch = checkVersion(before, ctx);
     if (mismatch) return mismatch;
     if (!before.deletedAt) return okMutation("unchanged", before, before);
-    const live = await tx.all("project");
+    const everything = await tx.all("project", { includeDeleted: true });
+    const live = everything.filter((p) => !p.deletedAt);
     const parentId = before.parentId !== null && live.some((p) => p.id === before.parentId) ? before.parentId : null;
     const siblings = live.filter((p) => p.parentId === parentId);
     const slug = freeName(before.slug, (candidate) => siblings.some((p) => p.slug === candidate), "-");
-    const order = parentId === before.parentId ? before.order : nextOrder(siblings);
+    const order = parentId === before.parentId ? before.order : nextOrder(everything.filter((p) => p.parentId === parentId && p.id !== before.id));
     return okMutation("updated", before, bump({ ...before, parentId, slug, order, deletedAt: null }, now));
   }
 
@@ -762,8 +805,8 @@ export function createOrganize(store: Store, clock: Clock): Organize {
   async function sectionAdd(tx: Tx, input: SectionAdd, ctx: Ctx, now: string): Promise<Mutation<Section>> {
     const found = await liveProject(tx, input.project);
     if (!found.ok) return failed(found);
-    const sections = (await tx.all("section")).filter((s) => s.projectId === found.record.id);
-    if (sectionNameTaken(sections, input.name)) return fail([`name: section "${input.name}" already exists in that project`]);
+    const sections = (await tx.all("section", { includeDeleted: true })).filter((s) => s.projectId === found.record.id);
+    if (sectionNameTaken(sections.filter((s) => !s.deletedAt), input.name)) return fail([`name: section "${input.name}" already exists in that project`]);
     return okMutation("created", null, {
       id: newId("section"),
       projectId: found.record.id,
@@ -811,8 +854,8 @@ export function createOrganize(store: Store, clock: Clock): Organize {
     if (opts.tasks !== undefined && opts.tasks !== "delete" && opts.tasks !== "unsection") {
       return fail([`tasks: expected "delete" or "unsection", got "${String(opts.tasks)}"`], { id: before.id });
     }
-    const allTasks = await tx.all("task");
-    const tasks = allTasks.filter((t) => t.sectionId === before.id).sort(byOrder);
+    const allTasks = await tx.all("task", { includeDeleted: true });
+    const tasks = allTasks.filter((t) => !t.deletedAt && t.sectionId === before.id).sort(byOrder);
     if (tasks.length && opts.tasks === undefined) {
       const message = `Section "${before.name}" has ${count(tasks.length, "task")}; pass tasks "delete" to delete them too, or "unsection" to keep them in the project without a section`;
       return fail([message], { id: before.id, record: before, needs: { field: "tasks", options: ["delete", "unsection"], message } });
@@ -913,6 +956,8 @@ export function createOrganize(store: Store, clock: Clock): Organize {
           `project ${p.id}`,
         );
       }
+      // And every saved filter that names it, so `@old` keeps meaning this label.
+      await rewriteFilters(tx, ctx, "label.update", (query) => renameLabelInQuery(query, before.name, newName));
     }
     return updatedOrUnchanged(before, next, now);
   }
@@ -974,8 +1019,8 @@ export function createOrganize(store: Store, clock: Clock): Organize {
     filters.some((f) => f.id !== exceptId && f.name.toLowerCase() === name.toLowerCase());
 
   async function filterAdd(tx: Tx, input: FilterAdd, ctx: Ctx, now: string): Promise<Mutation<Filter>> {
-    const filters = await tx.all("filter");
-    if (filterNameTaken(filters, input.name)) return fail([`name: filter "${input.name}" already exists`]);
+    const filters = await tx.all("filter", { includeDeleted: true });
+    if (filterNameTaken(filters.filter((f) => !f.deletedAt), input.name)) return fail([`name: filter "${input.name}" already exists`]);
     return okMutation("created", null, {
       id: newId("filter"),
       name: input.name,

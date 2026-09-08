@@ -79,8 +79,42 @@ test("diff ignores version and updatedAt, reads absent as null, and compares str
   assert.deepEqual(diff(before, { ...before, version: 9, updatedAt: "later" }), {});
   assert.deepEqual(diff(before, { ...before, origin: { actor: "neel", at: now, evidence: [] } }), {}, "equal nested objects are not changes");
   const created = diff(null, label("l_diff000002"));
-  assert.deepEqual(Object.keys(created).sort(), ["createdAt", "deletedAt", "external", "id", "name", "order", "origin"]);
+  assert.deepEqual(Object.keys(created).sort(), ["createdAt", "external", "id", "name", "order", "origin"], "a null field on a new record is not a change");
   assert.deepEqual(created.name, { from: null, to: "health" });
+  assert.ok(!("deletedAt" in created), "deletedAt is null on create and stays out of the patch");
+});
+
+test("diff skips a field that is null or absent on both sides, and still reports null arriving or leaving", () => {
+  assert.deepEqual(diff(null, { a: null, b: undefined, c: 1 }), { c: { from: null, to: 1 } });
+  assert.deepEqual(diff({ a: null }, { a: undefined }), {}, "null and absent are the same thing");
+  assert.deepEqual(diff({ a: undefined }, { a: null }), {});
+  assert.deepEqual(diff({ a: null }, { a: 1 }), { a: { from: null, to: 1 } });
+  assert.deepEqual(diff({ a: 1 }, { a: null }), { a: { from: 1, to: null } });
+  assert.deepEqual(diff({ a: 1 }, {}), { a: { from: 1, to: null } }, "a field that disappears is a change");
+  const task: Task = {
+    id: "t_diffnull01",
+    title: "Nulls on create",
+    notes: "",
+    projectId: "p_abcdefghij",
+    order: 0,
+    status: "accepted",
+    executor: "neel",
+    due: null,
+    deadline: null,
+    labels: [],
+    comments: [],
+    occurrences: [],
+    origin: { actor: "neel", at: now, evidence: [] },
+    external: [],
+    completedAt: null,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+  };
+  const patch = diff(null, task);
+  for (const field of ["due", "deadline", "completedAt", "deletedAt"]) assert.ok(!(field in patch), `${field} is null on create and stays out of the patch`);
+  assert.deepEqual(patch.labels, { from: null, to: [] }, "an empty array is a value, not a null");
 });
 
 test("mutate rejects an invalid ctx before running work", async () => {
