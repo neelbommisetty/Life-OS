@@ -1,5 +1,6 @@
 {
   "name": "@life-os/tools",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "Life-OS tools: the todo list core (and later the calendar), with the life CLI.",
