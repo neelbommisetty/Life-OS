@@ -10,4 +10,4 @@ The attached Life vault is separate and shared, not isolated by a code branch or
 
 ## Tools package and life CLI
 
-`packages/tools` is the authorized todo-list milestone per `docs/vision/HANDS.md`. The `life` CLI (see `skills/todo/SKILL.md`) is the way agents act on the list: adding, changing, scheduling, completing, or reading tasks. `LIFE_DATABASE_URL` lives in the root `.env`. The calendar piece of `HANDS.md` is not yet specced and must not be built.
+`packages/tools` is the authorized todo-list milestone per `docs/vision/HANDS.md`. The `life` CLI (see `skills/todo/SKILL.md`) is the way agents act on the list: adding, changing, scheduling, completing, or reading tasks. `LIFE_DATABASE_URL` lives in the root `.env`. The calendar piece of `HANDS.md` is specced (D44, D55 to D66) and its implementation brief is the "The calendar" section of `packages/tools/README.md`; build only what that brief describes.

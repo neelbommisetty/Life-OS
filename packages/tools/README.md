@@ -1,6 +1,6 @@
 # @life-os/tools
 
-The todo list core of Life-OS (the calendar joins later), plus the `life` CLI. The product spec is `docs/vision/HANDS.md` at the repository root; read it first. This file is the implementation brief: conventions, module map, and the fixed interfaces that let the modules be built independently.
+The todo list and calendar core of Life-OS, plus the `life` CLI. The product spec is `docs/vision/HANDS.md` at the repository root; read it first. This file is the implementation brief: conventions, module map, and the fixed interfaces that let the modules be built independently.
 
 ## Conventions
 
@@ -13,7 +13,7 @@ The todo list core of Life-OS (the calendar joins later), plus the `life` CLI. T
 - **Everything is async.** Every operation returns a Promise.
 - **Every mutation goes through `core.ts`.** No module writes a record or a log entry on its own.
 - **Time.** Dates are `YYYY-MM-DD` strings. Instants are ISO UTC strings. Helpers live in `src/time.ts`; do not add a date library.
-- **Ids.** `newId(kind)` in `core.ts`: prefix from `ID_PREFIXES` plus ten random `[a-z0-9]` characters. Never derived from a provider.
+- **Ids.** `newId(kind)` in `core.ts`: prefix from `ID_PREFIXES` plus ten random `[a-z0-9]` characters. Never derived from a provider. Prefixes: `t_ p_ s_ l_ f_` for the todo list, `a_ c_ e_` for the calendar, `v_` reserved for calendar sets.
 - **No `any`.** Prefer narrow types from `contract.ts`.
 
 ## Module map and ownership
@@ -208,3 +208,243 @@ The CLI's first user is an agent reading JSON, and its second is Neel debugging 
 - **The CLI stands alone.** The skill says when to reach for the CLI and what Neel expects of agents; it is not the manual. An agent with no skill loaded, starting from `life --help`, must be able to discover every command, flag, ref format, filter term, and exit code and complete a task correctly. Test this by driving a flow from help output alone.
 
 Human output is plain aligned text: one line per task with id, status, title, due, project path, labels. JSON output is the receipt or result object exactly as the library returns it.
+
+## The calendar
+
+The calendar spec is the "The calendar" section of `docs/vision/HANDS.md` (D44, D55 to D66); read it first. This part of the brief fixes how it lands in this package. Everything above still applies: `core.mutate` for every write, the store's lock and snapshot rules, the receipt and log shapes, the CLI envelope and ergonomics. The calendar adds three record kinds, one provider adapter, a sync engine, and a handful of views. Nothing in the todo modules changes except the `today` view, which grows a schedule.
+
+### Conventions that change or extend
+
+- **Environment.** `LIFE_DATABASE_URL` is still the only required setting. Two more are needed once an account is connected: `LIFE_GOOGLE_CLIENT_ID` and `LIFE_GOOGLE_CLIENT_SECRET`, Life-OS's own OAuth desktop client, in the root `.env`. `LIFE_CAL_MAX_AGE` (seconds, default `300`) is the copy age above which a view refreshes before answering. `LIFE_CAL_HISTORY_MONTHS` (default `12`) bounds the first full sync backwards; there is no forward bound.
+- **Credentials.** Refresh tokens live in `.local/google/<accountId>.json` (`{ identity, refreshToken, scopes, obtainedAt }`), resolved from the repository root the way `.env` is. Never in a record, never in the log, never in a receipt, never on stderr even with `--verbose`.
+- **Network.** Only `src/calendar/google/*` talks to Google, through the global `fetch` and Node's `http` for the OAuth loopback. No `googleapis` package. Every request has a 20 second timeout. Tests never touch the network: they use the fake adapter.
+- **Recurrence.** Provider events arrive with arbitrary RRULEs, so expansion uses the `rrule` package behind `src/calendar/expand.ts`; nothing else imports it. `src/recurrence.ts` stays the todo subset and is untouched. Expansion runs in the event's own timezone (wall clock through `zonedToInstant`), so a weekly 9 AM stays 9 AM across a DST change.
+- **Actors.** Sync writes carry actor `import:google`, op `event.sync`, `calendar.sync`, or `account.sync`. They go through `applyIn` like everything else, so a meeting moved on the phone shows up in `event.history` with who moved it, from the provider's point of view. Unchanged items log nothing, so a quiet sync writes nothing.
+- **Dependencies added.** `rrule` only.
+
+### Module map additions
+
+| Module | Owns | Depends on |
+|---|---|---|
+| `src/contract.ts` (extended) | account, calendar, event schemas and inputs; `ID_PREFIXES` gains `account: "a"`, `calendar: "c"`, `event: "e"` | |
+| `src/db/schema.ts` (extended), `drizzle/0001_calendar.sql` | `accounts`, `calendars`, `events` tables | |
+| `src/store.ts` (extended) | `Kind` and `RecordOf` gain the three kinds; `Tx.eventsInRange` | db |
+| `src/calendar/adapter.ts` | `CalendarAdapter` interface, provider record types, `FakeAdapter` for tests | contract |
+| `src/calendar/credentials.ts` | read, write, delete of `.local/google/*.json` | |
+| `src/calendar/google/oauth.ts` | desktop OAuth with PKCE and a loopback listener; token refresh | credentials |
+| `src/calendar/google/client.ts` | the REST calls: calendarList, events list with sync tokens, insert, patch, delete, instances | oauth |
+| `src/calendar/google/map.ts` | provider event ↔ `Event`, provider calendar ↔ `Calendar`; pure functions | contract |
+| `src/calendar/google/index.ts` | `GoogleAdapter implements CalendarAdapter` | the three above |
+| `src/calendar/expand.ts` | occurrences of one event in a window, honouring exception rows | contract, `rrule` |
+| `src/calendar/sync.ts` | full and incremental sync per calendar, calendar list sync, `refreshIfStale` | core, adapter |
+| `src/calendar/accounts.ts` | `AccountOps`, `CalendarOps` | core, sync, adapter |
+| `src/calendar/events.ts` | `EventOps`: write-through, scope handling, delete and restore | core, sync, adapter, expand |
+| `src/calendar/schedule.ts` | `today` (the schedule half), `week`, `slots`; merges events and dated tasks | expand, views, tasks |
+| `src/tools.ts` (extended) | `account`, `calendar`, `event` on the facade; `Tools.open({ adapters })` | |
+| `src/cli.ts` (extended) | `account`, `calendar`, `event` groups; `week`, `slots`, `sync`; `today` shows the schedule; `doctor` reports accounts | tools |
+| `../../skills/calendar/SKILL.md` | guidance for Codex and agents | the CLI |
+
+Each module has a matching `*.test.ts`. `map.ts` and `expand.ts` are pure and get the densest tests.
+
+### Records
+
+```ts
+// A moment: timed (timezone null means floating) or a date for all-day.
+type When = { at: string; timezone: string | null } | { date: string };
+
+type Account = {
+  id: string; provider: "google"; identity: string; label: string | null;
+  primary: boolean;                       // exactly one account is primary once any exists
+  status: "connected" | "needs_reauth" | "disconnected";
+  scopes: string[]; syncedAt: string | null;
+  version: number; createdAt: string; updatedAt: string; deletedAt: string | null;
+};
+
+type Calendar = {
+  id: string; accountId: string; name: string; color: string | null; timezone: string;
+  labels: string[];                       // life areas, D49
+  writable: boolean;                      // provider access role is owner or writer
+  hidden: boolean;                        // excluded from views unless asked for
+  primaryOfAccount: boolean;              // the account's main calendar; default target for event.add on that account
+  order: number;
+  external: { id: string; syncToken: string | null };
+  syncedAt: string | null; syncError: string | null;
+  version: number; createdAt: string; updatedAt: string; deletedAt: string | null;
+};
+
+type Event = {
+  id: string; calendarId: string; accountId: string;
+  title: string; notes: string | null; location: string | null;
+  start: When; end: When;                 // both timed or both dates; end after start; an all-day end date is exclusive
+  repeat: { rrule: string; exdates: string[] } | null;   // masters only; exdates are original starts
+  masterId: string | null; originalStart: When | null;  // set on an exception row: one edited or cancelled occurrence
+  status: "confirmed" | "tentative" | "cancelled";
+  busy: boolean;                          // provider transparency; all-day events default to false
+  organizer: { email: string; name: string | null; self: boolean } | null;
+  attendees: { email: string; name: string | null; response: "needsAction" | "accepted" | "declined" | "tentative"; self: boolean; optional: boolean }[];
+  myResponse: "needsAction" | "accepted" | "declined" | "tentative" | null;   // null when Neel is not an attendee
+  conferencing: { kind: string; url: string } | null;   // read only in this cut
+  reminders: { method: string; minutes: number }[] | null; // null means the calendar's default; carried for the iOS app, D63
+  origin: Origin; external: { provider: "google"; id: string; etag: string; iCalUID: string; updatedAt: string };
+  version: number; createdAt: string; updatedAt: string; deletedAt: string | null;
+};
+```
+
+HANDS calls per-instance changes "overrides". Here each is its own event row with `masterId` and `originalStart`, because that is how Google delivers them and it makes sync one row per provider item. A cancelled occurrence is an exception row with `status: "cancelled"`. `expand.ts` lays the master's rule out, drops `exdates`, and replaces any occurrence whose original start matches an exception row with that row.
+
+An occurrence is addressed as `<eventId>@<originalStart>` where `originalStart` is the `at` instant or the `date`. `EventOps` accepts an event id or an occurrence id wherever it says `ref`.
+
+Storage: `accounts`, `calendars`, `events` use `recordColumns()`. Indexes on `events`: `(json->>'calendarId')`, `(json->>'masterId')`, `(json->'start'->>'at')`, `(json->'start'->>'date')`, `((json->'external'->>'id'))`. `Tx.eventsInRange(calendarIds, fromInstant, toInstant)` returns non-deleted rows whose start is before `to` and end after `from`, plus every master with a rule in those calendars (masters are expanded in JS; an unbounded series cannot be range-filtered in SQL), plus their exception rows.
+
+### The adapter
+
+```ts
+export type ProviderCalendar = { id: string; name: string; color: string | null; timezone: string; writable: boolean; primary: boolean; hidden: boolean };
+export type ProviderEvent = Omit<Event, "id" | "calendarId" | "accountId" | "masterId" | "origin" | "version" | "createdAt" | "updatedAt" | "deletedAt"> & {
+  providerMasterId: string | null;      // for an exception row
+  deleted: boolean;                     // provider says it is gone
+  lifeId: string | null;                // our id, if we stamped it on create (extendedProperties.private.lifeId)
+};
+export type SyncPage = { items: ProviderEvent[]; nextCursor: string | null; done: boolean };
+export class CursorExpired extends Error {}
+export class ProviderUnavailable extends Error { constructor(message: string, readonly status?: number) }
+export class ProviderRejected extends Error { constructor(message: string, readonly status: number) }
+
+export interface CalendarAdapter {
+  readonly provider: "google";
+  /** Runs the OAuth flow. `open` receives the URL to show; the promise resolves when the loopback receives the code. */
+  connect(opts: { open: (url: string) => void; timeoutMs?: number }): Promise<{ identity: string; scopes: string[]; credentialId: string }>;
+  listCalendars(accountId: string): Promise<ProviderCalendar[]>;
+  /** One page. Pass `cursor: null` for a full sync from `since`; afterwards pass the cursor from the last page. Throws CursorExpired when the provider says start over. */
+  syncPage(accountId: string, calendarExternalId: string, cursor: string | null, since: string): Promise<SyncPage>;
+  create(accountId: string, calendarExternalId: string, event: EventWrite, lifeId: string): Promise<ProviderEvent>;
+  update(accountId: string, calendarExternalId: string, providerId: string, patch: EventPatch, etag: string): Promise<ProviderEvent>;
+  delete(accountId: string, calendarExternalId: string, providerId: string): Promise<void>;
+  respond(accountId: string, calendarExternalId: string, providerId: string, response: "accepted" | "declined" | "tentative"): Promise<ProviderEvent>;
+  instanceId(providerMasterId: string, originalStart: When): string;   // the provider's id for one occurrence
+}
+```
+
+`EventWrite` and `EventPatch` are the provider-neutral write shapes (title, notes, location, start, end, repeat, busy, status). The Google adapter stamps `extendedProperties.private.lifeId` on create so the row keeps its Life-OS id even if the local write fails and sync later brings the event back. `FakeAdapter` holds calendars and events in memory, records every call, can be told to throw `ProviderUnavailable` or `CursorExpired` on the next call, and generates cursors so incremental sync is testable.
+
+Google specifics, kept inside `src/calendar/google`: scopes `calendar.events`, `calendar.calendarlist.readonly`, `userinfo.email`; loopback redirect on `127.0.0.1` with a random port and PKCE; `events.list` with `singleEvents=false`, `showDeleted=true`, `maxResults=250`, `timeMin=since` on the first page only, `syncToken` afterwards; HTTP 410 becomes `CursorExpired`; 401 after one refresh attempt marks the account `needs_reauth`; 403 with a rate-limit reason and 5xx become `ProviderUnavailable`; other 4xx become `ProviderRejected` with Google's message. `sendUpdates` is `none` on every write in this cut, since attendees are not authored (D61); `respond` patches Neel's own attendee entry.
+
+### Sync
+
+```ts
+export type SyncReport = { accountId: string; calendars: { calendarId: string; outcome: "synced" | "unchanged" | "resynced" | "failed"; created: number; updated: number; deleted: number; error?: string }[] };
+export function syncAccount(store, clock, adapter, accountId, opts?: { calendarIds?: string[]; full?: boolean }): Promise<SyncReport>;
+export function refreshIfStale(store, clock, adapters, opts: { maxAgeSeconds: number; calendarIds?: string[] }): Promise<{ refreshed: string[]; failed: { calendarId: string; error: string }[] }>;
+```
+
+Rules:
+
+- **Calendar list first.** `syncAccount` reconciles calendars: new provider calendars are added (`calendar.sync`, hidden defaults to the provider's flag), renamed or re-permissioned ones updated, ones the provider no longer lists are soft-deleted along with their events. `labels`, `hidden` once Neel has set it, and `order` are ours and never overwritten by sync.
+- **One transaction per page.** Each page of events is applied inside one `store.transaction` with `applyIn` per item, so a crash mid-sync leaves whole pages and the cursor is stored only with the page that earned it. The cursor lands on the calendar record as part of the same transaction.
+- **Matching.** A provider item finds its row by `lifeId` first, then by `external.id`. A new item gets `newId("event")` unless it carries a `lifeId` that no row has, in which case it takes that id.
+- **Provider deletions.** `deleted: true` soft-deletes the row (`deletedAt`, status left as it was). A deleted master deletes its exception rows. Sync never physically removes anything, D53.
+- **Etag wins.** An item whose `external.etag` equals the row's is `unchanged`. Otherwise the provider's version replaces ours field by field; the log shows the patch. There is no merge and no local-wins, because the provider is the source, D44.
+- **Cursor expired.** Drop the token, run a full sync from `since`, and soft-delete rows in that calendar that the full sync did not mention and whose start is after `since` (`outcome: "resynced"`).
+- **Failures are per calendar.** One calendar's error does not stop the others. It lands in `syncError` and `SyncReport`, and the view that triggered the refresh reports it as a warning.
+- **`refreshIfStale`** syncs every non-deleted calendar (or the given ones) of every connected account whose `syncedAt` is null or older than `maxAgeSeconds`. Views call it first unless told `fresh: false`. It swallows nothing: failures come back and the view carries them.
+
+### Operations
+
+`AccountOps` (return `Promise<Receipt<Account>>` unless noted; refs are an id, the identity email, or the label):
+
+| Method | Behavior |
+|---|---|
+| `add({ provider: "google", label?, open }, ctx)` | Runs `adapter.connect`, then in one mutation creates the account (`primary: true` if it is the first), stores the credential under the new id, and runs `syncAccount`. An identity already connected is `rejected` with the existing id. The sync report is attached to the receipt as `receipt.record` plus `warnings` on the CLI envelope. |
+| `get(ref): Promise<Account \| null>`, `list(): Promise<Account[]>` | |
+| `update(ref, { label? }, ctx)` | |
+| `primary(ref, ctx): Promise<Receipt<Account>[]>` | Marks this account primary and clears the flag on the others in one transaction. |
+| `sync(ref?, opts?: { full?: boolean }): Promise<SyncReport[]>` | One account or all connected ones. `full` discards cursors. Not a mutation in itself; its writes are the `*.sync` entries. |
+| `remove(ref, ctx)` | Soft-deletes the account, its calendars, and their events; deletes the credential file. Rejected while it is primary and another account exists (choose a new primary first). |
+
+`CalendarOps` (refs are an id, `<identity>/<name>`, or a name if unique among non-deleted calendars):
+
+| Method | Behavior |
+|---|---|
+| `get(ref)`, `list(opts?: { includeHidden?: boolean })` | Sorted by account then `order`. |
+| `update(ref, { labels?, hidden?, color? }, ctx)` | Ours only; `color` here is Life-OS's, provider colour is read on sync. Labels named but not registered are created, as on `task.add`. |
+| `reorder(ids, ctx)` | Within one account. |
+| `sync(ref)` | That calendar only. |
+
+`EventOps` (return `Promise<Receipt<Event>>` unless noted; `ref` is an event id or an occurrence id; every write is write-through per D59):
+
+| Method | Behavior |
+|---|---|
+| `add(input: EventAdd, ctx)` | `calendar` ref defaults to the primary account's `primaryOfAccount` calendar. Validates: writable calendar, end after start, both sides the same kind of `When`, a rule only with a timed or all-day start, timezone known. The id is `newId("event")`, or when `ctx.key` is set, `"e_" + base36(sha256(key)).slice(0, 10)` so a retry after a partial failure meets its own row (the row exists → `unchanged`) instead of creating twice. Calls `adapter.create`, stores the readback, receipt carries `external`. `ProviderUnavailable` → `rejected` with issue `provider_unavailable`, nothing stored. `ProviderRejected` → `rejected` with the provider's message. |
+| `get(ref): Promise<Event \| Occurrence \| null>`, `list(opts: { from, to, calendars?, includeHidden?, includeDeleted? }): Promise<Occurrence[]>` | Expanded occurrences in the window, sorted by start. `list` does not refresh; the views do. |
+| `update(ref, input: EventUpdate, ctx, opts?: { scope?: "this" \| "following" \| "all" })` | Title, notes, location, start, end, repeat, busy, status. On a repeating event `scope` is required (reject with `needs: { field: "scope", options: ["this", "following", "all"] }`). `this`: patch the provider instance, which yields an exception row. `all`: patch the master; a time change on `all` shifts every occurrence by the same delta. `following`: two provider calls in one mutation, patch the master's rule with `UNTIL` just before this occurrence and create a new master from this occurrence with the remaining rule; the new master is a new Life-OS id, returned as the receipt's record, and the receipt's `issues` stays empty but `warnings` names the truncated original. If the second call fails after the first succeeded, the mutation is `rejected` with `partial: true` and the next sync shows the truncated series; there is no compensating write. |
+| `reschedule(ref, { start, end? }, ctx, opts?: { scope? })` | `update` limited to time; `end` keeps the duration when omitted. |
+| `move(ref, calendarRef, ctx)` | Masters and single events only. Google moves keep the provider id; the row's `calendarId` and `accountId` change. Rejected across accounts (the provider cannot), with a hint to `duplicate` then `delete`. |
+| `respond(ref, "accepted" \| "declined" \| "tentative", ctx, opts?: { scope? })` | Only when `myResponse` is not null. |
+| `cancel(ref, ctx, opts?: { scope? })` | Only when `organizer.self`. Sets provider status cancelled; the row stays visible with `status: "cancelled"`, not deleted. `ctx.reason` required, as for tasks. |
+| `delete(ref, ctx, opts?: { scope? })` | `adapter.delete`, then `deletedAt` on the row (and on exception rows for `all`). An occurrence delete with `this` is an exception row with status cancelled. |
+| `restore(id, ctx)` | Masters and single events. `adapter.create` again with the stored fields and the same `lifeId`, new `external.id`; clears `deletedAt`. Exception rows are restored with their master. |
+| `duplicate(ref, ctx, opts?: { calendar?: string })` | New row and provider event with the same fields except attendees, organizer, conferencing, external. |
+| `history(id): Promise<LogEntry[]>` | |
+
+`EventAdd`: `{ title, calendar?, start: When, end?: When, duration?: number (minutes, default 60 when end absent), notes?, location?, repeat?: string (RRULE), busy?: boolean }`. An all-day event is `start: { date }` and `end: { date }` exclusive or `duration` in days. `EventUpdate` is the same fields optional with `null` to clear notes, location, repeat.
+
+### Views
+
+```ts
+type ScheduleEntry = { kind: "event"; occurrence: Occurrence } | { kind: "task"; task: Task };
+type Freshness = { calendarId: string; name: string; syncedAt: string | null; ageSeconds: number | null; refreshed: boolean; error: string | null }[];
+type Day = { date: string; allDay: ScheduleEntry[]; timed: ScheduleEntry[] };   // timed sorted by start, then title; allDay events first, then dated tasks
+```
+
+- `today(opts?: { date?, fresh?, includeHidden? })` keeps every field it has and adds `allDay`, `timed`, `freshness`, `warnings`. Events: occurrences overlapping the day in the display zone, `status !== "cancelled"` unless `myResponse === "declined"` in which case dropped, hidden calendars excluded. Tasks: the same open tasks the view already lays out; a task with `due.time` becomes a timed entry at that instant, one with only a date goes to `allDay`. With no accounts, `freshness` is empty and `timed` holds only timed tasks, so the todo-only behaviour is unchanged.
+- `week(opts?: { from?, days? = 7, fresh?, includeHidden? })` → `{ from, to, timezone, days: Day[], freshness, warnings }`. One entry per day including empty days. Multi-day events appear on each day they cover. Overdue tasks are not carried into the week; that is `today`'s job.
+- `slots(opts: { duration: number; from: string; to: string; hours?: { start: "HH:MM"; end: "HH:MM"; days?: number[] }; calendars?: string[]; fresh? })` → `{ slots: { start: string; end: string }[]; freshness; warnings }`. Busy time is every non-cancelled, non-declined occurrence with `busy: true` on every non-hidden calendar of every connected account, hidden ones included when named. Default hours 09:00 to 18:00 Monday to Friday in the display zone. Slots are the maximal free windows at least `duration` long, clipped to the hours, from `max(from, now)`.
+- `trash()` gains `events`, `calendars`, `accounts`.
+
+A view that refreshed reports it; a view whose refresh failed still answers from the copy and says so in `warnings` and `freshness[].error`. Never an empty answer standing in for a failed one.
+
+### CLI additions
+
+```text
+life account add google [--label s]                # opens the browser; prints the account id and a sync report
+life account list
+life account get|remove <ref>
+life account primary <ref>
+life account sync [ref] [--full]
+life calendar list [--hidden]
+life calendar get|sync <ref>
+life calendar update <ref> [--label name]...|--no-label [--hidden|--visible] [--color c|--no-color]
+life calendar reorder <id> <id>...
+life event add <title> (--start "YYYY-MM-DD HH:MM" [--end "YYYY-MM-DD HH:MM" | --duration min] [--tz zone | --floating] | --date YYYY-MM-DD [--end-date YYYY-MM-DD | --days n]) [--calendar ref] [--notes] [--location] [--repeat RRULE] [--free]
+life event get <ref>
+life event list --from d --to d [--calendar ref]... [--hidden] [--deleted]
+life event update <ref> [--title] [--notes|--no-notes] [--location|--no-location] [--start] [--end] [--tz] [--date] [--end-date] [--repeat r|--no-repeat] [--busy|--free] [--scope this|following|all]
+life event reschedule <ref> --start "..." [--end "..."] [--tz] [--scope ...]
+life event move <ref> --calendar ref
+life event respond <ref> accepted|declined|tentative [--scope ...]
+life event cancel <ref> --reason "..." [--scope ...]
+life event delete <ref> [--scope ...]
+life event restore|duplicate|history <id>
+life today [--date d] [--stale] [--hidden]         # --stale skips the refresh
+life week [--from d] [--days n] [--stale] [--hidden]
+life slots --duration min [--from d] [--to d] [--hours 09:00-18:00] [--days mon-fri] [--calendar ref]... [--stale]
+life sync [--full]
+```
+
+Conventions: `--start` and `--end` take `YYYY-MM-DD HH:MM` in the display zone unless `--tz` names one; `--floating` stores no zone. Occurrence refs print as `e_xxxxxxxxxx@2026-09-10T16:00:00Z` in every list, so an agent can copy them straight into `update` or `respond`. A `needs` on `scope` becomes a question on a TTY and a rejection naming `--scope this|following|all` otherwise. Exit code 3 also covers `provider_unavailable`, with the error code `provider_unavailable` in the envelope; `provider_rejected` exits 1. `life doctor` adds: the Google client id present or not (never the secret), each account with status, credential file present, token refresh works, calendars and their copy age, the primary account. `life --help` lists the new groups; `life help event` prints the `When` formats and the scope rules.
+
+Human output for `today` and `week`: the day's all-day line, then one line per timed entry with time range, an `E` or `T` marker, title, calendar or project, and for events awaiting an answer a `?` before the title. Freshness prints as one stderr line per stale or failed calendar, never on stdout in JSON mode.
+
+### Skill
+
+`skills/calendar/SKILL.md` mirrors the todo skill: when to reach for it (anything about the schedule, free time, an invitation, or an event Neel asks to add or move); always `--json --actor codex`; trust the view's freshness and run `life sync` only when Neel says something just changed; `life slots` before offering times, and quote the slots as given; never `respond` to an invitation, `cancel`, or `delete` without Neel's explicit word; `event add` and `task add` are different things and the skill says which is which (a commitment at a time with a place or people is an event, a thing to do is a task); report the receipt and the occurrence ref back.
+
+### Tests that must exist
+
+- `map.test.ts`: every field both ways, all-day and timed, floating, exception items, cancelled instances, attendees with self, reminders default versus overridden, transparency to `busy`, `lifeId` round trip.
+- `expand.test.ts`: daily, weekly by day, monthly by day and by position, yearly, `COUNT`, `UNTIL`, intervals, exdates, exception rows replacing and cancelling occurrences, a weekly 9 AM across a DST change, a window that starts mid-series, an all-day series.
+- `sync.test.ts`: full sync pages and cursor storage per page, incremental with created, updated, deleted items, unchanged etag writes nothing, `CursorExpired` triggers resync and prunes unmentioned rows, calendar added, renamed, removed, `labels` and `hidden` survive sync, per-calendar failure isolation, `refreshIfStale` thresholds.
+- `events.test.ts`: write-through readback stored, `ProviderUnavailable` leaves no row and no log, key-derived id makes a retry `unchanged`, scope `needs` on a repeating event, `this` yields an exception row, `all` shifts, `following` splits with a new id and truncated original, `following` partial failure is `rejected` with `partial`, `move` within account and rejected across, `respond` only for attendees, `cancel` requires organizer and reason, `delete` and `restore` keep the id, `duplicate` strips people.
+- `accounts.test.ts`: first account becomes primary, duplicate identity rejected, `primary` swaps in one transaction, `remove` guards the primary and deletes the credential.
+- `schedule.test.ts`: merge order, multi-day events on each day, declined dropped, cancelled kept, hidden excluded, timed tasks placed, todo-only behaviour unchanged with no accounts, `slots` clipping, hours, weekdays, busy versus free, `from` in the past clipped to now, freshness and warnings on a failed refresh.
+- `cli.test.ts` (extended): every new command reachable from help alone, the envelope on `provider_unavailable`, occurrence refs round-tripping, `doctor` with and without accounts. All against `FakeAdapter`; a separate manually run script `scripts/google-smoke.ts` exercises the real adapter against a throwaway calendar and is not part of `bun run test`.
