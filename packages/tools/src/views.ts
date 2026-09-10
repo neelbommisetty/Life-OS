@@ -1,13 +1,17 @@
-// The cross-project views: today, upcoming, label, filter, search, trash.
-// Views are operations in the contract, so the CLI, the app, and Codex all
-// see the same answer. Nothing here writes; `today` and `upcoming` read one
-// snapshot each and partition it, `label` and `search` are `task.list` with
-// one criterion, `filter` is `filter.run`, and `trash` is every deleted record.
-// Bad input throws (an invalid date, an unknown label, an empty search): a
-// view never returns an empty result for a failed read.
+// The cross-project views: today, upcoming, label, filter, search, trash,
+// and the calendar's week and slots. Views are operations in the contract, so
+// the CLI, the app, and Codex all see the same answer. Nothing here writes
+// (the schedule's refresh makes sync entries, nothing else); `today` and
+// `upcoming` read one snapshot each and partition it, `label` and `search`
+// are `task.list` with one criterion, `filter` is `filter.run`, and `trash`
+// is every deleted record. `today` merges the schedule half from
+// src/calendar/schedule.ts into the todo view; `week` and `slots` are that
+// module's. Bad input throws (an invalid date, an unknown label, an empty
+// search): a view never returns an empty result for a failed read.
 
-import type { Filter, Label, Project, Section, Task } from "./contract.ts";
+import type { Account, Calendar, Event, Filter, Label, Project, Section, Task } from "./contract.ts";
 import type { Clock } from "./core.ts";
+import type { Schedule, SlotsOptions, SlotsView, TodayOptions, TodaySchedule, WeekOptions, WeekView } from "./calendar/schedule.ts";
 import { sortTasks, type Organize } from "./organize.ts";
 import type { Store } from "./store.ts";
 import type { TaskOps } from "./tasks.ts";
@@ -26,16 +30,26 @@ export type TodayView = {
   deadlines: Task[];
   /** Every proposed task: the review queue. */
   proposed: Task[];
-};
+} & TodaySchedule;
 
 export type UpcomingDay = { date: string; tasks: Task[] };
 export type UpcomingView = { from: string; to: string; days: UpcomingDay[] };
 
-export type TrashView = { tasks: Task[]; projects: Project[]; sections: Section[]; labels: Label[]; filters: Filter[] };
+export type TrashView = { tasks: Task[]; projects: Project[]; sections: Section[]; labels: Label[]; filters: Filter[]; events: Event[]; calendars: Calendar[]; accounts: Account[] };
 
 export interface Views {
-  /** `date` defaults to today in the clock's timezone; accepts YYYY-MM-DD, today, tomorrow, yesterday, +Nd, -Nw. */
-  today(opts?: { date?: string }): Promise<TodayView>;
+  /**
+   * `date` defaults to today in the clock's timezone; accepts YYYY-MM-DD, today,
+   * tomorrow, yesterday, +Nd, -Nw. The todo lists plus the day's schedule
+   * (`allDay`, `timed`, `freshness`, `warnings`); `fresh: false` skips the
+   * calendar refresh, `includeHidden` shows hidden calendars. With no accounts
+   * the schedule holds only the dated tasks and the todo lists are unchanged.
+   */
+  today(opts?: TodayOptions): Promise<TodayView>;
+  /** Events and dated tasks day by day from `from` (default today) for `days` (default 7). */
+  week(opts?: WeekOptions): Promise<WeekView>;
+  /** Free windows of at least `duration` minutes between `from` and `to`, inside the working hours. */
+  slots(opts: SlotsOptions): Promise<SlotsView>;
   /**
    * One entry per day from `from` (default today) for `days` days, empty days
    * included; undated excluded; overdue under the first day. Accepted and
@@ -78,19 +92,19 @@ function byDeletion<T extends { id: string; deletedAt: string | null; updatedAt:
 
 // ------------------------------------------------------------------ the factory
 
-export function createViews(store: Store, clock: Clock, tasks: TaskOps, organize: Organize): Views {
+export function createViews(store: Store, clock: Clock, tasks: TaskOps, organize: Organize, schedule: Schedule): Views {
   const today = (): string => todayIn(clock.timezone, clock.now());
 
   return {
     async today(opts = {}) {
       const date = resolveDate("today", "date", opts.date, today());
-      return store.read(async (tx) => {
+      // The refresh (a write) runs first, so the todo snapshot and the schedule read the same copy.
+      const scheduled = await schedule.today({ date, fresh: opts.fresh, includeHidden: opts.includeHidden });
+      const lists = await store.read(async (tx) => {
         const live = await tx.all("task");
         const committed = live.filter(isCommitted);
         const deadlines = sortTasks(committed.filter((t) => t.deadline !== null && t.deadline <= date));
         return {
-          date,
-          timezone: clock.timezone,
           overdue: sortTasks(committed.filter((t) => t.due !== null && t.due.date < date)),
           due: sortTasks(committed.filter((t) => t.due !== null && t.due.date === date)),
           // Stable sort: by deadline, then the list order for the same deadline.
@@ -98,7 +112,12 @@ export function createViews(store: Store, clock: Clock, tasks: TaskOps, organize
           proposed: sortTasks(live.filter((t) => t.status === "proposed")),
         };
       });
+      return { date, timezone: clock.timezone, ...lists, ...scheduled };
     },
+
+    week: (opts) => schedule.week(opts),
+
+    slots: (opts) => schedule.slots(opts),
 
     async upcoming(days = 7, opts = {}) {
       if (!Number.isInteger(days) || days < 1 || days > MAX_UPCOMING_DAYS) {
@@ -145,6 +164,9 @@ export function createViews(store: Store, clock: Clock, tasks: TaskOps, organize
         sections: byDeletion(await tx.all("section", { includeDeleted: true })),
         labels: byDeletion(await tx.all("label", { includeDeleted: true })),
         filters: byDeletion(await tx.all("filter", { includeDeleted: true })),
+        events: byDeletion(await tx.all("event", { includeDeleted: true })),
+        calendars: byDeletion(await tx.all("calendar", { includeDeleted: true })),
+        accounts: byDeletion(await tx.all("account", { includeDeleted: true })),
       })),
   };
 }

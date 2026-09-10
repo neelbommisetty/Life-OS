@@ -11,6 +11,7 @@ import { applyIn, bump, diff, fail, mutate, newId, nowIso, okMutation, type Cloc
 import type { Store, Tx } from "../store.ts";
 import { isValidTimezone, toInstant } from "../time.ts";
 import { CursorExpired, type CalendarAdapter, type ProviderCalendar, type ProviderEvent, type SyncPage } from "./adapter.ts";
+import { NeedsReauth } from "./google/oauth.ts";
 
 export type SyncOutcome = "synced" | "unchanged" | "resynced" | "failed";
 export type CalendarSyncReport = {
@@ -379,6 +380,20 @@ function failed(calendarId: string, error: string): CalendarSyncReport {
 }
 
 /**
+ * The provider no longer accepts the account's credential (a 401 after one
+ * refresh attempt, or no credential on file): mark the account so the views
+ * say so and refreshIfStale stops trying, until `life account add` reconnects it.
+ */
+async function markNeedsReauth(store: Store, clock: Clock, ctx: Ctx, accountId: string): Promise<void> {
+  await mutate(store, clock, "account", "account.sync", ctx, async (tx, _c, now) => {
+    const current = await tx.get("account", accountId);
+    if (!current) return fail([`account: ${accountId} not found`]);
+    if (current.status === "needs_reauth") return okMutation("unchanged", current, current);
+    return okMutation("updated", current, bump({ ...current, status: "needs_reauth" }, now));
+  });
+}
+
+/**
  * Pull one calendar: pages from the stored cursor (or from `since` when there
  * is none or `full` was asked), each page in its own transaction. An expired
  * cursor starts a full listing over, after which rows the listing did not
@@ -413,6 +428,7 @@ async function syncCalendar(store: Store, clock: Clock, adapter: CalendarAdapter
   } catch (error) {
     const message = errorMessage(error);
     await recordFailure(store, clock, ctx, calendar.id, message);
+    if (error instanceof NeedsReauth) await markNeedsReauth(store, clock, ctx, calendar.accountId);
     return { calendarId: calendar.id, outcome: "failed", created: state.tally.created, updated: state.tally.updated, deleted: state.tally.deleted, error: message };
   }
   const { created, updated, deleted, rejections } = state.tally;
@@ -453,6 +469,7 @@ export async function syncAccount(store: Store, clock: Clock, adapter: CalendarA
       await recordFailure(store, clock, ctx, calendar.id, message);
       calendars.push(failed(calendar.id, message));
     }
+    if (error instanceof NeedsReauth) await markNeedsReauth(store, clock, ctx, accountId);
     return { accountId, calendars };
   }
 

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import type { Ctx, Filter, Label, Project, Receipt, Section, Task, TaskAdd } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
+import { createSchedule, type Schedule } from "./calendar/schedule.ts";
 import { createOrganize, type Organize } from "./organize.ts";
 import { createTasks, type TaskOps } from "./tasks.ts";
 import { MAX_UPCOMING_DAYS, createViews, type Views } from "./views.ts";
@@ -15,7 +16,11 @@ const codex: Ctx = { actor: "codex", reason: "inferred from notes", evidence: ["
 let db: TestDb;
 let org: Organize;
 let tasks: TaskOps;
+let schedule: Schedule;
 let views: Views;
+
+/** Views over a clock; the schedule half has no adapters, as a todo-only install has none. */
+const viewsAt = (at: Clock): Views => createViews(db.store, at, tasks, org, createSchedule(db.store, at, { tasks }));
 
 /** Assert a receipt is ok and hand back its record. */
 function okRecord<T>(receipt: Receipt<T>, label = "receipt"): T {
@@ -53,7 +58,8 @@ before(async () => {
   db = await createTestDb();
   org = createOrganize(db.store, clock);
   tasks = createTasks(db.store, clock, org);
-  views = createViews(db.store, clock, tasks, org);
+  schedule = createSchedule(db.store, clock, { tasks });
+  views = createViews(db.store, clock, tasks, org, schedule);
 
   health = await project("Health", { labels: ["health"] });
   await project("Dental", { parent: "health" });
@@ -126,8 +132,8 @@ test("today takes a date, absolute or relative", async () => {
 
 test("today's date comes from the clock's timezone, not UTC", async () => {
   const instant = "2026-09-06T23:30:00Z"; // 16:30 in Los Angeles, 05:00 on the 7th in Kolkata
-  const losAngeles = createViews(db.store, fixedClock(instant, "America/Los_Angeles"), tasks, org);
-  const kolkata = createViews(db.store, fixedClock(instant, "Asia/Kolkata"), tasks, org);
+  const losAngeles = viewsAt(fixedClock(instant, "America/Los_Angeles"));
+  const kolkata = viewsAt(fixedClock(instant, "Asia/Kolkata"));
   const west = await losAngeles.today();
   const east = await kolkata.today();
   assert.equal(west.date, "2026-09-06");
@@ -137,6 +143,44 @@ test("today's date comes from the clock's timezone, not UTC", async () => {
   assert.equal(east.timezone, "Asia/Kolkata");
   assert.deepEqual(ids(east.overdue), [rent.id, passport.id, dentist.id, walk.id], "yesterday's due tasks are overdue in Kolkata");
   assert.deepEqual(ids(east.due), []);
+});
+
+test("today carries the schedule fields; with no accounts they hold only the dated tasks and the todo lists are unchanged", async () => {
+  const view = await views.today();
+  assert.deepEqual(Object.keys(view), ["date", "timezone", "overdue", "due", "deadlines", "proposed", "allDay", "timed", "freshness", "warnings"]);
+  assert.deepEqual(view.freshness, [], "no calendar to report on");
+  assert.deepEqual(view.warnings, []);
+  assert.deepEqual(
+    view.allDay.map((e) => (e.kind === "task" ? e.task.id : e.occurrence.id)),
+    [walk.id],
+    "date-only committed tasks due today; not the proposed, done, or deleted ones",
+  );
+  assert.deepEqual(
+    view.timed.map((e) => (e.kind === "task" ? e.task.id : e.occurrence.id)),
+    [dentist.id],
+    "the timed task sits in the timed list",
+  );
+  const { allDay: _a, timed: _t, freshness: _f, warnings: _w, ...lists } = view;
+  const scheduleOnly = await schedule.today();
+  assert.deepEqual({ ...lists, ...scheduleOnly }, view, "the view is the todo lists plus the schedule, nothing else");
+  assert.deepEqual(ids(lists.due), [dentist.id, walk.id]);
+  assert.equal(view.overdue.some((t) => t.id === rent.id), true, "overdue tasks stay in overdue and are not on the day's schedule");
+  assert.equal(view.allDay.some((e) => e.kind === "task" && e.task.id === rent.id), false);
+});
+
+test("week and slots are the schedule's, reachable from the views", async () => {
+  const week = await views.week({ from: "2026-09-06", days: 3 });
+  assert.equal(week.from, "2026-09-06");
+  assert.equal(week.to, "2026-09-08");
+  assert.equal(week.timezone, "America/Los_Angeles");
+  assert.deepEqual(week.days.map((d) => d.date), ["2026-09-06", "2026-09-07", "2026-09-08"]);
+  assert.deepEqual(week.days[0]!.timed.map((e) => (e.kind === "task" ? e.task.id : "")), [dentist.id]);
+  assert.deepEqual(week.days[2]!.allDay.map((e) => (e.kind === "task" ? e.task.id : "")), [sprint.id]);
+  assert.deepEqual(week.freshness, []);
+  const slots = await views.slots({ duration: 60, from: "2026-09-07", to: "2026-09-07" });
+  assert.deepEqual(slots, { slots: [{ start: "2026-09-07T16:00:00Z", end: "2026-09-08T01:00:00Z" }], freshness: [], warnings: [] });
+  await assert.rejects(views.week({ days: 0 }), /week: days: expected an integer from 1 to 366/);
+  await assert.rejects(views.slots({ duration: 0, from: "2026-09-07", to: "2026-09-07" }), /slots: duration:/);
 });
 
 // ------------------------------------------------------------------ upcoming
@@ -241,11 +285,13 @@ test("search matches title, notes, and comments case-insensitively and includes 
 
 test("trash lists deleted records of every kind, newest deletion first", async () => {
   const initial = await views.trash();
+  assert.deepEqual(Object.keys(initial), ["tasks", "projects", "sections", "labels", "filters", "events", "calendars", "accounts"]);
   assert.deepEqual(ids(initial.tasks), [trashed.id]);
   assert.deepEqual(initial.projects, []);
   assert.deepEqual(initial.sections, []);
   assert.deepEqual(initial.labels, []);
   assert.deepEqual(initial.filters, []);
+  assert.deepEqual([initial.events, initial.calendars, initial.accounts], [[], [], []]);
 
   // A clock that steps a minute per deletion, so "newest first" is observable.
   let tick = Date.parse("2026-09-06T13:00:00Z");

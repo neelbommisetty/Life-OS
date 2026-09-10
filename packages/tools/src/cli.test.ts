@@ -1,15 +1,18 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
+import { FakeAdapter, ProviderRejected, ProviderUnavailable, type CalendarAdapter, type ProviderCalendar, type SeedEvent } from "./calendar/adapter.ts";
+import { CredentialStore } from "./calendar/credentials.ts";
+import { NeedsReauth } from "./calendar/google/oauth.ts";
 import type { Clock } from "./core.ts";
 import { databaseUrl } from "./db/client.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
-import { COMMANDS, ENV_FILE, EXIT, FILTER_GRAMMAR, commandHelp, describeUrl, groupHelp, main, suggest, topHelp, version, type Envelope, type ErrorCode } from "./cli.ts";
+import { COMMANDS, ENV_FILE, EXIT, FILTER_GRAMMAR, commandHelp, describeUrl, groupHelp, main, suggest, topHelp, version, type CliIo, type Envelope, type ErrorCode } from "./cli.ts";
 
 // Every run, spawned or in-process, points at one throwaway schema through a URL whose
 // connections set search_path to it; nothing here sees the public schema.
@@ -58,8 +61,19 @@ function life(args: string[], opts: { env?: Record<string, string | undefined>; 
 
 type Tty = PassThrough & { isTTY?: boolean };
 
+type InProcessOptions = {
+  tty?: boolean;
+  stdinTty?: boolean;
+  input?: string;
+  clock?: Clock;
+  env?: Record<string, string | undefined>;
+  db?: string;
+  /** The calendar's injection points: adapters, credentials, the browser opener, doctor's token check. */
+  io?: Pick<CliIo, "adapters" | "credentials" | "openUrl" | "refreshToken">;
+};
+
 /** `main()` in this process with fake streams: a terminal or not, an optional typed answer, a fixed clock. LIFE_ACTOR=neel unless overridden. */
-async function inProcess(args: string[], opts: { tty?: boolean; stdinTty?: boolean; input?: string; clock?: Clock; env?: Record<string, string | undefined>; db?: string } = {}): Promise<Run> {
+async function inProcess(args: string[], opts: InProcessOptions = {}): Promise<Run> {
   const stdin: Tty = new PassThrough();
   const stdout: Tty = new PassThrough();
   const stderr = new PassThrough();
@@ -72,7 +86,7 @@ async function inProcess(args: string[], opts: { tty?: boolean; stdinTty?: boole
   if (opts.input !== undefined) stdin.write(opts.input);
   stdin.end();
   const env: Record<string, string | undefined> = { LIFE_TZ: TZ, LIFE_ACTOR: "neel", ...opts.env };
-  const code = await main([...args, "--db", opts.db ?? url], { env, stdin, stdout, stderr, ...(opts.clock ? { clock: opts.clock } : {}) });
+  const code = await main([...args, "--db", opts.db ?? url], { env, stdin, stdout, stderr, ...(opts.clock ? { clock: opts.clock } : {}), ...opts.io });
   return { code, stdout: out, stderr: err };
 }
 
@@ -148,8 +162,11 @@ test("help at the top, group, and command layers, through --help, -h, and the he
   assert.equal((await life(["-h"])).stdout, top.stdout);
   assert.equal((await life(["help"])).stdout, top.stdout);
   assert.equal((await life([])).code, EXIT.usage, "no command at all is a usage error, not help");
-  for (const group of ["task", "project", "section", "label", "filter"]) assert.match(top.stdout, new RegExp(`^  life ${group} <command>`, "m"), `the ${group} group is listed`);
-  for (const command of ["today", "upcoming", "search", "trash", "export", "migrate", "doctor"]) assert.match(top.stdout, new RegExp(`^  life ${command}\\b`, "m"), `${command} is listed`);
+  for (const group of ["task", "project", "section", "label", "filter", "account", "calendar", "event"]) assert.match(top.stdout, new RegExp(`^  life ${group} <command>`, "m"), `the ${group} group is listed`);
+  for (const command of ["today", "week", "slots", "sync", "upcoming", "search", "trash", "export", "migrate", "doctor"]) assert.match(top.stdout, new RegExp(`^  life ${command}\\b`, "m"), `${command} is listed`);
+  for (const name of ["LIFE_GOOGLE_CLIENT_ID", "LIFE_CAL_MAX_AGE", "LIFE_CAL_HISTORY_MONTHS"]) assert.ok(top.stdout.includes(name), `environment variable ${name}`);
+  assert.match(top.stdout, /provider_unavailable/, "documents the provider error codes");
+  assert.match(top.stdout, /e_xxxxxxxxxx@2026-09-10T16:00:00Z/, "shows the occurrence ref format");
   for (const flag of ["--actor", "--reason", "--evidence", "--key", "--if-version", "--json", "--tz", "--db", "--verbose"]) assert.match(top.stdout, new RegExp(`^  ${flag}\\b`, "m"), `global flag ${flag}`);
   for (const name of ["LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG"]) assert.match(top.stdout, new RegExp(`^  ${name} `, "m"), `environment variable ${name}`);
   assert.ok(top.stdout.includes(ENV_FILE), "the .env path is named");
@@ -873,7 +890,7 @@ test("export writes a file, or JSON to stdout", async () => {
   const summary = result<{ file: string; exportedAt: string; tasks: number; projects: number; log: number }>(run);
   assert.equal(summary.file, file);
   const dump = JSON.parse(await readFile(file, "utf8")) as { exportedAt: string; projects: unknown[]; sections: unknown[]; labels: unknown[]; filters: unknown[]; tasks: AnyTask[]; log: unknown[] };
-  assert.deepEqual(Object.keys(dump), ["exportedAt", "projects", "sections", "labels", "filters", "tasks", "log"]);
+  assert.deepEqual(Object.keys(dump), ["exportedAt", "projects", "sections", "labels", "filters", "tasks", "accounts", "calendars", "events", "log"]);
   assert.equal(dump.exportedAt, summary.exportedAt);
   assert.equal(dump.tasks.length, summary.tasks);
   assert.ok(dump.tasks.some((t) => t.id === dentist.id));
@@ -882,7 +899,7 @@ test("export writes a file, or JSON to stdout", async () => {
   assert.ok(dump.log.length > 10);
 
   const human = await inProcess(["export", file], { tty: true });
-  assert.match(human.stdout, /^Exported \d+ projects, \d+ sections, \d+ labels, \d+ filters, \d+ tasks, \d+ log to .* \(\d+ bytes\)\.$/m);
+  assert.match(human.stdout, /^Exported \d+ projects, \d+ sections, \d+ labels, \d+ filters, \d+ tasks, \d+ accounts, \d+ calendars, \d+ events, \d+ log to .* \(\d+ bytes\)\.$/m);
 
   const stdout = await life(["export"]);
   assert.equal(result<{ tasks: unknown[] }>(stdout).tasks.length, dump.tasks.length, "the dump is the envelope's result");
@@ -919,9 +936,12 @@ test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other
   assert.equal(healthy.code, EXIT.ok, healthy.stdout + healthy.stderr);
   const report = result<Report>(healthy);
   assert.equal(report.healthy, true);
-  assert.deepEqual(report.checks.map((c) => c.name), ["env file", "database url", "connectivity", "migrations", "inbox", "timezone", "actor"]);
-  assert.ok(report.checks.every((c) => c.status === "ok"), JSON.stringify(report.checks));
+  assert.deepEqual(report.checks.map((c) => c.name), ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "accounts", "timezone", "actor"]);
+  assert.ok(report.checks.every((c) => c.status === "ok" || (c.name === "google client" && c.status === "warn")), JSON.stringify(report.checks));
   const check = (name: string) => report.checks.find((c) => c.name === name)!;
+  assert.match(check("google client").value, /^LIFE_GOOGLE_CLIENT_ID is (set|not set)/);
+  assert.ok(!healthy.stdout.includes("CLIENT_SECRET="), "never the secret");
+  assert.match(check("accounts").value, /^none connected; .*life account add google/);
   assert.ok(check("env file").value.includes(ENV_FILE));
   assert.match(check("database url").value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from LIFE_DATABASE_URL in the environment\)$/);
   assert.match(check("connectivity").value, /PostgreSQL \d+/);
@@ -1000,6 +1020,617 @@ test("--verbose and LIFE_DEBUG put stack traces, SQL details, and resolved refs 
   assert.match(error.message, /internal error: clock exploded/);
   assert.match(error.hint!, /bug in life/);
   assert.match(internal.stderr, /TypeError: clock exploded\n\s+at /);
+});
+
+
+// ------------------------------------------------------------------ the calendar
+
+// The calendar runs in this process against its own schema, with a FakeAdapter in place of Google: the spawned
+// binary would wire the real adapter, and these tests never touch the network. 2026-09-09T12:00Z is 05:00 on
+// Wednesday the 9th in Los Angeles.
+const CAL_NOW = "2026-09-09T12:00:00Z";
+const calClock = fixedClock(CAL_NOW, TZ);
+const personalCal: ProviderCalendar = { id: "neel@gmail.com", name: "Personal", color: "#0b8043", timezone: TZ, writable: true, primary: true, hidden: false };
+const holidaysCal: ProviderCalendar = { id: "holidays@group.v.calendar.google.com", name: "Holidays", color: null, timezone: "UTC", writable: false, primary: false, hidden: true };
+const self = { email: "neel@gmail.com", name: null, response: "needsAction" as const, self: true, optional: false };
+const timed = (id: string, title: string, start: string, end: string, extra: Partial<SeedEvent> = {}): SeedEvent => ({ id, title, start: { at: start, timezone: TZ }, end: { at: end, timezone: TZ }, ...extra });
+
+let calDb: TestDb;
+let calUrl: string;
+let fake: FakeAdapter;
+let credentials: CredentialStore;
+let credentialsRoot: string;
+const opened: string[] = [];
+
+/** The fake as a real adapter behaves: `connect` leaves the credential under the provisional id for `account.add` to adopt. */
+function connecting(inner: FakeAdapter, files: CredentialStore): CalendarAdapter {
+  return {
+    provider: "google",
+    async connect(opts) {
+      const result = await inner.connect(opts);
+      await files.write(result.credentialId, { identity: result.identity, refreshToken: `refresh-token-${result.credentialId}`, scopes: result.scopes, obtainedAt: CAL_NOW });
+      return result;
+    },
+    listCalendars: (accountId) => inner.listCalendars(accountId),
+    syncPage: (accountId, calendar, cursor, since) => inner.syncPage(accountId, calendar, cursor, since),
+    create: (accountId, calendar, event, lifeId) => inner.create(accountId, calendar, event, lifeId),
+    update: (accountId, calendar, providerId, patch, etag) => inner.update(accountId, calendar, providerId, patch, etag),
+    delete: (accountId, calendar, providerId) => inner.delete(accountId, calendar, providerId),
+    respond: (accountId, calendar, providerId, response) => inner.respond(accountId, calendar, providerId, response),
+    instanceId: (masterId, originalStart) => inner.instanceId(masterId, originalStart),
+  };
+}
+
+/** A CLI run against the calendar schema with the fake adapter, in this process; `opts.io` overrides one injection point. */
+const cal = (args: string[], opts: InProcessOptions = {}): Promise<Run> =>
+  inProcess(args, {
+    db: calUrl,
+    clock: calClock,
+    ...opts,
+    io: { adapters: { google: connecting(fake, credentials) }, credentials, openUrl: (url) => opened.push(url), refreshToken: async () => undefined, ...opts.io },
+  });
+
+type AnyOccurrence = { id: string; occurrenceId: string; title: string; status: string; myResponse: string | null; masterId: string | null; start: Record<string, unknown>; end: Record<string, unknown>; calendarId: string; deletedAt: string | null };
+type AnyEntry = { kind: "event"; occurrence: AnyOccurrence } | { kind: "task"; task: AnyTask };
+type AnyFreshness = { calendarId: string; name: string; syncedAt: string | null; ageSeconds: number | null; refreshed: boolean; error: string | null }[];
+const labels = (entries: AnyEntry[]): string[] => entries.map((e) => (e.kind === "event" ? `E:${e.occurrence.title}` : `T:${e.task.title}`));
+
+let accountId: string;
+let personalId: string;
+let yogaId: string;
+let dentist2: AnyOccurrence & Record<string, unknown>;
+
+before(async () => {
+  calDb = await createTestDb();
+  calUrl = `${databaseUrl()}${databaseUrl().includes("?") ? "&" : "?"}options=-c search_path=${calDb.schema}`;
+  credentialsRoot = await mkdtemp(join(tmpdir(), "life-cli-credentials-"));
+  credentials = new CredentialStore(join(credentialsRoot, ".local", "google"));
+  fake = new FakeAdapter({ clock: calClock });
+  fake.connectAs("neel@gmail.com");
+  fake.seed("neel@gmail.com", personalCal, [
+    timed("yoga", "Yoga", "2026-09-02T14:00:00Z", "2026-09-02T15:00:00Z", { repeat: { rrule: "RRULE:FREQ=WEEKLY;BYDAY=WE", exdates: [] } }), // 07:00 LA, Wednesdays
+    timed("standup", "Standup", "2026-09-09T16:00:00Z", "2026-09-09T16:30:00Z"), // 09:00 LA
+    timed("review", "Design review", "2026-09-09T20:00:00Z", "2026-09-09T21:00:00Z", { myResponse: "needsAction", organizer: { email: "pm@example.com", name: "PM", self: false }, attendees: [self] }), // 13:00 LA
+    timed("invite", "Lunch invite", "2026-09-11T19:00:00Z", "2026-09-11T20:00:00Z", { myResponse: "needsAction", attendees: [self] }), // 12:00 LA Friday
+    { id: "offsite", title: "Offsite", start: { date: "2026-09-09" }, end: { date: "2026-09-11" } },
+  ]);
+  fake.seed("neel@gmail.com", holidaysCal, [{ id: "holiday", title: "Holiday", start: { date: "2026-09-09" }, end: { date: "2026-09-10" } }]);
+});
+after(async () => {
+  await calDb.drop();
+  await rm(credentialsRoot, { recursive: true, force: true });
+});
+
+test("help alone reaches every account, calendar, and event command, and `life help event` explains refs, when formats, and scopes", async () => {
+  for (const group of ["account", "calendar", "event"] as const) {
+    const help = await life(["help", group]);
+    assert.equal(help.code, EXIT.ok);
+    assert.equal(help.stdout.trimEnd(), groupHelp(group));
+    for (const command of COMMANDS.values()) if (command.group === group) assert.match(help.stdout, new RegExp(`^  life ${group} ${command.name}\\b.*  \\S`, "m"), `${group} ${command.name} with a purpose`);
+    assert.match(help.stdout, /^refs: |^when formats:/m, "the group help names its ref format");
+  }
+  const event = (await life(["help", "event"])).stdout;
+  assert.match(event, /^when formats:$/m);
+  assert.match(event, /--start, --end\s+"YYYY-MM-DD HH:MM"/);
+  assert.match(event, /--date, --end-date\s+YYYY-MM-DD/);
+  assert.match(event, /e_xxxxxxxxxx@2026-09-10T16:00:00Z/);
+  assert.match(event, /^scope rules \(repeating events\):$/m);
+  for (const scope of ["this", "following", "all"]) assert.match(event, new RegExp(`^  --scope ${scope}\\s+\\S`, "m"));
+  assert.match(event, /provider_unavailable \(exit 3\)/);
+  const add = (await life(["help", "event", "add"])).stdout;
+  assert.equal(add.trimEnd(), commandHelp(COMMANDS.get("event add")!));
+  assert.match(add, /^  --start <when> /m);
+  assert.match(add, /^  --floating /m);
+  assert.match(add, /^  --calendar <ref> .*Default: the primary account's main calendar/m);
+  assert.match(add, /^when formats:$/m, "the command help carries the formats too");
+  const update = (await life(["help", "event", "update"])).stdout;
+  assert.match(update, /^  --scope <this\|following\|all>/m);
+  const respond = (await life(["help", "event", "respond"])).stdout;
+  assert.match(respond, /^  --scope <this\|all>/m, "respond takes this or all");
+  const slotsHelp = (await life(["help", "slots"])).stdout;
+  assert.match(slotsHelp, /^  --days <weekdays> .*mon-fri/m);
+  assert.match(slotsHelp, /^  --hours <HH:MM-HH:MM> .*Default: 09:00-18:00/m);
+  const asJson = result<{ group: string; notes: string[] }>(await life(["help", "event", "--json"]));
+  assert.equal(asJson.group, "event");
+  assert.ok(asJson.notes.some((line) => /scope rules/.test(line)));
+  const wrong = await life(["event", "ad"]);
+  assert.match(failed(wrong, "usage", EXIT.usage).message, /unknown command "event ad"; did you mean `life event add`/);
+  const wrongGroup = await life(["calender"]);
+  assert.match(failed(wrongGroup, "usage", EXIT.usage).message, /did you mean `life calendar`/);
+});
+
+test("account add google runs the sign-in through the adapter, prints the URL on stderr, adopts the credential, syncs, and lists", async () => {
+  const noProvider = await cal(["account", "add", "outlook"]);
+  assert.match(failed(noProvider, "usage", EXIT.usage).message, /unknown provider "outlook"; google is the only provider/);
+
+  const run = await cal(["account", "add", "google", "--label", "home"]);
+  const account = created(run);
+  accountId = account.id;
+  assert.match(accountId, /^a_[a-z0-9]{10}$/);
+  assert.equal(account.identity, "neel@gmail.com");
+  assert.equal(account.label, "home");
+  assert.equal(account.primary, true, "the first account is primary");
+  assert.equal(account.status, "connected");
+  assert.equal(account.syncedAt, CAL_NOW, "synced once as part of add");
+  const receipt = result<AnyReceipt & { sync: { accountId: string; calendars: { outcome: string }[] } }>(run);
+  assert.equal(receipt.sync.accountId, accountId);
+  assert.deepEqual(receipt.sync.calendars.map((c) => c.outcome), ["synced", "synced"], "the sync report rides on the receipt");
+  assert.equal(envelope(run).warnings, undefined, "nothing failed, so no warnings");
+  assert.equal(opened.length, 1, "the browser opener was handed the URL once");
+  assert.match(opened[0]!, /^https:\/\/accounts\.google\.com\//);
+  assert.match(run.stderr, /sign in with Google in the browser; if it did not open, visit:\n  https:\/\/accounts\.google\.com/, "the URL is printed as a fallback, on stderr");
+  assert.doesNotMatch(run.stdout, /accounts\.google\.com/, "and never on stdout in JSON mode");
+  assert.deepEqual(await readdir(credentials.dir), [`${accountId}.json`], "the provisional credential was adopted under the account id");
+  assert.ok(!run.stdout.includes("refresh-token-") && !run.stderr.includes("refresh-token-"), "the refresh token is never printed");
+
+  fake.connectAs("neel@gmail.com");
+  const again = await cal(["account", "add", "google"]);
+  const dup = failed(again, "rejected", EXIT.rejected);
+  assert.match(dup.message, /identity: neel@gmail.com is already connected as a_/);
+  assert.deepEqual(await readdir(credentials.dir), [`${accountId}.json`], "the second sign-in's credential was discarded");
+
+  const list = result<{ id: string; identity: string; primary: boolean }[]>(await cal(["account", "list"]));
+  assert.deepEqual(list.map((a) => [a.id, a.identity, a.primary]), [[accountId, "neel@gmail.com", true]]);
+  const byLabel = result<{ id: string }>(await cal(["account", "get", "home"]));
+  assert.equal(byLabel.id, accountId);
+  const byEmail = result<{ id: string }>(await cal(["account", "get", "NEEL@gmail.com"]));
+  assert.equal(byEmail.id, accountId);
+  const missing = await cal(["account", "get", "nobody@example.com"]);
+  const missingError = failed(missing, "not_found", EXIT.rejected);
+  assert.match(missingError.hint!, /life account list/);
+
+  const human = await cal(["account", "list"], { tty: true });
+  assert.match(human.stdout, new RegExp(`^${accountId}  neel@gmail.com  home  primary  connected  synced ${CAL_NOW}$`, "m"));
+  const humanAdd = await cal(["account", "primary", "home"], { tty: true });
+  assert.match(humanAdd.stdout, new RegExp(`^unchanged ${accountId} v\\d+  neel@gmail.com \\(home\\)  primary$`, "m"));
+
+  const synced = await cal(["account", "sync", "home", "--full"]);
+  assert.equal(synced.code, EXIT.ok, synced.stdout);
+  const reports = result<{ accountId: string; calendars: { outcome: string; created: number }[] }[]>(synced);
+  assert.equal(reports[0]!.accountId, accountId);
+  assert.ok(reports[0]!.calendars.every((c) => c.outcome === "unchanged"), "a full sync of an unchanged provider writes nothing");
+  const unknown = await cal(["account", "sync", "nobody"]);
+  assert.equal(failed(unknown, "not_found", EXIT.rejected).message, 'account: no account "nobody"; run life account list');
+});
+
+test("calendar list, get, update (labels, hidden, colour), and reorder", async () => {
+  const listed = result<{ id: string; name: string; hidden: boolean; writable: boolean; primaryOfAccount: boolean }[]>(await cal(["calendar", "list"]));
+  assert.deepEqual(listed.map((c) => c.name), ["Personal"], "hidden calendars are left out");
+  personalId = listed[0]!.id;
+  assert.match(personalId, /^c_[a-z0-9]{10}$/);
+  assert.equal(listed[0]!.primaryOfAccount, true, JSON.stringify(listed));
+  const withHidden = result<{ id: string; name: string; hidden: boolean }[]>(await cal(["calendar", "list", "--hidden"]));
+  assert.deepEqual(withHidden.map((c) => [c.name, c.hidden]), [["Personal", false], ["Holidays", true]]);
+  const holidaysId = withHidden[1]!.id;
+
+  const byPath = result<{ id: string }>(await cal(["calendar", "get", "neel@gmail.com/Personal"]));
+  assert.equal(byPath.id, personalId);
+  const byName = result<{ id: string }>(await cal(["calendar", "get", "holidays"]));
+  assert.equal(byName.id, holidaysId, "a unique name matches case-insensitively");
+  const missing = await cal(["calendar", "get", "Birthdays"]);
+  assert.match(failed(missing, "not_found", EXIT.rejected).hint!, /life calendar list --hidden/);
+
+  const labelled = created(await cal(["calendar", "update", personalId, "--label", "health", "--label", "family", "--color", "teal"]), "updated");
+  assert.deepEqual(labelled.labels, ["health", "family"]);
+  assert.equal(labelled.color, "teal");
+  assert.deepEqual(result<{ name: string }[]>(await cal(["label", "list"])).map((l) => l.name).sort(), ["family", "health"], "labels named on a calendar are registered");
+  const shown = created(await cal(["calendar", "update", "Holidays", "--visible"]), "updated");
+  assert.equal(shown.hidden, false);
+  assert.equal(result<unknown[]>(await cal(["calendar", "list"])).length, 2);
+  created(await cal(["calendar", "update", "Holidays", "--hidden", "--no-label"]), "updated");
+  const both = await cal(["calendar", "update", "Holidays", "--hidden", "--visible"]);
+  assert.match(failed(both, "usage", EXIT.usage).message, /--hidden and --visible exclude each other/);
+  const nothing = await cal(["calendar", "update", "Holidays"]);
+  assert.match(failed(nothing, "usage", EXIT.usage).message, /nothing to change/);
+
+  const reordered = await cal(["calendar", "reorder", holidaysId, personalId]);
+  assert.equal(reordered.code, EXIT.ok, reordered.stdout);
+  assert.deepEqual(result<{ id: string }[]>(await cal(["calendar", "list", "--hidden"])).map((c) => c.id), [holidaysId, personalId]);
+  const back = await cal(["calendar", "reorder", personalId, holidaysId]);
+  assert.equal(back.code, EXIT.ok, back.stdout);
+  assert.ok(result<AnyReceipt[]>(back).every((r) => r.ok && r.outcome === "updated"));
+
+  const human = await cal(["calendar", "list", "--hidden"], { tty: true });
+  assert.match(human.stdout, new RegExp(`^${personalId}  Personal  neel@gmail.com  main +@health @family  teal  synced ${CAL_NOW}$`, "m"));
+  assert.match(human.stdout, new RegExp(`^${holidaysId}  Holidays  neel@gmail.com +read-only  hidden`, "m"));
+  const synced = await cal(["calendar", "sync", "neel@gmail.com/Personal"]);
+  assert.equal(synced.code, EXIT.ok);
+  assert.deepEqual(result<{ calendars: { calendarId: string }[] }[]>(synced)[0]!.calendars.map((c) => c.calendarId), [personalId]);
+});
+
+test("event add parses --start/--end/--duration/--floating and --date/--end-date/--days in the display zone; the readback is the record", async () => {
+  const run = await cal(["event", "add", "Dentist", "--start", "2026-09-10 16:00", "--duration", "45", "--location", "12 Main St", "--notes", "Bring the x-rays"]);
+  dentist2 = created(run) as unknown as AnyOccurrence & Record<string, unknown>;
+  assert.match(dentist2.id, /^e_[a-z0-9]{10}$/);
+  assert.deepEqual(dentist2.start, { at: "2026-09-10T23:00:00Z", timezone: TZ }, "16:00 in Los Angeles");
+  assert.deepEqual(dentist2.end, { at: "2026-09-10T23:45:00Z", timezone: TZ });
+  assert.equal(dentist2.calendarId, personalId, "the primary account's main calendar by default");
+  assert.equal(dentist2.busy, true);
+  assert.equal(dentist2.location, "12 Main St");
+  assert.equal((dentist2.external as { id: string }).id, fake.events(accountId).at(-1)!.external.id, "the provider's readback is what was stored");
+  assert.equal(run.stderr, "");
+
+  const allDay = created(await cal(["event", "add", "Team offsite", "--date", "2026-09-14", "--days", "2", "--calendar", "neel@gmail.com/Personal"]));
+  assert.deepEqual(allDay.start, { date: "2026-09-14" });
+  assert.deepEqual(allDay.end, { date: "2026-09-16" }, "the end date is exclusive");
+  assert.equal(allDay.busy, false, "all-day events default to free");
+  const endDated = created(await cal(["event", "add", "Retreat", "--date", "tomorrow", "--end-date", "+3d", "--free"]));
+  assert.deepEqual([endDated.start, endDated.end], [{ date: "2026-09-10" }, { date: "2026-09-12" }]);
+
+  const floating = created(await cal(["event", "add", "Morning pages", "--start", "2026-09-12 08:00", "--floating"]));
+  assert.deepEqual(floating.start, { at: "2026-09-12T15:00:00Z", timezone: null }, "read in the display zone, stored without one");
+  const tokyo = created(await cal(["event", "add", "Call Tokyo", "--start", "2026-09-10 09:00", "--end", "2026-09-10 09:30", "--tz", "Asia/Tokyo"]));
+  assert.deepEqual(tokyo.start, { at: "2026-09-10T00:00:00Z", timezone: "Asia/Tokyo" }, "--tz names the zone of the wall clock");
+  const relative = created(await cal(["event", "add", "Standup tomorrow", "--start", "tomorrow 09:00", "--free"]));
+  assert.deepEqual(relative.start, { at: "2026-09-10T16:00:00Z", timezone: TZ });
+  assert.equal(relative.busy, false);
+  const instant = created(await cal(["event", "add", "UTC instant", "--start", "2026-09-13T10:00:00Z"]));
+  assert.deepEqual(instant.start, { at: "2026-09-13T10:00:00Z", timezone: TZ });
+
+  const neither = await cal(["event", "add", "When?"]);
+  assert.match(failed(neither, "usage", EXIT.usage).message, /pass --start "YYYY-MM-DD HH:MM" for a timed event or --date/);
+  const both = await cal(["event", "add", "When?", "--start", "2026-09-10 16:00", "--date", "2026-09-10"]);
+  assert.match(failed(both, "usage", EXIT.usage).message, /--start\/--end\/--duration \(timed\) and --date\/--end-date\/--days \(all-day\) exclude each other/);
+  const bad = await cal(["event", "add", "When?", "--start", "someday soon"]);
+  const badError = failed(bad, "usage", EXIT.usage);
+  assert.match(badError.message, /--start expects "YYYY-MM-DD HH:MM" \(read in America\/Los_Angeles\) or an instant, got "someday soon"/);
+  assert.match(badError.hint!, /--date YYYY-MM-DD instead/);
+  const dateOnly = await cal(["event", "add", "When?", "--start", "2026-09-10"]);
+  assert.equal(dateOnly.code, EXIT.usage, "a bare date is not a start time");
+  const backwards = await cal(["event", "add", "Backwards", "--start", "2026-09-10 16:00", "--end", "2026-09-10 15:00"]);
+  const backwardsError = failed(backwards, "rejected", EXIT.rejected);
+  assert.match(backwardsError.issues[0]!, /^end: End must be after start/, "the library's validation keeps its field path");
+  const readOnly = await cal(["event", "add", "Not here", "--start", "2026-09-10 16:00", "--calendar", "Holidays"]);
+  const readOnlyError = failed(readOnly, "rejected", EXIT.rejected);
+  assert.match(readOnlyError.message, /read-only/);
+  assert.match(readOnlyError.hint!, /life calendar list/);
+  const noCalendar = await cal(["event", "add", "Nowhere", "--start", "2026-09-10 16:00", "--calendar", "Birthdays"]);
+  assert.match(failed(noCalendar, "rejected", EXIT.rejected).hint!, /life calendar list --hidden/);
+
+  const human = await cal(["event", "add", "Human event", "--start", "2026-09-10 18:00"], { tty: true });
+  assert.match(human.stdout, /^created e_[a-z0-9]{10} v1  Human event  2026-09-10 18:00-19:00$/m, "the success line carries the id and the time");
+});
+
+test("event list prints occurrence refs that round-trip into get, update, reschedule, respond, and delete; scope is asked for", async () => {
+  const listed = result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-09", "--to", "2026-09-16"]));
+  for (const occurrence of listed) assert.match(occurrence.occurrenceId, /^e_[a-z0-9]{10}@(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z|\d{4}-\d{2}-\d{2})$/, `every line has a ref: ${occurrence.occurrenceId}`);
+  const yogas = listed.filter((o) => o.title === "Yoga");
+  assert.equal(yogas.length, 2, "the weekly series is laid out on both Wednesdays");
+  yogaId = yogas[0]!.id;
+  assert.deepEqual(yogas.map((o) => o.occurrenceId), [`${yogaId}@2026-09-09T14:00:00Z`, `${yogaId}@2026-09-16T14:00:00Z`]);
+  assert.ok(!listed.some((o) => o.title === "Holiday"), "hidden calendars are left out");
+  assert.ok(result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-09", "--to", "2026-09-09", "--hidden"])).some((o) => o.title === "Holiday"));
+  assert.deepEqual(result<AnyOccurrence[]>(await cal(["event", "list", "--from", "today", "--to", "today", "--calendar", "Holidays"])).map((o) => o.title), ["Holiday"], "a hidden calendar named is included");
+  const noWindow = await cal(["event", "list"]);
+  assert.match(failed(noWindow, "usage", EXIT.usage).message, /pass --from <date> and --to <date>/);
+
+  const human = await cal(["event", "list", "--from", "2026-09-09", "--to", "2026-09-09"], { tty: true });
+  assert.match(human.stdout, new RegExp(`^${yogaId}@2026-09-09T14:00:00Z +2026-09-09 07:00-08:00 +E  Yoga +Personal +repeats$`, "m"), "occurrence ref, range in the display zone, E marker, title, calendar");
+  assert.match(human.stdout, /^e_[a-z0-9]{10}@2026-09-09T20:00:00Z +2026-09-09 13:00-14:00 +E  \? Design review +Personal/m, "an invitation awaiting an answer carries a ?");
+  assert.match(human.stdout, /^e_[a-z0-9]{10}@2026-09-09 +2026-09-09 to 2026-09-10 +E  Offsite/m, "an all-day span is inclusive in print");
+  assert.match(human.stdout, /^e_[a-z0-9]{10}@2026-09-10T00:00:00Z +2026-09-09 17:00-17:30 Asia\/Tokyo +E  Call Tokyo/m, "an event in another zone is shown in the display zone with its own zone named");
+
+  const ref = `${yogaId}@2026-09-16T14:00:00Z`;
+  const got = result<AnyOccurrence>(await cal(["event", "get", ref]));
+  assert.equal(got.occurrenceId, ref);
+  assert.deepEqual(got.start, { at: "2026-09-16T14:00:00Z", timezone: TZ });
+  const missingOccurrence = await cal(["event", "get", `${yogaId}@2026-09-15T14:00:00Z`]);
+  assert.equal(failed(missingOccurrence, "not_found", EXIT.rejected).message, `event: no occurrence "${yogaId}@2026-09-15T14:00:00Z"`);
+  const missing = await cal(["event", "get", "e_0000000000"]);
+  assert.match(failed(missing, "not_found", EXIT.rejected).hint!, /life event list --from/);
+
+  const asked = await cal(["event", "update", ref, "--title", "Yoga (long)"]);
+  const needs = failed(asked, "needs", EXIT.rejected);
+  assert.deepEqual(needs.needs!.field, "scope");
+  assert.deepEqual(needs.needs!.options, ["this", "following", "all"]);
+  assert.equal(needs.hint, "pass --scope this|following|all");
+  assert.match(asked.stderr, /pass --scope this\|following\|all/);
+  const badScope = await cal(["event", "update", ref, "--title", "x", "--scope", "some"]);
+  assert.match(failed(badScope, "usage", EXIT.usage).message, /--scope expects one of this, following, all/);
+
+  const answered = await cal(["event", "update", ref, "--title", "Yoga (long)", "--end", "2026-09-16 08:30"], { tty: true, input: "this\n" });
+  assert.equal(answered.code, EXIT.ok, answered.stdout + answered.stderr);
+  assert.match(answered.stdout, /scope \[this\/following\/all\]:/, "a terminal asks");
+  assert.match(answered.stdout, /created e_[a-z0-9]{10} v1  Yoga \(long\)  2026-09-16 07:00-08:30$/m, "this yields an exception row with its own id");
+  const exceptionId = /created (e_[a-z0-9]{10})/.exec(answered.stdout)![1]!;
+  const exception = result<AnyOccurrence>(await cal(["event", "get", exceptionId]));
+  assert.equal(exception.masterId, yogaId);
+  const relisted = result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-16", "--to", "2026-09-16"]));
+  assert.deepEqual(relisted.filter((o) => o.id === exceptionId).map((o) => [o.occurrenceId, o.title]), [[ref, "Yoga (long)"]], "the occurrence keeps its ref (the master's id) and shows the exception's fields");
+
+  const moved = created(await cal(["event", "reschedule", `${yogaId}@2026-09-23T14:00:00Z`, "--start", "2026-09-23 08:00", "--scope", "this"]));
+  assert.deepEqual([moved.start, moved.end], [{ at: "2026-09-23T15:00:00Z", timezone: TZ }, { at: "2026-09-23T16:00:00Z", timezone: TZ }], "the duration is kept");
+  const noStart = await cal(["event", "reschedule", yogaId, "--scope", "all"]);
+  assert.match(failed(noStart, "usage", EXIT.usage).message, /pass --start/);
+
+  const review = listed.find((o) => o.title === "Design review")!;
+  const accepted = created(await cal(["event", "respond", review.id, "accepted"]), "updated");
+  assert.equal(accepted.myResponse, "accepted");
+  const badResponse = await cal(["event", "respond", review.id, "maybe"]);
+  const badResponseError = failed(badResponse, "usage", EXIT.usage);
+  assert.match(badResponseError.message, /<response> must be one of accepted, declined, tentative/);
+  assert.equal(badResponseError.hint, "pass accepted|declined|tentative");
+  const notInvited = await cal(["event", "respond", dentist2.id, "declined"]);
+  assert.match(failed(notInvited, "rejected", EXIT.rejected).message, /not an attendee/);
+  const notOrganizer = await cal(["event", "cancel", review.id, "--reason", "clash"]);
+  assert.match(failed(notOrganizer, "rejected", EXIT.rejected).message, /only the organizer can cancel/);
+  const noReason = await cal(["event", "cancel", dentist2.id]);
+  const noReasonError = failed(noReason, "rejected", EXIT.rejected);
+  assert.match(noReasonError.message, /^reason: /);
+  assert.match(noReasonError.hint!, /--reason/);
+
+  const cancelledOccurrence = created(await cal(["event", "delete", `${yogaId}@2026-09-30T14:00:00Z`, "--scope", "this"]));
+  assert.equal(cancelledOccurrence.status, "cancelled", "deleting one occurrence cancels it at the provider");
+  assert.equal(cancelledOccurrence.masterId, yogaId);
+  const thatWeek = result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-30", "--to", "2026-09-30"]));
+  assert.ok(!thatWeek.some((o) => o.id === yogaId), "the cancelled occurrence is off the list");
+
+  const history = result<{ op: string; actor: string }[]>(await cal(["event", "history", yogaId]));
+  assert.equal(history[0]!.op, "event.sync");
+  assert.equal(history[0]!.actor, "import:google", "the sync that brought the event in is in its history");
+  const exceptionHistory = result<{ op: string; actor: string }[]>(await cal(["event", "history", exceptionId]));
+  assert.deepEqual(exceptionHistory.map((e) => [e.op, e.actor]), [["event.update", "neel"]]);
+});
+
+test("event cancel, delete, restore, duplicate, and move, with the trash in between", async () => {
+  const cancelled = created(await cal(["event", "cancel", dentist2.id, "--reason", "rescheduled by the clinic"]), "updated");
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(cancelled.deletedAt, null, "cancelled is not deleted");
+  const stillListed = result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-10", "--to", "2026-09-10"]));
+  assert.ok(stillListed.some((o) => o.id === dentist2.id && o.status === "cancelled"), "a cancelled event stays on the list");
+
+  const deleted = created(await cal(["event", "delete", dentist2.id]), "updated");
+  assert.ok(deleted.deletedAt);
+  assert.ok(!result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-10", "--to", "2026-09-10"])).some((o) => o.id === dentist2.id));
+  assert.ok(result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-10", "--to", "2026-09-10", "--deleted"])).some((o) => o.id === dentist2.id));
+  const trash = result<{ events: { id: string }[]; calendars: unknown[]; accounts: unknown[] }>(await cal(["trash"]));
+  assert.deepEqual(trash.events.map((e) => e.id), [dentist2.id]);
+  const trashHuman = await cal(["trash"], { tty: true });
+  assert.match(trashHuman.stdout, new RegExp(`^Events \\(1\\)\\n  ${dentist2.id}  Dentist  2026-09-10 16:00-16:45  Personal +deleted `, "m"));
+  const again = await cal(["event", "delete", dentist2.id]);
+  assert.equal(created(again, "unchanged").id, dentist2.id, "deleting a deleted event is unchanged");
+
+  const restored = created(await cal(["event", "restore", dentist2.id]), "updated");
+  assert.equal(restored.id, dentist2.id, "restored under the same Life-OS id");
+  assert.equal(restored.deletedAt, null);
+  assert.notEqual((restored.external as { id: string }).id, (dentist2.external as { id: string }).id, "recreated at the provider under a new provider id");
+  const occurrenceRestore = await cal(["event", "restore", `${yogaId}@2026-09-16T14:00:00Z`]);
+  assert.equal(occurrenceRestore.code, EXIT.rejected, "restore takes an id, not an occurrence ref");
+
+  const copy = created(await cal(["event", "duplicate", dentist2.id]));
+  assert.notEqual(copy.id, dentist2.id);
+  assert.equal(copy.title, "Dentist");
+  assert.deepEqual(copy.start, dentist2.start);
+  const toHidden = await cal(["event", "move", copy.id, "--calendar", "Holidays"]);
+  assert.match(failed(toHidden, "rejected", EXIT.rejected).message, /read-only/);
+  const noTarget = await cal(["event", "move", copy.id]);
+  assert.match(failed(noTarget, "usage", EXIT.usage).message, /pass --calendar <ref>/);
+  const samePlace = created(await cal(["event", "move", copy.id, "--calendar", personalId]), "unchanged");
+  assert.equal(samePlace.id, copy.id);
+  created(await cal(["event", "delete", copy.id]), "updated");
+});
+
+test("a provider that cannot be reached is provider_unavailable with exit 3, a refusal is provider_rejected with exit 1, and nothing is stored either way", async () => {
+  fake.failNext(new ProviderUnavailable("Could not reach www.googleapis.com: connect ETIMEDOUT"));
+  const down = await cal(["event", "add", "Ghost", "--start", "2026-09-10 11:00", "--key", "ghost-1"]);
+  const downError = failed(down, "provider_unavailable", EXIT.provider);
+  assert.equal(EXIT.provider, 3);
+  assert.deepEqual(downError.issues, ["provider_unavailable: Could not reach www.googleapis.com: connect ETIMEDOUT"]);
+  assert.match(downError.hint!, /same --key/);
+  assert.match(downError.hint!, /life doctor/);
+  const receipt = result<AnyReceipt>(down);
+  assert.equal(receipt.outcome, "rejected", "the library's receipt is the result");
+  assert.ok(!result<AnyOccurrence[]>(await cal(["event", "list", "--from", "2026-09-10", "--to", "2026-09-10", "--deleted"])).some((o) => o.title === "Ghost"), "nothing was stored");
+  assert.match(down.stderr, /provider_unavailable/);
+
+  const retried = await cal(["event", "add", "Ghost", "--start", "2026-09-10 11:00", "--key", "ghost-1"]);
+  const ghost = created(retried);
+  assert.equal(ghost.title, "Ghost", "the same key retries cleanly once the provider is back");
+  const replay = await cal(["event", "add", "Ghost", "--start", "2026-09-10 11:00", "--key", "ghost-1"]);
+  assert.equal(created(replay).id, ghost.id, "and replays the receipt afterwards");
+
+  fake.failNext(new ProviderRejected("Invalid recurrence rule", 400));
+  const refused = await cal(["event", "add", "Refused", "--start", "2026-09-10 11:00"]);
+  const refusedError = failed(refused, "provider_rejected", EXIT.rejected);
+  assert.deepEqual(refusedError.issues, ["provider_rejected: Invalid recurrence rule"]);
+
+  fake.failNext(new ProviderUnavailable("Could not reach www.googleapis.com: connect ETIMEDOUT"));
+  const sync = await cal(["sync"]);
+  const syncError = failed(sync, "provider_unavailable", EXIT.provider);
+  assert.match(syncError.message, /2 calendars failed to sync/);
+  const reports = result<{ calendars: { outcome: string; error?: string }[] }[]>(sync);
+  assert.ok(reports[0]!.calendars.every((c) => c.outcome === "failed" && /ProviderUnavailable/.test(c.error ?? "")), "the report is still the result");
+  const humanDown = await cal(["sync"], { tty: true, io: {} });
+  assert.equal(humanDown.code, EXIT.ok, "the next sync succeeds and clears the errors");
+  assert.match(humanDown.stdout, new RegExp(`^neel@gmail.com \\(${accountId}\\)\\n  Personal +${personalId} +(synced|unchanged)`, "m"));
+
+  const thrown = await cal(["event", "add", "Boom", "--start", "2026-09-10 11:00"], { io: { adapters: { google: { ...connecting(fake, credentials), create: async () => { throw new ProviderUnavailable("gateway timeout", 504); } } } } });
+  assert.equal(failed(thrown, "provider_unavailable", EXIT.provider).issues[0], "provider_unavailable: gateway timeout");
+});
+
+test("today, week, and slots merge events and dated tasks, print occurrence refs, and report freshness on stderr in human mode only", async () => {
+  created(await cal(["task", "add", "Call the dentist", "--due", "2026-09-09", "--time", "10:30"]));
+  created(await cal(["task", "add", "Walk in the park", "--due", "2026-09-09"]));
+  created(await cal(["task", "add", "Old rent", "--due", "2026-09-01"]));
+
+  const today = await cal(["today"]);
+  assert.equal(today.code, EXIT.ok, today.stdout);
+  const view = result<{ date: string; timezone: string; overdue: AnyTask[]; due: AnyTask[]; allDay: AnyEntry[]; timed: AnyEntry[]; freshness: AnyFreshness; warnings: string[] }>(today);
+  assert.equal(view.date, "2026-09-09");
+  assert.deepEqual(labels(view.allDay), ["E:Offsite", "T:Walk in the park"], "all-day events first, then date-only tasks");
+  assert.deepEqual(labels(view.timed), ["E:Yoga", "E:Standup", "T:Call the dentist", "E:Design review", "E:Call Tokyo"], "by start: 07:00, 09:00, 10:30, 13:00, 17:00 (09:00 Tokyo on the 10th is the 9th in Los Angeles)");
+  assert.deepEqual(view.overdue.map((t) => t.title), ["Old rent"], "the todo lists are still there");
+  assert.deepEqual(view.due.map((t) => t.title), ["Call the dentist", "Walk in the park"]);
+  assert.deepEqual(view.freshness.map((f) => [f.name, f.ageSeconds, f.refreshed, f.error]), [["Personal", 0, false, null]], "one entry per visible calendar; the copy is fresh");
+  assert.deepEqual(view.warnings, []);
+  const entry = view.timed[0]!;
+  assert.equal(entry.kind === "event" && entry.occurrence.occurrenceId, `${yogaId}@2026-09-09T14:00:00Z`, "occurrence refs are in the view");
+  assert.equal(today.stderr, "", "JSON mode: nothing on stderr for a fresh copy");
+  assert.equal(result<{ freshness: AnyFreshness }>(await cal(["today", "--hidden"])).freshness.length, 2);
+
+  const human = await cal(["today"], { tty: true });
+  assert.equal(human.code, EXIT.ok, human.stderr);
+  assert.match(human.stdout, /^Today 2026-09-09 Wed \(America\/Los_Angeles\)$/m);
+  assert.match(human.stdout, /^Schedule \(7\)$/m);
+  assert.match(human.stdout, /^  All day: Offsite \[Personal\], Walk in the park \[inbox\]$/m, "the day's all-day line");
+  assert.match(human.stdout, new RegExp(`^  07:00-08:00  E  Yoga +Personal  ${yogaId}@2026-09-09T14:00:00Z$`, "m"), "time range, E marker, title, calendar, occurrence ref");
+  assert.match(human.stdout, /^  10:30 +T  Call the dentist +inbox +t_[a-z0-9]{10}$/m, "a timed task at its time with a T marker and its project");
+  assert.match(human.stdout, /^  13:00-14:00  E  Design review +Personal  e_[a-z0-9]{10}@2026-09-09T20:00:00Z$/m, "answered earlier, so no ? (the week test checks the marker)");
+  assert.match(human.stdout, /^  17:00-17:30  E  Call Tokyo/m, "shown in the display zone");
+  assert.match(human.stdout, /^Overdue \(1\)$/m);
+  assert.match(human.stdout, /^Due today \(2\)$/m);
+  assert.equal(human.stderr, "", "a fresh copy: no freshness line");
+
+  // Ten minutes later the copy is stale: a view refreshes it first and says so in `freshness`; --stale answers from the copy and reports that on stderr.
+  const later = fixedClock("2026-09-09T12:10:00Z", TZ);
+  const pagesBefore = fake.callsTo("syncPage").length;
+  const stale = await cal(["today", "--stale"], { clock: later, tty: true });
+  assert.equal(stale.code, EXIT.ok);
+  assert.equal(fake.callsTo("syncPage").length, pagesBefore, "--stale skips the refresh");
+  assert.match(stale.stderr, new RegExp(`^life: calendar "Personal" \\(${personalId}\\) answered from a stale copy, synced 600s ago$`, "m"));
+  const staleJson = await cal(["today", "--stale"], { clock: later });
+  assert.equal(staleJson.stderr, "", "never on stderr in JSON mode");
+  assert.deepEqual(result<{ freshness: AnyFreshness }>(staleJson).freshness.map((f) => [f.ageSeconds, f.refreshed]), [[600, false]]);
+  const refreshed = await cal(["today"], { clock: later });
+  assert.ok(fake.callsTo("syncPage").length > pagesBefore, "without --stale the stale copy is refreshed first");
+  assert.deepEqual(result<{ freshness: AnyFreshness }>(refreshed).freshness.map((f) => [f.syncedAt, f.ageSeconds, f.refreshed, f.error]), [["2026-09-09T12:10:00Z", 0, true, null]]);
+
+  // A refresh that fails: the view still answers, from the copy, and says so.
+  const muchLater = fixedClock("2026-09-09T12:30:00Z", TZ);
+  fake.failNext(new ProviderUnavailable("Could not reach www.googleapis.com: connect ETIMEDOUT"));
+  const failedRefresh = await cal(["today"], { clock: muchLater });
+  assert.equal(failedRefresh.code, EXIT.ok, "never an empty answer standing in for a failed one");
+  const degraded = result<{ timed: AnyEntry[]; freshness: AnyFreshness; warnings: string[] }>(failedRefresh);
+  assert.deepEqual(labels(degraded.timed), ["E:Yoga", "E:Standup", "T:Call the dentist", "E:Design review", "E:Call Tokyo"], "answered from the copy");
+  assert.match(degraded.freshness[0]!.error!, /ProviderUnavailable: Could not reach/);
+  assert.equal(degraded.freshness[0]!.refreshed, false);
+  assert.match(degraded.warnings[0]!, /^Calendar "Personal" \(c_[a-z0-9]{10}\) could not be refreshed: .*Answering from the copy synced at 2026-09-09T12:10:00Z\.$/);
+  assert.equal(failedRefresh.stderr, "");
+  fake.failNext(new ProviderUnavailable("Could not reach www.googleapis.com: connect ETIMEDOUT"));
+  const failedHuman = await cal(["today"], { clock: muchLater, tty: true });
+  assert.equal(failedHuman.code, EXIT.ok);
+  assert.match(failedHuman.stderr, /^life: calendar "Personal" \(c_[a-z0-9]{10}\) could not be refreshed: ProviderUnavailable: Could not reach .*; answering from the copy, synced 1200s ago$/m);
+  assert.match(failedHuman.stdout, /^Schedule \(7\)$/m);
+  assert.equal((await cal(["sync"], { clock: muchLater })).code, EXIT.ok, "the next sync clears the error");
+
+  const week = await cal(["week", "--from", "2026-09-09", "--days", "3"]);
+  const weekView = result<{ from: string; to: string; timezone: string; days: { date: string; allDay: AnyEntry[]; timed: AnyEntry[] }[]; freshness: AnyFreshness }>(week);
+  assert.deepEqual([weekView.from, weekView.to, weekView.timezone], ["2026-09-09", "2026-09-11", TZ]);
+  assert.deepEqual(weekView.days.map((d) => d.date), ["2026-09-09", "2026-09-10", "2026-09-11"]);
+  assert.deepEqual(labels(weekView.days[0]!.timed), ["E:Yoga", "E:Standup", "T:Call the dentist", "E:Design review", "E:Call Tokyo"]);
+  assert.deepEqual(labels(weekView.days[1]!.allDay), ["E:Offsite", "E:Retreat"], "a multi-day event appears on each day it covers");
+  assert.ok(!weekView.days.some((d) => labels(d.allDay).includes("T:Old rent")), "overdue tasks are not carried into the week");
+  const weekHuman = await cal(["week", "--from", "2026-09-11", "--days", "2"], { tty: true });
+  assert.match(weekHuman.stdout, /^Week 2026-09-11 to 2026-09-12 \(America\/Los_Angeles\)$/m);
+  assert.match(weekHuman.stdout, /^2026-09-11 Fri \(2\)\n  All day: Retreat \[Personal\]\n  12:00-13:00  E  \? Lunch invite +Personal  e_[a-z0-9]{10}@2026-09-11T19:00:00Z$/m, "the all-day line, then an invitation awaiting an answer marked in place");
+  assert.match(weekHuman.stdout, /^2026-09-12 Sat \(1\)\n  08:00-09:00  E  Morning pages/m, "a floating event at its wall clock");
+  const badDays = await cal(["week", "--days", "lots"]);
+  assert.match(failed(badDays, "usage", EXIT.usage).message, /--days expects an integer/);
+
+  const slots = await cal(["slots", "--duration", "60", "--from", "2026-09-11", "--to", "2026-09-11", "--hours", "09:00-12:00"]);
+  const slotsView = result<{ slots: { start: string; end: string }[]; freshness: AnyFreshness }>(slots);
+  assert.deepEqual(slotsView.slots, [{ start: "2026-09-11T16:00:00Z", end: "2026-09-11T19:00:00Z" }], "Friday 09:00 to 12:00 in Los Angeles is free (lunch is at noon)");
+  assert.equal(slotsView.freshness.length, 1);
+  const afternoon = result<{ slots: { start: string; end: string }[] }>(await cal(["slots", "--duration", "60", "--from", "2026-09-11", "--to", "2026-09-11", "--hours", "11:00-15:00"]));
+  assert.deepEqual(afternoon.slots, [{ start: "2026-09-11T18:00:00Z", end: "2026-09-11T19:00:00Z" }, { start: "2026-09-11T20:00:00Z", end: "2026-09-11T22:00:00Z" }], "busy time is cut out; the invitation counts as busy");
+  const weekend = result<{ slots: unknown[] }>(await cal(["slots", "--duration", "60", "--from", "2026-09-11", "--to", "2026-09-11", "--days", "sat-sun"]));
+  assert.deepEqual(weekend.slots, [], "--days maps names onto weekdays: Friday is not a working day");
+  const listed = result<{ slots: unknown[] }>(await cal(["slots", "--duration", "60", "--from", "2026-09-11", "--to", "2026-09-11", "--days", "mon,wed,fri", "--hours", "09:00-10:00"]));
+  assert.equal(listed.slots.length, 1);
+  const wrapped = result<{ slots: unknown[] }>(await cal(["slots", "--duration", "60", "--from", "2026-09-11", "--to", "2026-09-11", "--days", "sat-mon", "--hours", "09:00-10:00"]));
+  assert.equal(wrapped.slots.length, 0, "a wrapped range is sat, sun, mon");
+  const badWeekday = await cal(["slots", "--duration", "60", "--days", "mon-fry"]);
+  assert.match(failed(badWeekday, "usage", EXIT.usage).message, /--days: unknown weekday "fry"/);
+  const badHours = await cal(["slots", "--duration", "60", "--hours", "9-5"]);
+  assert.equal(failed(badHours, "usage", EXIT.usage).hint, "pass --hours 09:00-18:00");
+  const noDuration = await cal(["slots"]);
+  assert.match(failed(noDuration, "usage", EXIT.usage).message, /pass --duration <minutes>/);
+  const slotsHuman = await cal(["slots", "--duration", "60", "--from", "2026-09-11", "--to", "2026-09-11", "--hours", "09:00-12:00"], { tty: true });
+  assert.match(slotsHuman.stdout, /^Free slots \(1\), America\/Los_Angeles\n  2026-09-11 Fri  09:00-12:00  180 min  2026-09-11T16:00:00Z to 2026-09-11T19:00:00Z$/m);
+});
+
+test("doctor reports the Google client, each account with its credential and token, its calendars with copy age, and the primary account", async () => {
+  type Report = { healthy: boolean; checks: { name: string; status: string; value: string; hint?: string }[] };
+  assert.equal((await cal(["sync"], { clock: fixedClock("2026-09-09T12:30:00Z", TZ) })).code, EXIT.ok);
+  const healthy = await cal(["doctor"], { clock: fixedClock("2026-09-09T12:30:00Z", TZ) });
+  assert.equal(healthy.code, EXIT.ok, healthy.stdout + healthy.stderr);
+  const report = result<Report>(healthy);
+  assert.equal(report.healthy, true);
+  assert.deepEqual(
+    report.checks.map((c) => c.name),
+    ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "primary account", "account neel@gmail.com", "credential neel@gmail.com", "calendar neel@gmail.com/Personal", "calendar neel@gmail.com/Holidays", "timezone", "actor"],
+  );
+  const check = (name: string) => report.checks.find((c) => c.name === name)!;
+  assert.match(check("google client").value, /^LIFE_GOOGLE_CLIENT_ID is (set|not set)/);
+  assert.equal(check("primary account").value, `neel@gmail.com (${accountId})`);
+  assert.equal(check("account neel@gmail.com").status, "ok");
+  assert.match(check("account neel@gmail.com").value, new RegExp(`^${accountId}; connected; primary; synced 2026-09-09T12:30:00Z$`));
+  assert.equal(check("credential neel@gmail.com").value, "file present; token refresh works");
+  assert.match(check("calendar neel@gmail.com/Personal").value, new RegExp(`^${personalId}; copy 0s old$`));
+  assert.match(check("calendar neel@gmail.com/Holidays").value, /copy 0s old; hidden; read-only$/);
+  assert.ok(!healthy.stdout.includes("refresh-token-") && !healthy.stderr.includes("refresh-token-"), "the token never appears");
+
+  const human = await cal(["doctor"], { tty: true, clock: fixedClock("2026-09-09T12:30:00Z", TZ) });
+  assert.match(human.stdout, new RegExp(`^primary account +ok +neel@gmail.com \\(${accountId}\\)$`, "m"));
+  assert.match(human.stdout, /^credential neel@gmail.com +ok +file present; token refresh works$/m);
+
+  const stale = result<Report>(await cal(["doctor"], { clock: fixedClock("2026-09-09T13:00:00Z", TZ) }));
+  const staleCalendar = stale.checks.find((c) => c.name === "calendar neel@gmail.com/Personal")!;
+  assert.equal(staleCalendar.status, "warn");
+  assert.match(staleCalendar.value, /copy 1800s old; older than LIFE_CAL_MAX_AGE \(300s\)/);
+  assert.equal(staleCalendar.hint, "run `life sync`");
+  assert.equal(stale.healthy, true, "a stale copy is a warning, not a failure");
+
+  const revoked = await cal(["doctor"], { clock: fixedClock("2026-09-09T12:30:00Z", TZ), io: { refreshToken: async (id) => { throw new NeedsReauth(id); } } });
+  const revokedError = failed(revoked, "rejected", EXIT.rejected);
+  assert.match(revokedError.message, /1 check failed: credential neel@gmail.com/);
+  assert.match(revokedError.hint!, /life account add google/);
+  const revokedCheck = result<Report>(revoked).checks.find((c) => c.name === "credential neel@gmail.com")!;
+  assert.equal(revokedCheck.status, "fail");
+  assert.match(revokedCheck.value, /token refresh failed: Google access for a_[a-z0-9]{10} needs to be granted again/);
+
+  await rm(credentials.path(accountId));
+  const missingFile = result<Report>(await cal(["doctor"], { clock: fixedClock("2026-09-09T12:30:00Z", TZ) }));
+  const fileCheck = missingFile.checks.find((c) => c.name === "credential neel@gmail.com")!;
+  assert.equal(fileCheck.status, "fail");
+  assert.ok(fileCheck.value.includes(credentials.path(accountId)));
+  await credentials.write(accountId, { identity: "neel@gmail.com", refreshToken: "refresh-token-restored", scopes: [], obtainedAt: CAL_NOW });
+});
+
+test("a sync that hits a dead credential marks the account needs_reauth; the views say so and account remove clears everything", async () => {
+  const dead = { ...connecting(fake, credentials), syncPage: async () => { throw new NeedsReauth(accountId); } };
+  const sync = await cal(["sync", "--full"], { io: { adapters: { google: dead } } });
+  assert.equal(failed(sync, "rejected", EXIT.rejected).code, "rejected");
+  assert.match(envelope(sync).error!.hint!, /life account add google/);
+  const account = result<{ status: string }>(await cal(["account", "get", accountId]));
+  assert.equal(account.status, "needs_reauth");
+  const doctor = result<{ checks: { name: string; status: string; hint?: string }[] }>(await cal(["doctor"]));
+  const accountCheck = doctor.checks.find((c) => c.name === "account neel@gmail.com")!;
+  assert.equal(accountCheck.status, "fail");
+  assert.match(accountCheck.hint!, /life account add google/);
+  const view = result<{ freshness: AnyFreshness; warnings: string[] }>(await cal(["today"], { clock: fixedClock("2026-09-09T14:00:00Z", TZ) }));
+  assert.match(view.freshness[0]!.error!, /needs re-authorization \(run life account add google\)/, "a stale copy the account cannot refresh says why");
+  const write = await cal(["event", "add", "While signed out", "--start", "2026-09-10 11:00"]);
+  const writeError = failed(write, "rejected", EXIT.rejected);
+  assert.match(writeError.message, /is needs_reauth/);
+  assert.match(writeError.hint!, /life account add google/);
+
+  const removed = created(await cal(["account", "remove", accountId]), "updated");
+  assert.equal(removed.status, "disconnected");
+  assert.ok(removed.deletedAt);
+  assert.deepEqual(await readdir(credentials.dir), [], "the credential file is gone");
+  const trash = result<{ events: { id: string }[]; calendars: { id: string }[]; accounts: { id: string }[] }>(await cal(["trash"]));
+  assert.deepEqual(trash.accounts.map((a) => a.id), [accountId]);
+  assert.deepEqual(trash.calendars.map((c) => c.id).sort(), (await calDb.store.read((tx) => tx.all("calendar", { includeDeleted: true }))).map((c) => c.id).sort());
+  assert.ok(trash.events.length > 5, "every event went with the account");
+  assert.deepEqual(result<unknown[]>(await cal(["account", "list"])), []);
+  const afterwards = result<{ freshness: AnyFreshness; timed: AnyEntry[] }>(await cal(["today"]));
+  assert.deepEqual(afterwards.freshness, [], "back to todo-only");
+  assert.deepEqual(labels(afterwards.timed), ["T:Call the dentist"]);
+  const gone = await cal(["account", "get", accountId]);
+  assert.equal(result<{ deletedAt: string | null }>(gone).deletedAt !== null, true, "get by id still finds the removed account, marked");
+  const removedRef = await cal(["account", "sync", "home"]);
+  assert.equal(failed(removedRef, "not_found", EXIT.rejected).code, "not_found");
 });
 
 // ------------------------------------------------------------------ the standalone rule

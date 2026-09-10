@@ -1,7 +1,8 @@
 // The `life` CLI: a thin client of the Tools facade for a shell, usable by a
 // program. Every command maps onto one library call; the CLI adds argument
-// parsing, the actor rule, relative dates, the sub-task question on a terminal,
-// human or JSON output, and stable exit codes. Nothing here writes a record.
+// parsing, the actor rule, relative dates, the sub-task and scope questions on
+// a terminal, human or JSON output, and stable exit codes. Nothing here writes
+// a record; calendar writes go through the provider inside the library.
 //
 // One declarative command table (COMMANDS) drives parsing, validation, and
 // help at every layer, so the three cannot drift. An agent's contract is the
@@ -10,49 +11,68 @@
 //
 //   life <group> <command> [args] [flags]
 //   exit codes: 0 ok, 1 rejected or invalid, 2 duplicate candidates,
-//               3 database unavailable, 64 usage
+//               3 database or provider unavailable, 64 usage
 
+import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import type {
-  AnyRecord,
-  Ctx,
-  Due,
-  Filter,
-  FilterUpdate,
-  Label,
-  LabelAdd,
-  LabelUpdate,
-  LogEntry,
-  Needs,
-  Project,
-  ProjectAdd,
-  ProjectUpdate,
-  Receipt,
-  Section,
-  Task,
-  TaskAdd,
-  TaskList,
-  TaskMove,
-  TaskUpdate,
+import type { AccountAddReceipt } from "./calendar/accounts.ts";
+import { ProviderRejected, ProviderUnavailable } from "./calendar/adapter.ts";
+import { CredentialStore } from "./calendar/credentials.ts";
+import { PROVIDER_REJECTED, PROVIDER_UNAVAILABLE, SCOPES, type EventReceipt, type EventResponse, type Scope } from "./calendar/events.ts";
+import { isOccurrenceRef, type Occurrence } from "./calendar/expand.ts";
+import { GoogleOAuth, NeedsReauth, googleClientIdPresent } from "./calendar/google/oauth.ts";
+import { maxAgeFromEnv, type Day, type Freshness, type ScheduleEntry, type SlotsView, type WeekView } from "./calendar/schedule.ts";
+import type { Adapters, SyncReport } from "./calendar/sync.ts";
+import {
+  isTimedWhen,
+  type Account,
+  type AnyRecord,
+  type Calendar,
+  type CalendarRecord,
+  type CalendarUpdate,
+  type Ctx,
+  type Due,
+  type Event,
+  type EventAdd,
+  type EventUpdate,
+  type Filter,
+  type FilterUpdate,
+  type Label,
+  type LabelAdd,
+  type LabelUpdate,
+  type LogEntry,
+  type Needs,
+  type Project,
+  type ProjectAdd,
+  type ProjectUpdate,
+  type Receipt,
+  type Section,
+  type Task,
+  type TaskAdd,
+  type TaskList,
+  type TaskMove,
+  type TaskUpdate,
+  type When,
 } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import { createPool, databaseUrl } from "./db/client.ts";
 import { effectiveLabels, findInbox, indexProjects, projectPath, type ProjectContents, type ProjectNode, type SectionTasks } from "./organize.ts";
 import { PgStore } from "./store.ts";
 import type { CompleteOptions, DeleteOptions, ImportResult, TaskAssign } from "./tasks.ts";
-import { isValidTimezone, relativeDate, todayIn } from "./time.ts";
+import { addDays, isValidDate, isValidTimezone, localDate, localTime, parseInstant, relativeDate, toInstant, todayIn, zonedToInstant } from "./time.ts";
 import { Tools } from "./tools.ts";
 import type { TodayView, TrashView, UpcomingView } from "./views.ts";
 
 // ------------------------------------------------------------------ public surface
 
-export const EXIT = { ok: 0, rejected: 1, duplicate: 2, database: 3, usage: 64 } as const;
+/** Exit codes. `provider` shares 3 with `database`: in both cases the thing behind the command could not be reached and nothing was done. */
+export const EXIT = { ok: 0, rejected: 1, duplicate: 2, database: 3, provider: 3, usage: 64 } as const;
 
 /** The error codes an envelope can carry; each maps onto one exit code. */
-export type ErrorCode = "usage" | "rejected" | "duplicate" | "needs" | "not_found" | "db_unavailable" | "internal";
+export type ErrorCode = "usage" | "rejected" | "duplicate" | "needs" | "not_found" | "db_unavailable" | "provider_unavailable" | "provider_rejected" | "internal";
 
 export type EnvelopeError = {
   code: ErrorCode;
@@ -81,6 +101,14 @@ export type CliIo = {
   stderr: NodeJS.WritableStream;
   /** Replaces the wall clock; `--tz` and LIFE_TZ still decide the timezone. */
   clock?: Clock;
+  /** Replaces the calendar provider adapters (tests pass a FakeAdapter); default the Google adapter. */
+  adapters?: Adapters;
+  /** Replaces the credential files' directory; default `.local/google/` at the repository root. */
+  credentials?: CredentialStore;
+  /** Replaces how `account add` shows the sign-in URL; default opens the browser on macOS, and the URL is always printed on stderr. */
+  openUrl?: (url: string) => void;
+  /** Replaces doctor's token check; default trades the account's refresh token for an access token through Google. */
+  refreshToken?: (accountId: string) => Promise<void>;
 };
 
 /** Mirrors db/client.ts: the repository root .env, loaded when LIFE_DATABASE_URL is unset. */
@@ -243,9 +271,11 @@ type FlagDef = {
   /** Shown in help. */
   default?: string;
   /** What the value refers to, so --verbose can report how it resolved. */
-  ref?: "project" | "section" | "label" | "filter";
+  ref?: RefKind;
 };
 type FlagSpec = Readonly<Record<string, FlagDef>>;
+
+type RefKind = "project" | "section" | "label" | "filter" | "account" | "calendar" | "event";
 
 type Positional = {
   name: string;
@@ -253,10 +283,10 @@ type Positional = {
   optional?: boolean;
   /** Takes every remaining argument. */
   variadic?: boolean;
-  ref?: "project" | "section" | "label" | "filter";
+  ref?: RefKind;
 };
 
-type GroupName = "task" | "project" | "section" | "label" | "filter";
+type GroupName = "task" | "project" | "section" | "label" | "filter" | "account" | "calendar" | "event";
 
 type Rendered = {
   code: number;
@@ -268,6 +298,8 @@ type Rendered = {
   error?: EnvelopeError;
   /** A rejection the caller can turn into a question. */
   needs?: Needs;
+  /** Diagnostics for a terminal (copy freshness, view warnings): stderr in human mode, never printed in JSON mode. */
+  stderr?: string[];
 };
 
 /** Everything a command needs before the database is opened. */
@@ -324,7 +356,7 @@ const EXIT_MEANING: Record<number, string> = {
   [EXIT.ok]: "ok",
   [EXIT.rejected]: "rejected, invalid, or not found",
   [EXIT.duplicate]: "duplicate candidates (pass --allow-duplicate to add anyway)",
-  [EXIT.database]: "database unavailable (run `life doctor`)",
+  [EXIT.database]: "database or calendar provider unavailable (run `life doctor`)",
   [EXIT.usage]: "usage error (unknown command or flag, missing argument)",
 };
 
@@ -521,7 +553,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 // ------------------------------------------------------------------ hints: every failure names what to do next
 
-const NOT_FOUND = /^(?:[\w.]+): no (task|project|section|label|filter) "(.+)"$/;
+const NOT_FOUND = /^(?:[\w.]+): no (task|project|section|label|filter|account|calendar|event) "(.+?)"(?:;.*)?$/;
 
 /** The hint for a filter error: the grammar line that applies. */
 function filterHint(message: string): string {
@@ -555,6 +587,13 @@ function hintsFor(command: CommandDef | null, issues: string[]): string[] {
     else if (/no label "/.test(issue)) add("run `life label list` to see label names and ids");
     else if (/no filter "/.test(issue)) add("run `life filter list` to see saved filters, or pass a query (see `life help filter`)");
     else if (/no task "/.test(issue)) add("check the id with `life task list --all` or `life search <text>`; deleted tasks are in `life trash`");
+    else if (/no account "|account ".*" was removed/.test(issue)) add("run `life account list` to see connected accounts (an id, the identity email, or the label is a ref); `life account add google` connects one");
+    else if (/no calendar "|names \d+ calendars|calendar ".*" is deleted|no main calendar yet|no account is connected/.test(issue)) add("run `life calendar list --hidden` to see calendar ids and names; a ref is an id, <identity>/<name>, or a unique name");
+    else if (/no event "|no occurrence of "/.test(issue)) add("run `life event list --from <date> --to <date>` to see event ids and occurrence refs (e_...@<originalStart>); deleted events are in `life trash`");
+    else if (issue.startsWith(`${PROVIDER_UNAVAILABLE}:`)) add("the calendar provider could not be reached and nothing was stored; retry (with the same --key for a write), or run `life doctor`");
+    else if (issue.startsWith(`${PROVIDER_REJECTED}:`)) add("the calendar provider refused the request and nothing was stored; the message is the provider's");
+    else if (/needs re-authorization|needs to be granted again|no longer accepts the refresh token|No Google credential on file|is needs_reauth|run life account add google/.test(issue)) add("run `life account add google` and pick the same Google account to sign in again");
+    else if (/is read-only; pick a writable calendar/.test(issue)) add("run `life calendar list` (read-only calendars are marked) and pass --calendar <ref>");
     else if (/is deleted; restore it first/.test(issue)) add("restore it first: `life <group> restore <id>`; deleted records are listed by `life trash`");
     else if (/^actor: /.test(issue)) add("pass --actor neel, codex, agent:<name>, or import:<provider>, or set LIFE_ACTOR");
     else if (/^version: expected/.test(issue)) add("re-read the record (`life task get <id>`) and pass its current version to --if-version, or drop --if-version");
@@ -576,11 +615,20 @@ function isNotFound(issues: string[], args: string[]): boolean {
 
 // ------------------------------------------------------------------ rendering results
 
+/** A provider failure among a rejected receipt's issues: unreachable (exit 3) or refused (exit 1). */
+function providerCode(issues: string[]): "provider_unavailable" | "provider_rejected" | null {
+  if (issues.some((issue) => issue.startsWith(`${PROVIDER_UNAVAILABLE}:`))) return "provider_unavailable";
+  if (issues.some((issue) => issue.startsWith(`${PROVIDER_REJECTED}:`))) return "provider_rejected";
+  return null;
+}
+
 const receiptCode = (receipt: Receipt<unknown>): number =>
-  receipt.ok ? EXIT.ok : receipt.outcome === "duplicate" ? EXIT.duplicate : EXIT.rejected;
+  receipt.ok ? EXIT.ok : receipt.outcome === "duplicate" ? EXIT.duplicate : providerCode(receipt.issues) === "provider_unavailable" ? EXIT.provider : EXIT.rejected;
+
+type AnyReceipt = Receipt<AnyRecord | CalendarRecord>;
 
 /** The envelope error for a failed receipt. */
-function receiptError(command: CommandDef, receipt: Receipt<AnyRecord>, args: string[]): EnvelopeError | undefined {
+function receiptError(command: CommandDef, receipt: AnyReceipt, args: string[]): EnvelopeError | undefined {
   if (receipt.ok) return undefined;
   if (receipt.outcome === "duplicate") {
     const candidates = receipt.candidates as Task[];
@@ -604,34 +652,35 @@ function receiptError(command: CommandDef, receipt: Receipt<AnyRecord>, args: st
   }
   const hints = hintsFor(command, receipt.issues);
   return {
-    code: isNotFound(receipt.issues, args) ? "not_found" : "rejected",
+    code: providerCode(receipt.issues) ?? (isNotFound(receipt.issues, args) ? "not_found" : "rejected"),
     message: receipt.issues.length === 1 ? receipt.issues[0]! : `${receipt.issues.length} issues: ${receipt.issues.join("; ")}`,
     issues: receipt.issues,
     ...(hints.length ? { hint: hints.join("; ") } : {}),
   };
 }
 
-/** One receipt: exit code from the outcome, the receipt as the result, one line plus issues as text. */
-function rendered(inv: Invocation, command: CommandDef, receipt: Receipt<AnyRecord>): Rendered {
+/** One receipt: exit code from the outcome, the receipt as the result, one line plus issues as text. A receipt's own `warnings` (an event split, a first sync) join the envelope's. */
+function rendered(inv: Invocation, command: CommandDef, receipt: AnyReceipt & { warnings?: string[] }): Rendered {
   const error = receiptError(command, receipt, inv.args);
+  if (receipt.warnings) for (const warning of receipt.warnings) if (!inv.warnings.includes(warning)) inv.warnings.push(warning);
   return {
     code: receiptCode(receipt),
     result: receipt,
-    text: async () => receiptText(receipt, await projectIndex(inv.tools), error?.hint),
+    text: async () => receiptText(receipt, await projectIndex(inv.tools), inv.tz, error?.hint),
     ...(error ? { error } : {}),
     ...(!receipt.ok && receipt.outcome === "rejected" && receipt.needs ? { needs: receipt.needs } : {}),
   };
 }
 
-function renderedAll(inv: Invocation, command: CommandDef, receipts: Receipt<AnyRecord>[]): Rendered {
+function renderedAll(inv: Invocation, command: CommandDef, receipts: AnyReceipt[]): Rendered {
   const codes = receipts.map(receiptCode);
-  const code = codes.includes(EXIT.rejected) ? EXIT.rejected : codes.includes(EXIT.duplicate) ? EXIT.duplicate : EXIT.ok;
+  const code = codes.includes(EXIT.rejected) ? EXIT.rejected : codes.includes(EXIT.provider) ? EXIT.provider : codes.includes(EXIT.duplicate) ? EXIT.duplicate : EXIT.ok;
   const failed = receipts.filter((r) => !r.ok);
   const issues = [...new Set(failed.flatMap((r) => r.issues))];
   const hints = hintsFor(command, issues);
   const error: EnvelopeError | undefined = failed.length
     ? {
-        code: code === EXIT.duplicate ? "duplicate" : "rejected",
+        code: code === EXIT.duplicate ? "duplicate" : (providerCode(issues) ?? "rejected"),
         message: `${failed.length} of ${receipts.length} rejected: ${issues.join("; ")}`,
         issues,
         ...(hints.length ? { hint: hints.join("; ") } : {}),
@@ -642,7 +691,7 @@ function renderedAll(inv: Invocation, command: CommandDef, receipts: Receipt<Any
     result: receipts,
     text: async () => {
       const index = await projectIndex(inv.tools);
-      return receipts.map((receipt) => receiptText(receipt, index)).join("\n");
+      return receipts.map((receipt) => receiptText(receipt, index, inv.tz)).join("\n");
     },
     ...(error ? { error } : {}),
   };
@@ -1471,23 +1520,743 @@ const filterReorder: CommandDef = {
   run: async (inv) => renderedAll(inv, filterReorder, await inv.tools.filter.reorder(inv.args, inv.ctx())),
 };
 
+// ------------------------------------------------------------------ calendar helpers
+
+const ACCOUNT_REF = "an account id (a_...), the identity email, or the label";
+const CALENDAR_REF = "a calendar id (c_...), <identity>/<name>, or a name unique among the calendars";
+const EVENT_REF = "an event id (e_...) for a single event or a whole series, or an occurrence ref e_xxxxxxxxxx@<originalStart> for one occurrence of a repeating event";
+const WHEN_HELP = '"YYYY-MM-DD HH:MM" (the date may be today, tomorrow, +Nd) read in the display zone (--tz, else LIFE_TZ, else the machine\'s), or an instant such as 2026-09-10T16:00:00Z';
+
+const POS_CAL = {
+  accountRef: { name: "ref", help: `An account reference: ${ACCOUNT_REF}. See \`life account list\`.`, ref: "account" as const },
+  calendarRef: { name: "ref", help: `A calendar reference: ${CALENDAR_REF}. See \`life calendar list --hidden\`.`, ref: "calendar" as const },
+  calendarId: { name: "id", help: "A calendar id (c_...). See `life calendar list --hidden`." },
+  eventRef: { name: "ref", help: `An event reference: ${EVENT_REF}. Every list prints occurrence refs.`, ref: "event" as const },
+  eventId: { name: "id", help: "An event id (e_ followed by ten characters): a single event or a series, never one occurrence.", ref: "event" as const },
+};
+
+const SCOPE_FLAG: FlagDef = { kind: "value", values: [...SCOPES], help: "On a repeating event: this occurrence only, this and every later one, or the whole series. Required for a repeating event (a terminal asks)." };
+const CALENDAR_FLAG: FlagDef = { kind: "value", type: "ref", help: `Calendar: ${CALENDAR_REF}.`, ref: "calendar" };
+const START_FLAG: FlagDef = { kind: "value", type: "when", help: `Start of a timed event: ${WHEN_HELP}.` };
+const END_FLAG: FlagDef = { kind: "value", type: "when", help: "End of a timed event, same format as --start." };
+const FLOATING_FLAG: FlagDef = { kind: "bool", help: "With --start: store no timezone; the event happens at that wall-clock time wherever Neel is." };
+const DATE_FLAG: FlagDef = { kind: "value", type: DATE_TYPE, help: `Start date of an all-day event: ${DATE_HELP}.` };
+const END_DATE_FLAG: FlagDef = { kind: "value", type: DATE_TYPE, help: "End date of an all-day event, exclusive (a two-day event on the 10th and 11th ends on the 12th)." };
+const STALE_FLAG: FlagDef = { kind: "bool", help: `Answer from the copy without refreshing calendars older than LIFE_CAL_MAX_AGE seconds (default ${String(maxAgeFromEnv({}))}).` };
+const HIDDEN_FLAG: FlagDef = { kind: "bool", help: "Include hidden calendars." };
+
+/** The When formats and the scope rules; printed under `life help event` and on the commands that take them. */
+const EVENT_NOTES = [
+  "when formats:",
+  `  --start, --end        ${WHEN_HELP}. --floating stores no zone. An omitted --end is one hour after --start (or --duration minutes).`,
+  "  --date, --end-date    YYYY-MM-DD (or today, tomorrow, +Nd) for an all-day event; the end date is exclusive, so a one-day event has no --end-date (or --days 1).",
+  "  refs                  an event id (e_...) names a single event or a whole series; an occurrence ref e_xxxxxxxxxx@2026-09-10T16:00:00Z (the id, @, the occurrence's original start: an instant, or a date for all-day) names one occurrence. Every list prints occurrence refs; copy them into update, reschedule, respond, cancel, delete.",
+  "scope rules (repeating events):",
+  "  --scope this          this occurrence only (an exception at the provider)",
+  "  --scope following     this and every later occurrence: the series is cut before this one and a new series with a new id continues from it (the receipt's record; a warning names the truncated original)",
+  "  --scope all           the whole series; a time change given against an occurrence shifts every occurrence by the same delta",
+  "  A repeating event with no --scope is rejected with a `needs` error naming the options (a terminal asks). respond takes this or all. move, restore, and duplicate take the series or a single event; delete on one occurrence cancels it.",
+  "writes go through the provider first (HANDS D59): an unreachable provider is provider_unavailable (exit 3) and a refusal is provider_rejected (exit 1); nothing is stored either way, and the same --key retries safely.",
+];
+
+/** `--start`/`--end`: "<date> HH:MM" in the display zone (the date may be relative), or an instant; `floating` stores no zone. */
+function whenFlag(inv: Setup, name: string, floating: boolean): When | undefined {
+  const value = inv.flags.str(name);
+  if (value === undefined) return undefined;
+  const raw = value.trim();
+  const wall = /^(\S+)[ T](\d{2}:\d{2})(?::\d{2})?$/.exec(raw);
+  if (wall) {
+    const date = relativeDate(wall[1]!, inv.today);
+    const instant = date ? zonedToInstant(`${date}T${wall[2]}`, inv.tz) : null;
+    if (instant) return { at: toInstant(instant), timezone: floating ? null : inv.tz };
+  }
+  const instant = parseInstant(raw, inv.tz);
+  if (instant && !isValidDate(raw)) return { at: instant, timezone: floating ? null : inv.tz };
+  throw new UsageError(`--${name} expects "YYYY-MM-DD HH:MM" (read in ${inv.tz}) or an instant, got "${value}"`, {
+    hint: `pass --${name} "2026-09-10 16:00" (or "tomorrow 09:00"); for an all-day event pass --date YYYY-MM-DD instead`,
+  });
+}
+
+/** `--date`/`--end-date` as an all-day When. */
+function dateWhen(inv: Setup, name: string): When | undefined {
+  const value = dateFlag(inv, name);
+  return value === undefined ? undefined : { date: value };
+}
+
+/** The timed or all-day span the event flags describe; `null` when none was given. */
+function spanFlags(inv: Setup, command: CommandDef): { start?: When; end?: When; duration?: number } | null {
+  const f = inv.flags;
+  const timed = f.has("start") || f.has("end") || f.has("duration") || f.bool("floating");
+  const allDay = f.has("date") || f.has("end-date") || f.has("days");
+  const layer: Layer = { kind: "command", command };
+  if (timed && allDay) throw new UsageError(`life ${commandName(command)}: --start/--end/--duration (timed) and --date/--end-date/--days (all-day) exclude each other`, { layer });
+  if (!timed && !allDay) return null;
+  if (f.has("end") && f.has("duration")) throw new UsageError("--end and --duration exclude each other", { layer });
+  if (f.has("end-date") && f.has("days")) throw new UsageError("--end-date and --days exclude each other", { layer });
+  if (f.bool("floating") && !f.has("start")) throw new UsageError("--floating needs --start", { layer });
+  if (timed) return compact({ start: whenFlag(inv, "start", f.bool("floating")), end: whenFlag(inv, "end", f.bool("floating")), duration: f.int("duration") });
+  return compact({ start: dateWhen(inv, "date"), end: dateWhen(inv, "end-date"), duration: f.int("days") });
+}
+
+const WEEKDAY_NAMES = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** `mon-fri`, `mon,wed,fri`, `sat-sun` (a range may wrap) as JavaScript weekday numbers, 0 Sunday to 6 Saturday. */
+function weekdaysFlag(value: string): number[] {
+  const index = (word: string): number => {
+    const found = WEEKDAY_NAMES.indexOf(word.trim().toLowerCase().slice(0, 3));
+    if (found < 0 || word.trim().length < 3) throw new UsageError(`--days: unknown weekday "${word}"`, { hint: "pass --days mon-fri, --days mon,wed,fri, or --days sat-sun" });
+    return found;
+  };
+  const days: number[] = [];
+  for (const part of value.split(",")) {
+    const range = /^([^-]+)(?:-([^-]+))?$/.exec(part.trim());
+    if (!range) throw new UsageError(`--days: cannot read "${part}"`, { hint: "pass --days mon-fri, --days mon,wed,fri, or --days sat-sun" });
+    const from = index(range[1]!);
+    const to = range[2] === undefined ? from : index(range[2]);
+    for (let day = from; ; day = (day + 1) % 7) {
+      if (!days.includes(day)) days.push(day);
+      if (day === to) break;
+    }
+  }
+  return days;
+}
+
+function hoursFlag(value: string): { start: string; end: string } {
+  const match = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/.exec(value.trim());
+  if (!match) throw new UsageError(`--hours expects HH:MM-HH:MM, got "${value}"`, { hint: "pass --hours 09:00-18:00" });
+  return { start: match[1]!, end: match[2]! };
+}
+
+/** The consent URL: printed on stderr always (the fallback), and handed to the browser on macOS unless the caller replaced `openUrl`. */
+function showSignInUrl(io: CliIo, url: string): void {
+  io.stderr.write(`life: sign in with Google in the browser; if it did not open, visit:\n  ${url}\n`);
+  if (io.openUrl) {
+    io.openUrl(url);
+    return;
+  }
+  if (process.platform !== "darwin") return;
+  try {
+    const child = spawn("open", [url], { stdio: "ignore", detached: true });
+    child.on("error", () => undefined);
+    child.unref();
+  } catch {
+    // The URL is on stderr; opening the browser is a convenience.
+  }
+}
+
+/** Sync reports as a result: exit 1 when a calendar failed (3 when the provider could not be reached), the reports as the result either way. */
+function renderedSync(inv: Invocation, reports: SyncReport[]): Rendered {
+  const failures = reports.flatMap((report) => report.calendars.filter((entry) => entry.outcome === "failed").map((entry) => `${entry.calendarId}: ${entry.error ?? "failed"}`));
+  const unreachable = failures.length > 0 && failures.every((failure) => /ProviderUnavailable/.test(failure));
+  const code = failures.length === 0 ? EXIT.ok : unreachable ? EXIT.provider : EXIT.rejected;
+  const error: EnvelopeError | undefined = failures.length
+    ? {
+        code: unreachable ? "provider_unavailable" : "rejected",
+        message: `${failures.length} calendar${failures.length === 1 ? "" : "s"} failed to sync: ${failures.join("; ")}`,
+        issues: failures,
+        hint: unreachable ? "the calendar provider could not be reached; the copy is unchanged, retry later or run `life doctor`" : "run `life doctor` for each account's state; `life account add google` reconnects an account that needs re-authorization",
+      }
+    : undefined;
+  return { code, result: reports, text: async () => syncText(reports, await calendarIndex(inv.tools), await accountIndex(inv.tools)), ...(error ? { error } : {}) };
+}
+
+/** The stderr lines for a view: one per stale or failed calendar, plus the view's own warnings that are not about a refresh. */
+function freshnessLines(inv: Setup, freshness: Freshness, warnings: string[]): string[] {
+  const maxAge = maxAgeFromEnv(inv.io.env);
+  const lines: string[] = [];
+  for (const entry of freshness) {
+    const copy = entry.syncedAt === null ? "never synced" : `synced ${entry.ageSeconds}s ago`;
+    if (entry.error !== null) lines.push(`calendar "${entry.name}" (${entry.calendarId}) could not be refreshed: ${entry.error}; answering from the copy, ${copy}`);
+    else if (!entry.refreshed && (entry.ageSeconds === null || entry.ageSeconds > maxAge)) lines.push(`calendar "${entry.name}" (${entry.calendarId}) answered from a stale copy, ${copy}`);
+  }
+  for (const warning of warnings) if (!warning.startsWith('Calendar "')) lines.push(`warning: ${warning}`);
+  return lines;
+}
+
+// ------------------------------------------------------------------ account commands
+
+const accountAdd: CommandDef = {
+  group: "account",
+  name: "add",
+  summary: "Connect a Google account: opens the browser to sign in, then syncs its calendars",
+  description: "Runs Life-OS's own OAuth desktop flow: the browser opens on macOS (the URL is also printed on stderr), Neel picks the account, and the refresh token lands in .local/google/<accountId>.json, never in the database. The first account becomes primary. The account is then synced once; the sync report is in the receipt and any calendar that failed is a warning. Needs LIFE_GOOGLE_CLIENT_ID and LIFE_GOOGLE_CLIENT_SECRET in the repository .env.",
+  positionals: [{ name: "provider", help: "The provider: google." }],
+  flags: { label: { kind: "value", type: "text", help: "A label for the account, usable as a ref (e.g. work)." } },
+  examples: ["life account add google --actor neel", "life account add google --label work --actor neel --json"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  async run(inv) {
+    const provider = inv.args[0]!;
+    if (provider !== "google") throw new UsageError(`life account add: unknown provider "${provider}"; google is the only provider in this cut`, { layer: { kind: "command", command: accountAdd } });
+    const label = inv.flags.str("label");
+    const receipt: AccountAddReceipt = await inv.tools.account.add({ provider, ...(label !== undefined ? { label } : {}), open: (url) => showSignInUrl(inv.io, url) }, inv.ctx());
+    const base = rendered(inv, accountAdd, receipt);
+    return {
+      ...base,
+      text: async () => {
+        const head = await base.text();
+        if (!receipt.ok || !receipt.sync) return head;
+        return `${head}\n${syncText([receipt.sync], await calendarIndex(inv.tools), await accountIndex(inv.tools))}`;
+      },
+    };
+  },
+};
+
+const accountList: CommandDef = {
+  group: "account",
+  name: "list",
+  summary: "Every connected account with its id, identity, status, and last sync",
+  positionals: [],
+  flags: {},
+  examples: ["life account list --json"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const accounts = await inv.tools.account.list();
+    return plain(EXIT.ok, accounts, accounts.length ? accountTable(accounts) : "No accounts. Connect one with `life account add google`.");
+  },
+};
+
+const accountGet: CommandDef = {
+  group: "account",
+  name: "get",
+  summary: "Show one account",
+  positionals: [POS_CAL.accountRef],
+  flags: {},
+  examples: ["life account get neel@gmail.com --json", "life account get work"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const account = await inv.tools.account.get(inv.args[0]!);
+    if (!account) return notFound(accountGet, `account: no account "${inv.args[0]}"`, `No account "${inv.args[0]}".`);
+    return { code: EXIT.ok, result: account, text: async () => accountDetail(account, await calendarIndex(inv.tools)) };
+  },
+};
+
+const accountRemove: CommandDef = {
+  group: "account",
+  name: "remove",
+  summary: "Disconnect an account: its calendars and events go to the trash and its credential file is deleted",
+  description: "Rejected while the account is primary and another account exists; make another one primary first.",
+  positionals: [POS_CAL.accountRef],
+  flags: {},
+  examples: ["life account remove work --actor neel --json"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  run: async (inv) => rendered(inv, accountRemove, await inv.tools.account.remove(inv.args[0]!, inv.ctx())),
+};
+
+const accountPrimary: CommandDef = {
+  group: "account",
+  name: "primary",
+  summary: "Make an account the primary one (the default target for `event add`)",
+  positionals: [POS_CAL.accountRef],
+  flags: {},
+  examples: ["life account primary work --actor neel --json"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  run: async (inv) => renderedAll(inv, accountPrimary, await inv.tools.account.primary(inv.args[0]!, inv.ctx())),
+};
+
+const accountSync: CommandDef = {
+  group: "account",
+  name: "sync",
+  summary: "Pull one account's calendars and events from the provider, or every connected account's",
+  description: "Incremental with the provider's sync tokens; --full discards them and lists everything again from LIFE_CAL_HISTORY_MONTHS months back. Not a mutation in itself: its writes are the *.sync log entries under actor import:google. A calendar that fails is reported and does not stop the others.",
+  positionals: [{ name: "ref", help: `An account reference: ${ACCOUNT_REF}. Without it, every connected account.`, optional: true, ref: "account" }],
+  flags: { full: { kind: "bool", help: "Discard the stored cursors and list everything again." } },
+  examples: ["life account sync --json", "life account sync work --full --json"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  run: async (inv) => renderedSync(inv, await inv.tools.account.sync(inv.args[0], { full: inv.flags.bool("full") })),
+};
+
+// ------------------------------------------------------------------ calendar commands
+
+const calendarList: CommandDef = {
+  group: "calendar",
+  name: "list",
+  summary: "The calendars of every account, by account then order, with ids, access, labels, and copy age",
+  positionals: [],
+  flags: { hidden: HIDDEN_FLAG },
+  examples: ["life calendar list --json", "life calendar list --hidden"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const calendars = await inv.tools.calendar.list({ includeHidden: inv.flags.bool("hidden") });
+    return plain(EXIT.ok, calendars, calendars.length ? calendarTable(calendars, await accountIndex(inv.tools)) : "No calendars. Connect an account with `life account add google`, or pass --hidden.");
+  },
+};
+
+const calendarGet: CommandDef = {
+  group: "calendar",
+  name: "get",
+  summary: "Show one calendar",
+  positionals: [POS_CAL.calendarRef],
+  flags: {},
+  examples: ["life calendar get neel@gmail.com/Personal --json", "life calendar get c_abc123def0"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const calendar = await inv.tools.calendar.get(inv.args[0]!);
+    if (!calendar) return notFound(calendarGet, `calendar: no calendar "${inv.args[0]}"`, `No calendar "${inv.args[0]}".`);
+    return { code: EXIT.ok, result: calendar, text: async () => calendarDetail(calendar, await accountIndex(inv.tools)) };
+  },
+};
+
+const calendarSync: CommandDef = {
+  group: "calendar",
+  name: "sync",
+  summary: "Pull one calendar's events from the provider",
+  positionals: [POS_CAL.calendarRef],
+  flags: {},
+  examples: ["life calendar sync neel@gmail.com/Personal --json"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  run: async (inv) => renderedSync(inv, [await inv.tools.calendar.sync(inv.args[0]!)]),
+};
+
+const calendarUpdate: CommandDef = {
+  group: "calendar",
+  name: "update",
+  summary: "Change what is Life-OS's about a calendar: its labels (life areas), whether it is hidden, its colour",
+  description: "Name, timezone, and access come from the provider on sync and cannot be changed here. Labels named but not registered are created. A hidden calendar stays out of today, week, and slots unless asked for.",
+  positionals: [POS_CAL.calendarRef],
+  flags: {
+    label: { ...LABEL_FLAG, help: "Replace the calendar's labels (life areas) with these. Repeatable." },
+    "no-label": { kind: "bool", help: "Remove every label." },
+    hidden: { kind: "bool", help: "Hide the calendar from the views." },
+    visible: { kind: "bool", help: "Show the calendar in the views again." },
+    color: { kind: "value", type: "text", help: "Life-OS's colour for the calendar (the provider's is read on sync)." },
+    "no-color": { kind: "bool", help: "Clear the colour." },
+  },
+  examples: ["life calendar update neel@gmail.com/Personal --label health --label family --actor neel --json", "life calendar update Holidays --hidden --actor neel"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  async run(inv) {
+    const f = inv.flags;
+    if (f.bool("hidden") && f.bool("visible")) throw new UsageError("--hidden and --visible exclude each other");
+    const input = compact({ labels: labelsFlag(inv), hidden: f.bool("hidden") ? true : f.bool("visible") ? false : undefined, color: f.clearable("color") });
+    if (!Object.keys(input).length) throw new UsageError("life calendar update: nothing to change; pass --label/--no-label, --hidden/--visible, or --color/--no-color", { layer: { kind: "command", command: calendarUpdate } });
+    return rendered(inv, calendarUpdate, await inv.tools.calendar.update(inv.args[0]!, input as CalendarUpdate, inv.ctx()));
+  },
+};
+
+const calendarReorder: CommandDef = {
+  group: "calendar",
+  name: "reorder",
+  summary: "Put one account's calendars in this order",
+  positionals: [{ name: "id", help: "Calendar ids (c_...), in the wanted order; all in one account.", variadic: true }],
+  flags: {},
+  examples: ["life calendar reorder c_aaaaaaaaaa c_bbbbbbbbbb --actor neel --json"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  run: async (inv) => renderedAll(inv, calendarReorder, await inv.tools.calendar.reorder(inv.args, inv.ctx())),
+};
+
+// ------------------------------------------------------------------ event commands
+
+const eventAdd: CommandDef = {
+  group: "event",
+  name: "add",
+  summary: "Add an event to a calendar (through the provider; the readback is stored)",
+  description: "A timed event takes --start (and --end or --duration; default one hour); an all-day event takes --date (and --end-date or --days; default one day). Without --calendar it lands on the primary account's main calendar. `event add` and `task add` are different things: a commitment at a time with a place or people is an event, a thing to do is a task.",
+  positionals: [{ name: "title", help: "The event title." }],
+  flags: {
+    start: START_FLAG,
+    end: END_FLAG,
+    duration: { kind: "value", type: "integer", help: "Minutes; with --start instead of --end.", default: "60" },
+    floating: FLOATING_FLAG,
+    date: DATE_FLAG,
+    "end-date": END_DATE_FLAG,
+    days: { kind: "value", type: "integer", help: "Days; with --date instead of --end-date.", default: "1" },
+    calendar: { ...CALENDAR_FLAG, default: "the primary account's main calendar" },
+    notes: { kind: "value", type: "text", help: "Description." },
+    location: { kind: "value", type: "text", help: "Location, as text." },
+    repeat: { kind: "value", type: "RRULE", help: "Recurrence rule (RFC 5545), e.g. FREQ=WEEKLY;BYDAY=MO." },
+    free: { kind: "bool", help: "Mark the time free (transparent); timed events default to busy, all-day ones to free." },
+  },
+  examples: [
+    'life event add "Dentist" --start "2026-09-10 16:00" --duration 45 --location "12 Main St" --actor codex --json',
+    'life event add "Team offsite" --date 2026-09-14 --days 2 --calendar work@example.com/Work --actor neel --json',
+    'life event add "Yoga" --start "tomorrow 07:00" --end "tomorrow 08:00" --repeat FREQ=WEEKLY;BYDAY=WE --actor neel',
+  ],
+  notes: EVENT_NOTES,
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  async run(inv) {
+    const f = inv.flags;
+    const span = spanFlags(inv, eventAdd);
+    if (!span || !span.start) throw new UsageError('life event add: pass --start "YYYY-MM-DD HH:MM" for a timed event or --date YYYY-MM-DD for an all-day one', { layer: { kind: "command", command: eventAdd } });
+    const input = compact({
+      title: inv.args[0]!,
+      calendar: f.str("calendar"),
+      ...span,
+      notes: f.str("notes"),
+      location: f.str("location"),
+      repeat: f.str("repeat"),
+      busy: f.bool("free") ? false : undefined,
+    });
+    return rendered(inv, eventAdd, await inv.tools.event.add(input as EventAdd, inv.ctx()));
+  },
+};
+
+const eventGet: CommandDef = {
+  group: "event",
+  name: "get",
+  summary: "Show one event or one occurrence in full (deleted included)",
+  positionals: [POS_CAL.eventRef],
+  flags: {},
+  examples: ["life event get e_abc123def0 --json", "life event get e_abc123def0@2026-09-10T16:00:00Z"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const ref = inv.args[0]!;
+    const found = await inv.tools.event.get(ref);
+    if (!found) return notFound(eventGet, isOccurrenceRef(ref) ? `event: no occurrence "${ref}"` : `event: no event "${ref}"`, `No event "${ref}".`);
+    return { code: EXIT.ok, result: found, text: async () => eventDetail(found, await calendarIndex(inv.tools), inv.tz) };
+  },
+};
+
+const eventList: CommandDef = {
+  group: "event",
+  name: "list",
+  summary: "The occurrences in a window, expanded, with their occurrence refs (from the copy; no refresh)",
+  description: "Repeating events are laid out as occurrences; each line carries the occurrence ref (e_...@<originalStart>) to pass to update, reschedule, respond, cancel, or delete. Reads the copy as it is; `life sync` or a view refreshes it.",
+  positionals: [],
+  flags: {
+    from: { kind: "value", type: DATE_TYPE, help: `First day (inclusive): ${DATE_HELP}; or an instant.` },
+    to: { kind: "value", type: DATE_TYPE, help: `Last day (inclusive): ${DATE_HELP}; or an instant (exclusive).` },
+    calendar: { ...CALENDAR_FLAG, kind: "list", help: `Only these calendars: ${CALENDAR_REF}. A hidden calendar named here is included. Repeatable.` },
+    hidden: HIDDEN_FLAG,
+    deleted: { kind: "bool", help: "Include deleted events." },
+  },
+  examples: ["life event list --from today --to +7d --json", "life event list --from 2026-09-01 --to 2026-09-30 --calendar neel@gmail.com/Personal --json"],
+  notes: EVENT_NOTES,
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const f = inv.flags;
+    const from = dateFlag(inv, "from");
+    const to = dateFlag(inv, "to");
+    if (from === undefined || to === undefined) throw new UsageError("life event list: pass --from <date> and --to <date>", { layer: { kind: "command", command: eventList } });
+    const calendars = f.list("calendar");
+    const occurrences = await inv.tools.event.list(compact({ from, to, calendars: calendars.length ? calendars : undefined, includeHidden: f.bool("hidden") || undefined, includeDeleted: f.bool("deleted") || undefined }) as { from: string; to: string });
+    return { code: EXIT.ok, result: occurrences, text: async () => (occurrences.length ? occurrenceTable(occurrences, await calendarIndex(inv.tools), inv.tz) : "No events.") };
+  },
+};
+
+/** The flags every scoped write shares. */
+const scopeOpts = (inv: Setup): { scope?: Scope } => compact({ scope: inv.flags.str("scope") }) as { scope?: Scope };
+
+const eventUpdate: CommandDef = {
+  group: "event",
+  name: "update",
+  summary: "Change an event's title, notes, location, time, rule, or busy flag (through the provider)",
+  description: "Pass at least one flag; a --no-<field> flag clears it. A repeating event needs --scope. Times: --start/--end (with --floating for no zone) for a timed event, --date/--end-date for an all-day one; an omitted end keeps the duration.",
+  positionals: [POS_CAL.eventRef],
+  flags: {
+    title: { kind: "value", type: "text", help: "New title." },
+    notes: { kind: "value", type: "text", help: "New description (replaces the old one)." },
+    "no-notes": { kind: "bool", help: "Clear the description." },
+    location: { kind: "value", type: "text", help: "New location." },
+    "no-location": { kind: "bool", help: "Clear the location." },
+    start: START_FLAG,
+    end: END_FLAG,
+    floating: FLOATING_FLAG,
+    date: DATE_FLAG,
+    "end-date": END_DATE_FLAG,
+    repeat: { kind: "value", type: "RRULE", help: "New recurrence rule (needs --scope all on a series)." },
+    "no-repeat": { kind: "bool", help: "Stop repeating." },
+    busy: { kind: "bool", help: "Mark the time busy." },
+    free: { kind: "bool", help: "Mark the time free." },
+    scope: SCOPE_FLAG,
+  },
+  examples: [
+    'life event update e_abc123def0 --title "Dentist (and hygienist)" --location "14 Main St" --actor codex --json',
+    'life event update e_abc123def0@2026-09-10T16:00:00Z --start "2026-09-10 17:00" --scope this --actor neel --json',
+    "life event update e_abc123def0 --no-repeat --scope all --actor neel",
+  ],
+  notes: EVENT_NOTES,
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  async run(inv) {
+    const f = inv.flags;
+    if (f.bool("busy") && f.bool("free")) throw new UsageError("--busy and --free exclude each other");
+    const span = spanFlags(inv, eventUpdate) ?? {};
+    const input = compact({
+      title: f.str("title"),
+      notes: f.clearable("notes"),
+      location: f.clearable("location"),
+      ...span,
+      repeat: f.clearable("repeat"),
+      busy: f.bool("busy") ? true : f.bool("free") ? false : undefined,
+    });
+    if (!Object.keys(input).length) throw new UsageError("life event update: nothing to change; pass at least one flag", { layer: { kind: "command", command: eventUpdate } });
+    return rendered(inv, eventUpdate, await inv.tools.event.update(inv.args[0]!, input as EventUpdate, inv.ctx(), scopeOpts(inv)));
+  },
+};
+
+const eventReschedule: CommandDef = {
+  group: "event",
+  name: "reschedule",
+  summary: "Move an event or one occurrence to a new time (the duration is kept unless --end is given)",
+  positionals: [POS_CAL.eventRef],
+  flags: {
+    start: { ...START_FLAG, help: `New start: ${WHEN_HELP}.` },
+    end: { ...END_FLAG, help: "New end; without it the event keeps its duration." },
+    floating: FLOATING_FLAG,
+    date: { ...DATE_FLAG, help: `New start date for an all-day event: ${DATE_HELP}.` },
+    "end-date": END_DATE_FLAG,
+    scope: SCOPE_FLAG,
+  },
+  examples: ['life event reschedule e_abc123def0 --start "2026-09-11 10:00" --actor codex --json', 'life event reschedule e_abc123def0@2026-09-10T16:00:00Z --start "+1d 16:00" --scope this --actor neel --json'],
+  notes: EVENT_NOTES,
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  async run(inv) {
+    const span = spanFlags(inv, eventReschedule);
+    if (!span || !span.start) throw new UsageError('life event reschedule: pass --start "YYYY-MM-DD HH:MM" (or --date YYYY-MM-DD for an all-day event)', { layer: { kind: "command", command: eventReschedule } });
+    if (span.duration !== undefined) throw new UsageError("life event reschedule: pass --end, not --duration", { layer: { kind: "command", command: eventReschedule } });
+    return rendered(inv, eventReschedule, await inv.tools.event.reschedule(inv.args[0]!, compact({ start: span.start, end: span.end }) as { start: When; end?: When }, inv.ctx(), scopeOpts(inv)));
+  },
+};
+
+const eventMove: CommandDef = {
+  group: "event",
+  name: "move",
+  summary: "Move a single event or a whole series to another calendar of the same account",
+  description: "The provider cannot move an event between accounts; for that, duplicate it onto the other account's calendar and delete the original.",
+  positionals: [POS_CAL.eventRef],
+  flags: { calendar: { ...CALENDAR_FLAG, help: `Target calendar: ${CALENDAR_REF}.` } },
+  examples: ["life event move e_abc123def0 --calendar neel@gmail.com/Family --actor neel --json"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  async run(inv) {
+    const calendar = inv.flags.str("calendar");
+    if (calendar === undefined) throw new UsageError("life event move: pass --calendar <ref>", { layer: { kind: "command", command: eventMove } });
+    return rendered(inv, eventMove, await inv.tools.event.move(inv.args[0]!, calendar, inv.ctx()));
+  },
+};
+
+const RESPONSES = ["accepted", "declined", "tentative"] as const;
+
+const eventRespond: CommandDef = {
+  group: "event",
+  name: "respond",
+  summary: "Answer an invitation: accepted, declined, or tentative (only when Neel is an attendee)",
+  positionals: [POS_CAL.eventRef, { name: "response", help: "accepted, declined, or tentative." }],
+  flags: { scope: { ...SCOPE_FLAG, values: ["this", "all"], help: "On a repeating invitation: this occurrence only, or the whole series." } },
+  examples: ["life event respond e_abc123def0 accepted --actor neel --json", "life event respond e_abc123def0@2026-09-10T16:00:00Z declined --scope this --actor neel --json"],
+  notes: EVENT_NOTES,
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  async run(inv) {
+    const response = inv.args[1]!;
+    if (!(RESPONSES as readonly string[]).includes(response)) {
+      throw new UsageError(`life event respond: <response> must be one of ${RESPONSES.join(", ")}, got "${response}"`, { layer: { kind: "command", command: eventRespond }, hint: `pass ${RESPONSES.join("|")}` });
+    }
+    return rendered(inv, eventRespond, await inv.tools.event.respond(inv.args[0]!, response as EventResponse, inv.ctx(), scopeOpts(inv)));
+  },
+};
+
+const eventCancel: CommandDef = {
+  group: "event",
+  name: "cancel",
+  summary: "Cancel an event Neel organises (attendees are told by the provider); --reason is required",
+  description: "The event stays visible with status cancelled, not deleted. Only the organizer can cancel; decline an invitation with `event respond declined` instead.",
+  positionals: [POS_CAL.eventRef],
+  flags: { scope: SCOPE_FLAG },
+  examples: ['life event cancel e_abc123def0 --reason "moved to next quarter" --actor neel --json', 'life event cancel e_abc123def0@2026-09-10T16:00:00Z --scope this --reason "away that day" --actor neel'],
+  notes: EVENT_NOTES,
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  run: async (inv) => rendered(inv, eventCancel, await inv.tools.event.cancel(inv.args[0]!, inv.ctx(), scopeOpts(inv))),
+};
+
+const eventDelete: CommandDef = {
+  group: "event",
+  name: "delete",
+  summary: "Delete an event at the provider; the copy goes to the trash (`event restore` recreates it)",
+  description: "On one occurrence (--scope this) the provider cancels that instance. --scope following cuts the series before the occurrence; --scope all deletes the series and its exceptions.",
+  positionals: [POS_CAL.eventRef],
+  flags: { scope: SCOPE_FLAG },
+  examples: ["life event delete e_abc123def0 --actor neel --json", "life event delete e_abc123def0@2026-09-17T16:00:00Z --scope following --actor neel --json"],
+  notes: EVENT_NOTES,
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  run: async (inv) => rendered(inv, eventDelete, await inv.tools.event.delete(inv.args[0]!, inv.ctx(), scopeOpts(inv))),
+};
+
+const eventRestore: CommandDef = {
+  group: "event",
+  name: "restore",
+  summary: "Recreate a deleted event (or series) at the provider under the same Life-OS id",
+  positionals: [POS_CAL.eventId],
+  flags: {},
+  examples: ["life event restore e_abc123def0 --actor neel --json"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  run: async (inv) => rendered(inv, eventRestore, await inv.tools.event.restore(inv.args[0]!, inv.ctx())),
+};
+
+const eventDuplicate: CommandDef = {
+  group: "event",
+  name: "duplicate",
+  summary: "Copy an event (or one occurrence, or a series) as a new event without its attendees",
+  positionals: [POS_CAL.eventRef],
+  flags: { calendar: { ...CALENDAR_FLAG, help: `Put the copy on this calendar (any account): ${CALENDAR_REF}.`, default: "the original's calendar" } },
+  examples: ["life event duplicate e_abc123def0 --actor neel --json", "life event duplicate e_abc123def0 --calendar work@example.com/Work --actor neel --json"],
+  exits: [...EXITS.write],
+  mutates: true,
+  database: "connect",
+  run: async (inv) => rendered(inv, eventDuplicate, await inv.tools.event.duplicate(inv.args[0]!, inv.ctx(), compact({ calendar: inv.flags.str("calendar") }))),
+};
+
+const eventHistory: CommandDef = {
+  group: "event",
+  name: "history",
+  summary: "Every logged change to an event, oldest first, sync entries included (actor import:google)",
+  positionals: [POS_CAL.eventId],
+  flags: {},
+  examples: ["life event history e_abc123def0 --json"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const id = inv.args[0]!;
+    if (!(await inv.tools.event.get(id))) return notFound(eventHistory, `event: no event "${id}"`, `No event "${id}".`);
+    const entries = await inv.tools.event.history(id);
+    return plain(EXIT.ok, entries, historyText(entries));
+  },
+};
+
 // ------------------------------------------------------------------ views and maintenance
 
 const today: CommandDef = {
   group: null,
   name: "today",
-  summary: "Overdue, due today, deadlines, and the proposed queue",
-  description: "Accepted and in-progress tasks that are overdue or due on the date, tasks whose deadline is the date or past, and every proposed task (the review queue).",
+  summary: "The day's schedule (events and dated tasks), then overdue, due today, deadlines, and the proposed queue",
+  description: "The schedule: the day's all-day events and date-only tasks, then timed events and timed tasks by start (an event awaiting Neel's answer is marked ?; declined ones are dropped, cancelled ones kept). Then the todo lists: accepted and in-progress tasks that are overdue or due on the date, tasks whose deadline is the date or past, and every proposed task. Calendars whose copy is older than LIFE_CAL_MAX_AGE are refreshed first unless --stale; `freshness` in the result says how old each copy is and whether a refresh failed (the view still answers from the copy).",
   positionals: [],
-  flags: { date: dateFlagDef("The day to look at"), },
-  examples: ["life today --json", "life today --date tomorrow"],
+  flags: { date: dateFlagDef("The day to look at"), stale: STALE_FLAG, hidden: HIDDEN_FLAG },
+  examples: ["life today --json", "life today --date tomorrow", "life today --stale --json"],
   exits: [...EXITS.read],
   mutates: false,
   database: "connect",
   async run(inv) {
-    const view = await inv.tools.views.today(compact({ date: dateFlag(inv, "date") }));
-    return { code: EXIT.ok, result: view, text: async () => todayText(view, await projectIndex(inv.tools)) };
+    const f = inv.flags;
+    const view = await inv.tools.views.today(compact({ date: dateFlag(inv, "date"), fresh: f.bool("stale") ? false : undefined, includeHidden: f.bool("hidden") || undefined }));
+    return {
+      code: EXIT.ok,
+      result: view,
+      text: async () => todayText(view, await projectIndex(inv.tools), await calendarIndex(inv.tools), inv.tz),
+      stderr: freshnessLines(inv, view.freshness, view.warnings),
+    };
   },
+};
+
+const week: CommandDef = {
+  group: null,
+  name: "week",
+  summary: "Events and dated tasks day by day for the coming days",
+  description: "One entry per day, empty days included; a multi-day event appears on each day it covers. Overdue tasks are not carried in (that is `today`'s job). Same refresh and freshness rules as `today`.",
+  positionals: [],
+  flags: {
+    from: dateFlagDef("The first day"),
+    days: { kind: "value", type: "integer", help: "How many days, 1 to 366.", default: "7" },
+    stale: STALE_FLAG,
+    hidden: HIDDEN_FLAG,
+  },
+  examples: ["life week --json", "life week --from 2026-09-14 --days 5", "life week --from tomorrow --days 3 --stale --json"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const f = inv.flags;
+    const view = await inv.tools.views.week(compact({ from: dateFlag(inv, "from"), days: f.int("days"), fresh: f.bool("stale") ? false : undefined, includeHidden: f.bool("hidden") || undefined }));
+    return {
+      code: EXIT.ok,
+      result: view,
+      text: async () => weekText(view, await projectIndex(inv.tools), await calendarIndex(inv.tools), inv.tz),
+      stderr: freshnessLines(inv, view.freshness, view.warnings),
+    };
+  },
+};
+
+const slots: CommandDef = {
+  group: null,
+  name: "slots",
+  summary: "Free windows of at least a duration inside working hours, across the connected calendars",
+  description: "Busy time is every non-cancelled, non-declined busy occurrence on every non-hidden calendar of every connected account (a hidden calendar named with --calendar counts too). Slots are the maximal free windows at least --duration long, clipped to the hours, from now or --from, whichever is later. Quote them as given; never a booking page.",
+  positionals: [],
+  flags: {
+    duration: { kind: "value", type: "integer", help: "The slot length in minutes." },
+    from: { kind: "value", type: DATE_TYPE, help: `First day (from its start, or from now if later): ${DATE_HELP}; or "YYYY-MM-DD HH:MM".`, default: "today" },
+    to: { kind: "value", type: DATE_TYPE, help: `Last day (to its end): ${DATE_HELP}; or "YYYY-MM-DD HH:MM".`, default: "six days after --from" },
+    hours: { kind: "value", type: "HH:MM-HH:MM", help: "Working hours in the display zone.", default: "09:00-18:00" },
+    days: { kind: "value", type: "weekdays", help: "Working days: a range such as mon-fri or sat-sun, or a list such as mon,wed,fri.", default: "mon-fri" },
+    calendar: { ...CALENDAR_FLAG, kind: "list", help: `Only these calendars count as busy: ${CALENDAR_REF}. Repeatable.` },
+    stale: STALE_FLAG,
+  },
+  examples: ["life slots --duration 30 --json", "life slots --duration 60 --from tomorrow --to +5d --hours 10:00-16:00 --days mon,wed,fri --json"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  async run(inv) {
+    const f = inv.flags;
+    const duration = f.int("duration");
+    if (duration === undefined) throw new UsageError("life slots: pass --duration <minutes>", { layer: { kind: "command", command: slots } });
+    const hours = f.str("hours");
+    const days = f.str("days");
+    const calendars = f.list("calendar");
+    const view = await inv.tools.views.slots(
+      compact({
+        duration,
+        from: dateFlag(inv, "from"),
+        to: dateFlag(inv, "to"),
+        hours: hours !== undefined || days !== undefined ? { ...hoursFlag(hours ?? "09:00-18:00"), ...(days !== undefined ? { days: weekdaysFlag(days) } : {}) } : undefined,
+        calendars: calendars.length ? calendars : undefined,
+        fresh: f.bool("stale") ? false : undefined,
+      }) as { duration: number },
+    );
+    return { code: EXIT.ok, result: view, text: () => slotsText(view, inv.tz), stderr: freshnessLines(inv, view.freshness, view.warnings) };
+  },
+};
+
+const syncCommand: CommandDef = {
+  group: null,
+  name: "sync",
+  summary: "Pull every connected account's calendars and events from the provider",
+  description: "The same as `life account sync` with no ref. Run it from a scheduled job on the Mac every few minutes so the views rarely have to refresh; run it by hand when Neel says something just changed. Incremental unless --full.",
+  positionals: [],
+  flags: { full: { kind: "bool", help: "Discard the stored cursors and list everything again." } },
+  examples: ["life sync --json", "life sync --full"],
+  exits: [...EXITS.read],
+  mutates: false,
+  database: "connect",
+  run: async (inv) => renderedSync(inv, await inv.tools.account.sync(undefined, { full: inv.flags.bool("full") })),
 };
 
 const upcoming: CommandDef = {
@@ -1525,7 +2294,7 @@ const search: CommandDef = {
 const trash: CommandDef = {
   group: null,
   name: "trash",
-  summary: "Every deleted task, project, section, label, and filter, newest deletion first",
+  summary: "Every deleted task, project, section, label, filter, event, calendar, and account, newest deletion first",
   positionals: [],
   flags: {},
   examples: ["life trash --json"],
@@ -1534,14 +2303,14 @@ const trash: CommandDef = {
   database: "connect",
   async run(inv) {
     const view = await inv.tools.views.trash();
-    return { code: EXIT.ok, result: view, text: async () => trashText(view, await projectIndex(inv.tools)) };
+    return { code: EXIT.ok, result: view, text: async () => trashText(view, await projectIndex(inv.tools), await calendarIndex(inv.tools), await accountIndex(inv.tools), inv.tz) };
   },
 };
 
 const exportCommand: CommandDef = {
   group: null,
   name: "export",
-  summary: "Dump everything (deleted rows and the log included) as JSON, to a file or stdout",
+  summary: "Dump everything (deleted rows and the log included; never a credential) as JSON, to a file or stdout",
   positionals: [{ name: "file", help: "Where to write; without it the dump goes to stdout.", optional: true }],
   flags: {},
   examples: ["life export ./life-backup.json --json", "life export > life-backup.json"],
@@ -1563,6 +2332,9 @@ const exportCommand: CommandDef = {
       labels: dump.labels.length,
       filters: dump.filters.length,
       tasks: dump.tasks.length,
+      accounts: dump.accounts.length,
+      calendars: dump.calendars.length,
+      events: dump.events.length,
       log: dump.log.length,
     };
     const summary = Object.entries(counts)
@@ -1622,8 +2394,8 @@ function databaseSource(flags: Flags, io: CliIo): DbSource {
 const doctor: CommandDef = {
   group: null,
   name: "doctor",
-  summary: "Check the setup: env file, database URL, connectivity, migrations, timezone, actor, Inbox",
-  description: "Runs every check and reports each as ok, warn, or fail. Exit 0 when healthy, 3 when the database cannot be reached (or its URL is unset), 1 for any other failure. Never migrates.",
+  summary: "Check the setup: env file, database, migrations, Inbox, Google client, accounts and credentials, calendars, timezone, actor",
+  description: "Runs every check and reports each as ok, warn, or fail. Exit 0 when healthy, 3 when the database cannot be reached (or its URL is unset), 1 for any other failure. For the calendar: whether LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown), each account's status and credential file, whether its token still refreshes (one request to Google per connected account), each calendar's copy age, and the primary account. Never migrates.",
   positionals: [],
   flags: {},
   examples: ["life doctor", "life doctor --json", "life doctor --verbose --db postgres://life@localhost:5432/life"],
@@ -1721,8 +2493,11 @@ async function runDoctor(setup: Setup): Promise<DoctorReport> {
         } catch (error) {
           checks.push({ name: "inbox", status: "fail", value: `cannot read projects: ${messageOf(error)}`, hint: "run `life migrate`" });
         }
+        await calendarChecks(setup, new PgStore(pool), checks);
       } else {
         checks.push({ name: "inbox", status: "warn", value: connected ? "unknown until migrated" : "unknown until connected" });
+        checks.push(googleClientCheck(setup, false));
+        checks.push({ name: "accounts", status: "warn", value: connected ? "unknown until migrated" : "unknown until connected" });
       }
     } finally {
       await pool.end().catch(() => undefined);
@@ -1731,6 +2506,8 @@ async function runDoctor(setup: Setup): Promise<DoctorReport> {
     checks.push({ name: "connectivity", status: "fail", value: "no URL to connect to", hint: "run `life doctor` again once LIFE_DATABASE_URL is set" });
     checks.push({ name: "migrations", status: "warn", value: "unknown until connected" });
     checks.push({ name: "inbox", status: "warn", value: "unknown until connected" });
+    checks.push(googleClientCheck(setup, false));
+    checks.push({ name: "accounts", status: "warn", value: "unknown until connected" });
   }
 
   const envTz = setup.io.env.LIFE_TZ;
@@ -1749,6 +2526,86 @@ async function runDoctor(setup: Setup): Promise<DoctorReport> {
 
   const healthy = checks.every((c) => c.status !== "fail");
   return { healthy, checks };
+}
+
+/** LIFE_GOOGLE_CLIENT_ID present or not; the secret is never read here. A missing id is a warning: the token check below is what fails when an account really cannot refresh. */
+function googleClientCheck(setup: Setup, accountsConnected: boolean): Check {
+  if (googleClientIdPresent(setup.io.env)) return { name: "google client", status: "ok", value: "LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown)" };
+  return {
+    name: "google client",
+    status: "warn",
+    value: `LIFE_GOOGLE_CLIENT_ID is not set${accountsConnected ? "; the connected accounts cannot refresh their tokens through Google" : " (needed for `life account add google` and every sync)"}`,
+    hint: `put Life-OS's Google OAuth desktop client in ${ENV_FILE} as LIFE_GOOGLE_CLIENT_ID and LIFE_GOOGLE_CLIENT_SECRET`,
+  };
+}
+
+/** The calendar half of doctor: the Google client, each account with its credential and token, each calendar's copy age, the primary account. */
+async function calendarChecks(setup: Setup, store: PgStore, checks: Check[]): Promise<void> {
+  let accounts: Account[];
+  let calendars: Calendar[];
+  try {
+    ({ accounts, calendars } = await store.read(async (tx) => ({ accounts: await tx.all("account"), calendars: await tx.all("calendar") })));
+  } catch (error) {
+    checks.push(googleClientCheck(setup, false));
+    checks.push({ name: "accounts", status: "fail", value: `cannot read accounts: ${messageOf(error)}`, hint: "run `life migrate`" });
+    return;
+  }
+  accounts.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+  checks.push(googleClientCheck(setup, accounts.some((account) => account.status === "connected")));
+  if (!accounts.length) {
+    checks.push({ name: "accounts", status: "ok", value: "none connected; the schedule shows tasks only until `life account add google`" });
+    return;
+  }
+  const credentials = setup.io.credentials ?? new CredentialStore();
+  const refresh = setup.io.refreshToken ?? (async (accountId: string) => void (await new GoogleOAuth({ credentials }).refreshAccessToken(accountId)));
+  const now = (setup.io.clock?.now() ?? new Date()).getTime();
+  const maxAge = maxAgeFromEnv(setup.io.env);
+  const primary = accounts.find((account) => account.primary);
+  checks.push(primary ? { name: "primary account", status: "ok", value: `${primary.identity} (${primary.id})` } : { name: "primary account", status: "fail", value: "no account is primary", hint: "run `life account primary <ref>`" });
+
+  for (const account of accounts) {
+    const summary = `${account.id}; ${account.status}${account.primary ? "; primary" : ""}; ${account.syncedAt ? `synced ${account.syncedAt}` : "never synced"}`;
+    checks.push(
+      account.status === "connected"
+        ? { name: `account ${account.identity}`, status: "ok", value: summary }
+        : account.status === "needs_reauth"
+          ? { name: `account ${account.identity}`, status: "fail", value: summary, hint: "run `life account add google` and pick this account to sign in again" }
+          : { name: `account ${account.identity}`, status: "warn", value: summary },
+    );
+
+    const credentialName = `credential ${account.identity}`;
+    let present = false;
+    try {
+      present = await credentials.exists(account.id);
+    } catch (error) {
+      setup.trace(`doctor: credential check failed for ${account.id}: ${messageOf(error)}`);
+    }
+    if (!present) {
+      checks.push({ name: credentialName, status: "fail", value: `no credential file at ${credentials.path(account.id)}`, hint: "run `life account add google` and pick this account to sign in again" });
+    } else if (account.status !== "connected") {
+      checks.push({ name: credentialName, status: "warn", value: `file present; token refresh not tried while the account is ${account.status}` });
+    } else {
+      try {
+        await refresh(account.id);
+        checks.push({ name: credentialName, status: "ok", value: "file present; token refresh works" });
+      } catch (error) {
+        setup.trace(`doctor: token refresh failed for ${account.id}: ${messageOf(error)}`);
+        checks.push({ name: credentialName, status: "fail", value: `file present; token refresh failed: ${messageOf(error)}`, hint: error instanceof NeedsReauth ? "run `life account add google` and pick this account to sign in again" : "check LIFE_GOOGLE_CLIENT_ID and LIFE_GOOGLE_CLIENT_SECRET and the network, then run `life doctor` again" });
+      }
+    }
+
+    const own = calendars.filter((calendar) => calendar.accountId === account.id).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+    if (!own.length) checks.push({ name: `calendars ${account.identity}`, status: "warn", value: "none synced yet", hint: "run `life account sync`" });
+    for (const calendar of own) {
+      const age = calendar.syncedAt === null ? null : Math.max(0, Math.floor((now - Date.parse(calendar.syncedAt)) / 1000));
+      const copy = age === null ? "copy never synced" : `copy ${age}s old`;
+      const value = `${calendar.id}; ${copy}${calendar.hidden ? "; hidden" : ""}${calendar.writable ? "" : "; read-only"}${calendar.syncError ? `; last sync failed: ${calendar.syncError}` : ""}`;
+      const name = `calendar ${account.identity}/${calendar.name}`;
+      if (calendar.syncError) checks.push({ name, status: "fail", value, hint: "run `life sync`; if it keeps failing, `life account add google` reconnects the account" });
+      else if (age === null || age > maxAge) checks.push({ name, status: "warn", value: `${value}; older than LIFE_CAL_MAX_AGE (${maxAge}s), the next view refreshes it`, hint: "run `life sync`" });
+      else checks.push({ name, status: "ok", value });
+    }
+  }
 }
 
 function readJournal(): { entries: { tag: string; when: number }[] } {
@@ -1772,8 +2629,11 @@ const GROUP_INFO: Record<GroupName, string> = {
   task: "Tasks: add, list, get, change, move, schedule, complete, cancel, delete, comment, import",
   project: "Projects: the nested tree the tasks live in (the Inbox is the system project)",
   section: "Sections: named groups of tasks inside a project",
-  label: "Labels: tags a task carries directly or through its project",
+  label: "Labels: tags a task or a calendar carries (a task also through its project)",
   filter: "Saved filters and the query grammar",
+  account: "Calendar accounts: connect a Google account, list, pick the primary, sync, remove",
+  calendar: "Calendars of the connected accounts: list, labels, hidden, colour, order, sync",
+  event: "Events: add, list, change, reschedule, move, answer invitations, cancel, delete, restore; every write goes through the provider",
 };
 const GROUP_NAMES = Object.keys(GROUP_INFO) as GroupName[];
 
@@ -1828,7 +2688,33 @@ const COMMAND_LIST: CommandDef[] = [
   filterVerb("delete"),
   filterVerb("restore"),
   filterReorder,
+  accountAdd,
+  accountList,
+  accountGet,
+  accountRemove,
+  accountPrimary,
+  accountSync,
+  calendarList,
+  calendarGet,
+  calendarSync,
+  calendarUpdate,
+  calendarReorder,
+  eventAdd,
+  eventGet,
+  eventList,
+  eventUpdate,
+  eventReschedule,
+  eventMove,
+  eventRespond,
+  eventCancel,
+  eventDelete,
+  eventRestore,
+  eventDuplicate,
+  eventHistory,
   today,
+  week,
+  slots,
+  syncCommand,
   upcoming,
   search,
   trash,
@@ -2042,7 +2928,7 @@ function positionalLines(positionals: Positional[]): string[] {
   return rows.map(([head, tail]) => `  ${head!.padEnd(width)}  ${tail}`);
 }
 
-const HEADER = "life: the Life-OS todo list from a shell. One JSON envelope on stdout when --json is passed or stdout is not a terminal; diagnostics on stderr; stable exit codes.";
+const HEADER = "life: the Life-OS todo list and calendar from a shell. One JSON envelope on stdout when --json is passed or stdout is not a terminal; diagnostics on stderr; stable exit codes.";
 
 export function topHelp(): string {
   const groupRows = GROUP_NAMES.map((g) => [`life ${g} <command>`, GROUP_INFO[g]]);
@@ -2072,26 +2958,35 @@ export function topHelp(): string {
     "  LIFE_ACTOR         The actor when --actor is not passed. Without either, a terminal defaults to neel and a program must pass --actor.",
     "  LIFE_TZ            IANA timezone when --tz is not passed; else the machine's timezone.",
     "  LIFE_DEBUG         Set to 1 for the same output as --verbose.",
+    "  LIFE_GOOGLE_CLIENT_ID, LIFE_GOOGLE_CLIENT_SECRET  Life-OS's own Google OAuth desktop client, needed for `life account add google` and every sync; in the .env file.",
+    "  LIFE_CAL_MAX_AGE   Seconds a calendar copy may be old before a view refreshes it first (default 300). --stale skips the refresh.",
+    "  LIFE_CAL_HISTORY_MONTHS  How far back a first or --full sync reaches (default 12).",
     `  .env file          ${ENV_FILE}`,
+    "  credentials        .local/google/<accountId>.json at the repository root; never in the database, a receipt, or the log",
     "",
     "references and formats:",
-    "  ids        t_ (task), p_ (project), s_ (section), l_ (label), f_ (filter), each followed by ten [a-z0-9] characters; every list and receipt shows them",
+    "  ids        t_ (task), p_ (project), s_ (section), l_ (label), f_ (filter), a_ (account), c_ (calendar), e_ (event), each followed by ten [a-z0-9] characters; every list and receipt shows them",
     "  project    an id, a slug path from the root such as health/dental, or inbox; `life project tree` shows paths and ids",
     "  section    a name within the task's project, or an id; `life section list <project-ref>` shows them",
     "  label      a slug name such as health, or an id; `life label list` shows them",
     "  filter     a saved filter's name or id, or a query; `life help filter` explains the query grammar",
+    `  account    ${ACCOUNT_REF}; \`life account list\` shows them`,
+    `  calendar   ${CALENDAR_REF}; \`life calendar list --hidden\` shows them`,
+    "  event      an id (e_...) for a single event or a series, or an occurrence ref e_xxxxxxxxxx@2026-09-10T16:00:00Z for one occurrence; every list prints them; `life help event` explains refs, when formats, and scopes",
     `  date       ${DATE_HELP}`,
     "  time       HH:MM (24-hour), stored with the effective timezone",
-    "  actor      neel, codex, agent:<name>, or import:<provider>; a task added by anyone but neel lands as proposed",
+    '  when       "YYYY-MM-DD HH:MM" in the display zone (--tz, else LIFE_TZ, else the machine\'s) for --start/--end, or an instant; YYYY-MM-DD for --date/--end-date (all-day, end exclusive)',
+    "  actor      neel, codex, agent:<name>, or import:<provider>; a task added by anyone but neel lands as proposed; sync writes carry import:google",
     "",
     "exit codes:",
     ...EXIT_LINES,
     "",
     "JSON envelope (stdout, one object): { ok, command, exitCode, result?, error?: { code, message, issues, hint?, needs?, candidates? }, warnings? }",
-    "  error.code is one of usage, rejected, duplicate, needs, not_found, db_unavailable, internal; result is the library's return value (receipt, record, list, or view) untouched.",
+    "  error.code is one of usage, rejected, duplicate, needs, not_found, db_unavailable, provider_unavailable, provider_rejected, internal; result is the library's return value (receipt, record, list, or view) untouched.",
     "  A `needs` error carries { field, options, message }: ask, then retry with --<field> <option>. A `duplicate` error carries the candidate tasks.",
+    "  provider_unavailable (exit 3): the calendar provider could not be reached and nothing was stored; provider_rejected (exit 1): it refused. Views carry `freshness` (copy age per calendar) and `warnings` (a refresh that failed).",
     "",
-    "next: `life doctor` checks the setup; `life help task` lists the task commands; `life help task add` shows every flag with examples.",
+    "next: `life doctor` checks the setup; `life help task` lists the task commands; `life help task add` shows every flag with examples; `life help event` explains event refs, when formats, and scopes.",
   ].join("\n");
 }
 
@@ -2107,6 +3002,9 @@ export function groupHelp(group: GroupName): string {
   if (group === "filter") lines.push("", ...FILTER_NOTES);
   if (group === "project") lines.push("", `refs: ${PROJECT_REF}. The Inbox (slug inbox) is created on first use and cannot be deleted.`);
   if (group === "section") lines.push("", `refs: ${SECTION_REF}.`);
+  if (group === "account") lines.push("", `refs: ${ACCOUNT_REF}. The first account connected is primary; \`life account primary\` moves the flag. Credentials live in .local/google/<accountId>.json, never in the database.`);
+  if (group === "calendar") lines.push("", `refs: ${CALENDAR_REF}. Name, timezone, and access come from the provider on sync; labels, hidden, colour, and order are Life-OS's and survive sync.`);
+  if (group === "event") lines.push("", ...EVENT_NOTES);
   lines.push("", "global flags: see `life --help` (--actor is required for every write when not on a terminal).", "", "exit codes:", ...EXIT_LINES);
   return lines.join("\n");
 }
@@ -2158,14 +3056,21 @@ function helpData(layer: Layer): unknown {
         groups: GROUP_NAMES.map((g) => ({ group: g, summary: GROUP_INFO[g], commands: commandsOf(g).map((c) => ({ command: commandName(c), summary: c.summary })) })),
         commands: TOP_COMMANDS.map((c) => ({ command: c.name, summary: c.summary })),
         globalFlags: flagData(GLOBAL_FLAGS),
-        environment: ["LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG"],
+        environment: ["LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG", "LIFE_GOOGLE_CLIENT_ID", "LIFE_GOOGLE_CLIENT_SECRET", "LIFE_CAL_MAX_AGE", "LIFE_CAL_HISTORY_MONTHS"],
         envFile: ENV_FILE,
         exitCodes: Object.entries(EXIT_MEANING).map(([code, meaning]) => ({ code: Number(code), meaning })),
         filterGrammar: FILTER_GRAMMAR,
         text: topHelp(),
       };
     case "group":
-      return { group: layer.group, summary: GROUP_INFO[layer.group], commands: commandsOf(layer.group).map(commandData), ...(layer.group === "filter" ? { filterGrammar: FILTER_GRAMMAR } : {}), text: groupHelp(layer.group) };
+      return {
+        group: layer.group,
+        summary: GROUP_INFO[layer.group],
+        commands: commandsOf(layer.group).map(commandData),
+        ...(layer.group === "filter" ? { filterGrammar: FILTER_GRAMMAR } : {}),
+        ...(layer.group === "event" ? { notes: EVENT_NOTES } : {}),
+        text: groupHelp(layer.group),
+      };
     case "command":
       return { ...(commandData(layer.command) as object), text: commandHelp(layer.command) };
   }
@@ -2274,7 +3179,7 @@ class Session {
         );
       }
       this.trace(`database: ${describeUrl(db.url)} (from ${db.source})${command.database === "migrate" ? "; migrating" : ""}`);
-      const tools = await Tools.open({ url: db.url, clock, migrate: command.database === "migrate" });
+      const tools = await Tools.open({ url: db.url, clock, migrate: command.database === "migrate", adapters: io.adapters, credentials: io.credentials });
       try {
         const inv: Invocation = { ...setup, tools };
         if (this.#verbose) await traceRefs(inv, command);
@@ -2318,6 +3223,21 @@ class Session {
       exitCode = error.exitCode;
       message = error.message;
       hint = error.hint;
+    } else if (error instanceof ProviderUnavailable) {
+      code = "provider_unavailable";
+      exitCode = EXIT.provider;
+      message = `calendar provider unavailable: ${messageOf(error)}`;
+      hint = "nothing was stored; retry later (with the same --key for a write), or run `life doctor`";
+    } else if (error instanceof ProviderRejected) {
+      code = "provider_rejected";
+      exitCode = EXIT.rejected;
+      message = `calendar provider rejected the request: ${messageOf(error)}`;
+      hint = "nothing was stored; the message is the provider's";
+    } else if (error instanceof NeedsReauth) {
+      code = "rejected";
+      exitCode = EXIT.rejected;
+      message = messageOf(error);
+      hint = "run `life account add google` and pick the same Google account to sign in again";
     } else if (isDatabaseError(error)) {
       code = "db_unavailable";
       exitCode = EXIT.database;
@@ -2379,6 +3299,7 @@ class Session {
       }
     } else {
       this.#io.stdout.write(`${await result.text()}\n`);
+      for (const line of result.stderr ?? []) this.#io.stderr.write(`life: ${line}\n`);
       for (const warning of this.#warnings) this.#io.stderr.write(`life: warning: ${warning}\n`);
     }
     return result.code;
@@ -2425,9 +3346,9 @@ function contextOf(actor: string, flags: Flags): Ctx {
   }) as Ctx;
 }
 
-/** With --verbose: how every project, section, label, and filter reference resolved, before the command runs. */
+/** With --verbose: how every project, section, label, filter, account, calendar, and event reference resolved, before the command runs. */
 async function traceRefs(inv: Invocation, command: CommandDef): Promise<void> {
-  const refs: { kind: NonNullable<FlagDef["ref"]>; source: string; value: string }[] = [];
+  const refs: { kind: RefKind; source: string; value: string }[] = [];
   command.positionals.forEach((p, i) => {
     if (p.ref && inv.args[i] !== undefined) refs.push({ kind: p.ref, source: `<${p.name}>`, value: inv.args[i]! });
   });
@@ -2458,6 +3379,15 @@ async function traceRefs(inv: Invocation, command: CommandDef): Promise<void> {
         const label = await inv.tools.label.get(ref.value);
         if (label) resolved = `${label.id} (@${label.name})`;
         else resolved = "nothing (a label named on a task or project is created on first use)";
+      } else if (ref.kind === "account") {
+        const account = await inv.tools.account.get(ref.value);
+        if (account) resolved = `${account.id} (${account.identity}${account.deletedAt ? ", removed" : ""})`;
+      } else if (ref.kind === "calendar") {
+        const calendar = await inv.tools.calendar.get(ref.value);
+        if (calendar) resolved = `${calendar.id} ("${calendar.name}"${calendar.deletedAt ? ", deleted" : ""})`;
+      } else if (ref.kind === "event") {
+        const event = await inv.tools.event.get(ref.value);
+        if (event) resolved = `${"occurrenceId" in event ? event.occurrenceId : event.id} ("${event.title}"${event.deletedAt ? ", deleted" : ""})`;
       } else {
         const filter = await inv.tools.filter.get(ref.value);
         if (filter) resolved = `${filter.id} (${filter.name}: ${filter.query})`;
@@ -2494,9 +3424,19 @@ async function ask(io: CliIo, needs: Needs): Promise<string | null> {
 // ------------------------------------------------------------------ human output
 
 type Projects = Map<string, Project>;
+type Calendars = Map<string, Calendar>;
+type Accounts = Map<string, Account>;
 
 async function projectIndex(tools: Tools): Promise<Projects> {
   return indexProjects(await tools.store.read((tx) => tx.all("project", { includeDeleted: true })));
+}
+
+async function calendarIndex(tools: Tools): Promise<Calendars> {
+  return new Map((await tools.store.read((tx) => tx.all("calendar", { includeDeleted: true }))).map((calendar) => [calendar.id, calendar]));
+}
+
+async function accountIndex(tools: Tools): Promise<Accounts> {
+  return new Map((await tools.store.read((tx) => tx.all("account", { includeDeleted: true }))).map((account) => [account.id, account]));
 }
 
 /** Rows into aligned columns, two spaces apart; columns empty in every row are dropped. */
@@ -2542,15 +3482,17 @@ function taskTable(tasks: Task[], index: Projects, indent = ""): string {
   );
 }
 
-function describe(record: AnyRecord): string {
+function describe(record: AnyRecord | CalendarRecord, tz: string): string {
+  if ("identity" in record) return `${record.identity}${record.label ? ` (${record.label})` : ""}${record.primary ? "  primary" : ""}`;
+  if ("external" in record && "start" in record) return `${record.title}  ${rangeText(record, tz)}${record.status !== "confirmed" ? `  ${record.status}` : ""}`;
   if ("title" in record) return record.title;
   if ("query" in record) return `${record.name}  ${record.query}`;
   if ("slug" in record) return `${record.name} (${record.slug})`;
   return record.name;
 }
 
-function receiptText(receipt: Receipt<AnyRecord>, index: Projects, hint?: string): string {
-  if (receipt.ok) return `${receipt.outcome} ${receipt.id} v${receipt.version}  ${describe(receipt.record)}`;
+function receiptText(receipt: AnyReceipt, index: Projects, tz: string, hint?: string): string {
+  if (receipt.ok) return `${receipt.outcome} ${receipt.id} v${receipt.version}  ${describe(receipt.record, tz)}`;
   if (receipt.outcome === "duplicate") {
     const n = receipt.candidates.length;
     return [
@@ -2666,17 +3608,223 @@ function section(title: string, tasks: Task[], index: Projects): string[] {
   return [`${title} (${tasks.length})`, taskTable(tasks, index, "  "), ""];
 }
 
-function todayText(view: TodayView, index: Projects): string {
+// ------------------------------------------------------------------ calendar output
+
+/** A When in the display zone: `2026-09-10 16:00` (with the zone when it is not the display one, `floating` when it has none), or the date. */
+function whenText(when: When, tz: string): string {
+  if (!isTimedWhen(when)) return when.date;
+  const zone = when.timezone === null ? " floating" : when.timezone !== tz ? ` ${when.timezone}` : "";
+  return `${localDate(when.at, tz)} ${localTime(when.at, tz)}${zone}`;
+}
+
+/** A start and end as one range: `2026-09-10 16:00-17:00`, `2026-09-10 22:00 - 2026-09-11 02:00`, `2026-09-14`, `2026-09-14 to 2026-09-15` (all-day, inclusive). */
+function rangeText(span: { start: When; end: When }, tz: string): string {
+  const { start, end } = span;
+  if (isTimedWhen(start) && isTimedWhen(end)) {
+    const sameDay = localDate(start.at, tz) === localDate(end.at, tz);
+    const zone = start.timezone === null ? " floating" : start.timezone !== tz ? ` ${start.timezone}` : "";
+    return sameDay ? `${localDate(start.at, tz)} ${localTime(start.at, tz)}-${localTime(end.at, tz)}${zone}` : `${localDate(start.at, tz)} ${localTime(start.at, tz)} - ${localDate(end.at, tz)} ${localTime(end.at, tz)}${zone}`;
+  }
+  if (!isTimedWhen(start) && !isTimedWhen(end)) {
+    const last = addDays(end.date, -1);
+    return last <= start.date ? start.date : `${start.date} to ${last}`;
+  }
+  return `${whenText(start, tz)} - ${whenText(end, tz)}`;
+}
+
+/** The time column of a schedule line for `date`: `07:00-08:00`, `22:00-` for an event running past midnight, `-10:00` for one that began the day before, `10:30` for a timed task. */
+function timeOnDay(span: { start: When; end: When }, date: string, tz: string): string {
+  if (!isTimedWhen(span.start) || !isTimedWhen(span.end)) return "all day";
+  const from = localDate(span.start.at, tz) === date ? localTime(span.start.at, tz) : "";
+  const endsToday = localDate(new Date(Date.parse(span.end.at) - 1), tz) === date;
+  const to = endsToday ? localTime(span.end.at, tz) : "";
+  return `${from}-${to}`;
+}
+
+const awaitingAnswer = (occurrence: Occurrence): boolean => occurrence.myResponse === "needsAction";
+const calendarName = (calendars: Calendars, id: string): string => calendars.get(id)?.name ?? id;
+
+/** One schedule entry as a row: time, E or T, title (a ? before an invitation awaiting an answer), calendar or project, the ref to act on. */
+function scheduleRow(entry: ScheduleEntry, date: string, tz: string, projects: Projects, calendars: Calendars): string[] {
+  if (entry.kind === "event") {
+    const o = entry.occurrence;
+    return [timeOnDay(o, date, tz), "E", `${awaitingAnswer(o) ? "? " : ""}${clip(oneLine(o.title), 60)}${o.status !== "confirmed" ? ` (${o.status})` : ""}`, calendarName(calendars, o.calendarId), o.occurrenceId];
+  }
+  const task = entry.task;
+  const project = projects.get(task.projectId);
+  return [task.due?.time ?? "all day", "T", clip(oneLine(task.title), 60), project ? projectPath(project, projects) : task.projectId, task.id];
+}
+
+const entryLabel = (entry: ScheduleEntry, projects: Projects, calendars: Calendars): string =>
+  entry.kind === "event"
+    ? `${awaitingAnswer(entry.occurrence) ? "? " : ""}${entry.occurrence.title} [${calendarName(calendars, entry.occurrence.calendarId)}]`
+    : `${entry.task.title} [${projects.get(entry.task.projectId) ? projectPath(projects.get(entry.task.projectId)!, projects) : entry.task.projectId}]`;
+
+/** A day's schedule: the all-day line, then one row per timed entry. */
+function dayLines(day: Day, tz: string, projects: Projects, calendars: Calendars, indent: string): string[] {
+  const lines: string[] = [];
+  if (day.allDay.length) lines.push(`${indent}All day: ${day.allDay.map((entry) => entryLabel(entry, projects, calendars)).join(", ")}`);
+  if (day.timed.length) lines.push(table(day.timed.map((entry) => scheduleRow(entry, day.date, tz, projects, calendars)), indent));
+  return lines;
+}
+
+function todayText(view: TodayView, index: Projects, calendars: Calendars, tz: string): string {
+  const schedule = dayLines({ date: view.date, allDay: view.allDay, timed: view.timed }, tz, index, calendars, "  ");
   const lines = [
     `Today ${view.date} ${weekday(view.date)} (${view.timezone})`,
     "",
+    ...(schedule.length ? [`Schedule (${view.allDay.length + view.timed.length})`, ...schedule, ""] : []),
     ...section("Overdue", view.overdue, index),
     ...section("Due today", view.due, index),
     ...section("Deadlines", view.deadlines, index),
     ...section("Proposed", view.proposed, index),
   ];
-  if (lines.length === 2) lines.push("Nothing due, no deadlines, nothing proposed.");
+  if (lines.length === 2) lines.push("Nothing scheduled, nothing due, no deadlines, nothing proposed.");
   return lines.join("\n").trimEnd();
+}
+
+function weekText(view: WeekView, index: Projects, calendars: Calendars, tz: string): string {
+  const lines = [`Week ${view.from} to ${view.to} (${view.timezone})`, ""];
+  for (const day of view.days) {
+    const count = day.allDay.length + day.timed.length;
+    lines.push(`${day.date} ${weekday(day.date)}${count ? ` (${count})` : ""}`);
+    lines.push(...(count ? dayLines(day, tz, index, calendars, "  ") : ["  (nothing)"]));
+  }
+  return lines.join("\n");
+}
+
+function slotsText(view: SlotsView, tz: string): string {
+  if (!view.slots.length) return "No free slots in the window.";
+  const rows = view.slots.map((slot) => {
+    const minutes = Math.round((Date.parse(slot.end) - Date.parse(slot.start)) / 60000);
+    return [`${localDate(slot.start, tz)} ${weekday(localDate(slot.start, tz))}`, `${localTime(slot.start, tz)}-${localTime(slot.end, tz)}`, `${minutes} min`, `${slot.start} to ${slot.end}`];
+  });
+  return `Free slots (${view.slots.length}), ${tz}\n${table(rows, "  ")}`;
+}
+
+function syncText(reports: SyncReport[], calendars: Calendars, accounts: Accounts): string {
+  if (!reports.length) return "No connected accounts to sync.";
+  const lines: string[] = [];
+  for (const report of reports) {
+    const account = accounts.get(report.accountId);
+    lines.push(`${account ? account.identity : report.accountId} (${report.accountId})`);
+    if (!report.calendars.length) lines.push("  (no calendars)");
+    const rows = report.calendars.map((entry) => [
+      calendarName(calendars, entry.calendarId),
+      entry.calendarId,
+      entry.outcome,
+      entry.outcome === "failed" ? "" : `+${entry.created} ~${entry.updated} -${entry.deleted}`,
+      entry.error ? `error: ${entry.error}` : "",
+    ]);
+    if (rows.length) lines.push(table(rows, "  "));
+  }
+  return lines.join("\n");
+}
+
+const accountTable = (accounts: Account[]): string =>
+  table(accounts.map((a) => [a.id, a.identity, a.label ?? "", a.primary ? "primary" : "", a.status, a.syncedAt ? `synced ${a.syncedAt}` : "never synced", a.deletedAt ? `removed ${a.deletedAt}` : ""]));
+
+function accountDetail(account: Account, calendars: Calendars): string {
+  const field = (name: string, value: string | undefined | null): string[] => (value ? [`${name.padEnd(11)}${value}`] : []);
+  const own = [...calendars.values()].filter((c) => c.accountId === account.id && !c.deletedAt).sort((a, b) => a.order - b.order);
+  return [
+    `${account.id}  ${account.status}  ${account.identity}`,
+    ...field("provider", account.provider),
+    ...field("label", account.label),
+    ...field("primary", account.primary ? "yes (default target for event add)" : null),
+    ...field("scopes", account.scopes.join(" ")),
+    ...field("synced", account.syncedAt ?? "never"),
+    ...field("calendars", own.length ? own.map((c) => `${c.name} (${c.id}${c.hidden ? ", hidden" : ""}${c.writable ? "" : ", read-only"})`).join(", ") : "none synced yet"),
+    ...field("created", account.createdAt),
+    ...field("updated", `${account.updatedAt} (v${account.version})`),
+    ...field("removed", account.deletedAt),
+  ].join("\n");
+}
+
+const calendarTable = (calendars: Calendar[], accounts: Accounts): string =>
+  table(
+    calendars.map((c) => [
+      c.id,
+      c.name,
+      accounts.get(c.accountId)?.identity ?? c.accountId,
+      c.primaryOfAccount ? "main" : "",
+      c.writable ? "" : "read-only",
+      c.hidden ? "hidden" : "",
+      labelText(c.labels),
+      c.color ?? "",
+      c.syncedAt ? `synced ${c.syncedAt}` : "never synced",
+      c.syncError ? `error: ${clip(c.syncError, 60)}` : "",
+      c.deletedAt ? `deleted ${c.deletedAt}` : "",
+    ]),
+  );
+
+function calendarDetail(calendar: Calendar, accounts: Accounts): string {
+  const field = (name: string, value: string | undefined | null): string[] => (value ? [`${name.padEnd(11)}${value}`] : []);
+  return [
+    `${calendar.id}  ${calendar.name}`,
+    ...field("account", `${accounts.get(calendar.accountId)?.identity ?? calendar.accountId} (${calendar.accountId})`),
+    ...field("ref", `${accounts.get(calendar.accountId)?.identity ?? calendar.accountId}/${calendar.name}`),
+    ...field("timezone", calendar.timezone),
+    ...field("access", calendar.writable ? "writable" : "read-only"),
+    ...field("main", calendar.primaryOfAccount ? "yes (the account's main calendar)" : null),
+    ...field("hidden", calendar.hidden ? "yes" : null),
+    ...field("labels", labelText(calendar.labels)),
+    ...field("color", calendar.color),
+    ...field("order", String(calendar.order)),
+    ...field("provider id", calendar.external.id),
+    ...field("synced", calendar.syncedAt ?? "never"),
+    ...field("sync error", calendar.syncError),
+    ...field("created", calendar.createdAt),
+    ...field("updated", `${calendar.updatedAt} (v${calendar.version})`),
+    ...field("deleted", calendar.deletedAt),
+  ].join("\n");
+}
+
+/** One line per occurrence: the occurrence ref first, so it can be copied straight into update, respond, cancel, or delete. */
+const occurrenceTable = (occurrences: Occurrence[], calendars: Calendars, tz: string, indent = ""): string =>
+  table(
+    occurrences.map((o) => [
+      o.occurrenceId,
+      rangeText(o, tz),
+      "E",
+      `${awaitingAnswer(o) ? "? " : ""}${clip(oneLine(o.title), 60)}`,
+      o.status !== "confirmed" ? o.status : "",
+      calendarName(calendars, o.calendarId),
+      o.location ? clip(oneLine(o.location), 30) : "",
+      o.repeat ? "repeats" : o.master ? "" : "exception",
+      o.deletedAt ? `deleted ${o.deletedAt}` : "",
+    ]),
+    indent,
+  );
+
+function eventDetail(event: Event | Occurrence, calendars: Calendars, tz: string): string {
+  const field = (name: string, value: string | undefined | null): string[] => (value ? [`${name.padEnd(11)}${value}`] : []);
+  const occurrence = "occurrenceId" in event ? event : null;
+  const lines = [
+    `${occurrence ? occurrence.occurrenceId : event.id}  ${event.status}  ${event.title}`,
+    ...field("event", occurrence ? `${event.id}${event.masterId ? ` (exception of ${event.masterId})` : ""}` : event.masterId ? `exception of ${event.masterId}` : null),
+    ...field("when", rangeText(event, tz)),
+    ...field("start", `${whenText(event.start, tz)} (${isTimedWhen(event.start) ? event.start.at : "all day"})`),
+    ...field("end", `${whenText(event.end, tz)} (${isTimedWhen(event.end) ? event.end.at : "exclusive"})`),
+    ...field("original", event.originalStart ? whenText(event.originalStart, tz) : null),
+    ...field("repeat", event.repeat ? `${event.repeat.rrule}${event.repeat.exdates.length ? ` (except ${event.repeat.exdates.join(", ")})` : ""}` : null),
+    ...field("calendar", `${calendarName(calendars, event.calendarId)} (${event.calendarId})`),
+    ...field("location", event.location),
+    ...field("busy", event.busy ? "yes" : "no (free)"),
+    ...field("organizer", event.organizer ? `${event.organizer.name ?? event.organizer.email}${event.organizer.self ? " (me)" : ""}` : null),
+    ...field("attendees", event.attendees.length ? event.attendees.map((a) => `${a.name ?? a.email}${a.self ? " (me)" : ""}: ${a.response}${a.optional ? ", optional" : ""}`).join("; ") : null),
+    ...field("my answer", event.myResponse),
+    ...field("conference", event.conferencing ? `${event.conferencing.kind} ${event.conferencing.url}` : null),
+    ...field("reminders", event.reminders ? event.reminders.map((r) => `${r.method} ${r.minutes} min before`).join(", ") : null),
+    ...field("provider", `${event.external.provider} ${event.external.id} (updated ${event.external.updatedAt})`),
+    ...field("origin", `${event.origin.actor} at ${event.origin.at}${event.origin.reason ? `: ${event.origin.reason}` : ""}`),
+    ...field("evidence", event.origin.evidence.join(", ")),
+    ...field("created", event.createdAt),
+    ...field("updated", `${event.updatedAt} (v${event.version})`),
+    ...field("deleted", event.deletedAt),
+  ];
+  if (event.notes?.trim()) lines.push("notes", ...event.notes.trimEnd().split("\n").map((line) => `  ${line}`));
+  return lines.join("\n");
 }
 
 function upcomingText(view: UpcomingView, index: Projects): string {
@@ -2688,7 +3836,7 @@ function upcomingText(view: UpcomingView, index: Projects): string {
   return lines.join("\n");
 }
 
-function trashText(view: TrashView, index: Projects): string {
+function trashText(view: TrashView, index: Projects, calendars: Calendars, accounts: Accounts, tz: string): string {
   const lines: string[] = [];
   const deleted = (record: { deletedAt: string | null }) => `deleted ${record.deletedAt ?? ""}`;
   if (view.tasks.length) lines.push(`Tasks (${view.tasks.length})`, taskTable(view.tasks, index, "  "), "");
@@ -2696,5 +3844,8 @@ function trashText(view: TrashView, index: Projects): string {
   if (view.sections.length) lines.push(`Sections (${view.sections.length})`, table(view.sections.map((s) => [s.id, s.name, deleted(s)]), "  "), "");
   if (view.labels.length) lines.push(`Labels (${view.labels.length})`, table(view.labels.map((l) => [l.id, `@${l.name}`, deleted(l)]), "  "), "");
   if (view.filters.length) lines.push(`Filters (${view.filters.length})`, table(view.filters.map((f) => [f.id, f.name, f.query, deleted(f)]), "  "), "");
+  if (view.events.length) lines.push(`Events (${view.events.length})`, table(view.events.map((e) => [e.id, e.title, rangeText(e, tz), calendarName(calendars, e.calendarId), e.masterId ? `exception of ${e.masterId}` : "", deleted(e)]), "  "), "");
+  if (view.calendars.length) lines.push(`Calendars (${view.calendars.length})`, table(view.calendars.map((c) => [c.id, c.name, accounts.get(c.accountId)?.identity ?? c.accountId, deleted(c)]), "  "), "");
+  if (view.accounts.length) lines.push(`Accounts (${view.accounts.length})`, table(view.accounts.map((a) => [a.id, a.identity, a.label ?? "", deleted(a)]), "  "), "");
   return lines.length ? lines.join("\n").trimEnd() : "The trash is empty.";
 }
