@@ -17,6 +17,7 @@ import type { TaskOps } from "../tasks.ts";
 import {
   addDays,
   dayWindow,
+  instantOf,
   isValidTimezone,
   localDate,
   parseInstant,
@@ -114,9 +115,9 @@ export function taskInstant(task: Task, timezone: string): string | null {
   return at ? toInstant(at) : null;
 }
 
-/** An entry's start for ordering the timed list: the occurrence's instant, or the task's due instant. */
+/** An entry's start for ordering the timed list: the occurrence's instant in the display zone (a floating wall clock resolves there), or the task's due instant. */
 function entryStart(entry: ScheduleEntry, timezone: string): number {
-  if (entry.kind === "event") return isTimedWhen(entry.occurrence.start) ? Date.parse(entry.occurrence.start.at) : Number.NaN;
+  if (entry.kind === "event") return isTimedWhen(entry.occurrence.start) ? instantOf(entry.occurrence.start, timezone) : Number.NaN;
   const at = taskInstant(entry.task, timezone);
   return at === null ? Number.NaN : Date.parse(at);
 }
@@ -151,14 +152,15 @@ function weekdayOf(date: string): number {
 /** An occurrence dropped from every view: one Neel declined. Cancelled ones stay, so the day shows what fell through. */
 const isShown = (occurrence: Occurrence): boolean => occurrence.myResponse !== "declined";
 
-/** The dates an occurrence covers, clipped to [from, to]: an all-day span by its dates, a timed one by the days it touches in the display zone. */
+/** The dates an occurrence covers, clipped to [from, to]: an all-day span by its dates, a timed one by the days it touches in the display zone (a floating one by its wall clock). */
 function daysCovered(occurrence: Occurrence, from: string, to: string, timezone: string): string[] {
   let first: string;
   let last: string;
   if (isTimedWhen(occurrence.start) && isTimedWhen(occurrence.end)) {
-    first = localDate(occurrence.start.at, timezone);
+    const start = instantOf(occurrence.start, timezone);
+    first = localDate(new Date(start), timezone);
     // The end is exclusive: an event ending at midnight does not touch the next day.
-    last = localDate(new Date(Math.max(Date.parse(occurrence.end.at) - 1, Date.parse(occurrence.start.at))), timezone);
+    last = localDate(new Date(Math.max(instantOf(occurrence.end, timezone) - 1, start)), timezone);
   } else if (!isTimedWhen(occurrence.start) && !isTimedWhen(occurrence.end)) {
     first = occurrence.start.date;
     last = addDays(occurrence.end.date, -1);
@@ -175,13 +177,13 @@ function daysCovered(occurrence: Occurrence, from: string, to: string, timezone:
 
 type Interval = { start: number; end: number };
 
-/** The busy intervals of the shown occurrences: timed ones as they are, all-day ones as whole display-zone days. */
+/** The busy intervals of the shown occurrences: timed ones at their instants (a floating one where its wall clock falls in the display zone), all-day ones as whole display-zone days. */
 function busyIntervals(occurrences: Occurrence[], timezone: string): Interval[] {
   const intervals: Interval[] = [];
   for (const occurrence of occurrences) {
     if (!occurrence.busy || occurrence.status === "cancelled") continue;
     if (isTimedWhen(occurrence.start) && isTimedWhen(occurrence.end)) {
-      intervals.push({ start: Date.parse(occurrence.start.at), end: Date.parse(occurrence.end.at) });
+      intervals.push({ start: instantOf(occurrence.start, timezone), end: instantOf(occurrence.end, timezone) });
     } else if (!isTimedWhen(occurrence.start) && !isTimedWhen(occurrence.end)) {
       intervals.push({ start: Date.parse(dayWindow(occurrence.start.date, timezone).start), end: Date.parse(dayWindow(occurrence.end.date, timezone).start) });
     }

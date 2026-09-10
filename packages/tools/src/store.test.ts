@@ -349,6 +349,17 @@ test("eventsInRange returns overlapping rows, every master with a rule and its e
       masterId: "e_rangedmast",
       originalStart: { at: "2026-09-10T17:00:00Z", timezone: "America/Los_Angeles" },
     }));
+    // Floating rows carry their wall clock spelled as UTC, up to a day away from the instant it resolves to in a display zone
+    // the store does not know: a day of slack each way, and the expansion trims. `e_rangedexc3` is an orphaned floating exception row.
+    await tx.put("event", event("e_rangeflin1", { start: { at: "2026-09-11T02:00:00Z", timezone: null }, end: { at: "2026-09-11T03:00:00Z", timezone: null } }));
+    await tx.put("event", event("e_rangeflin2", { start: { at: "2026-09-09T22:00:00Z", timezone: null }, end: { at: "2026-09-09T23:00:00Z", timezone: null } }));
+    await tx.put("event", event("e_rangeflout", { start: { at: "2026-09-12T01:00:00Z", timezone: null }, end: { at: "2026-09-12T02:00:00Z", timezone: null } }));
+    await tx.put("event", event("e_rangedexc3", {
+      start: { at: "2026-09-11T02:00:00Z", timezone: null },
+      end: { at: "2026-09-11T03:00:00Z", timezone: null },
+      masterId: "e_rangedmast",
+      originalStart: { at: "2026-09-11T01:00:00Z", timezone: null },
+    }));
     // All-day rows: matched by date with a day of slack after `to`.
     await tx.put("event", event("e_rangeaday1", { ...allDay("2026-09-10", "2026-09-11"), busy: false }));
     await tx.put("event", event("e_rangeaday2", { ...allDay("2026-09-01", "2026-09-02"), busy: false }));
@@ -365,10 +376,13 @@ test("eventsInRange returns overlapping rows, every master with a rule and its e
     "e_rangemastr", // 2025-01-02T17:00:00Z
     "e_rangespans", // 2026-09-01T00:00:00Z
     "e_rangeaday5", // 2026-09-09
+    "e_rangeflin2", // 2026-09-09T22:00:00Z floating
     "e_rangestrad", // 2026-09-09T23:00:00Z
     "e_rangeaday1", // 2026-09-10
     "e_rangein001", // 2026-09-10T16:00:00Z
     "e_rangedexc2", // 2026-09-10T18:00:00Z
+    "e_rangedexc3", // 2026-09-11T02:00:00Z floating
+    "e_rangeflin1", // 2026-09-11T02:00:00Z floating
     "e_rangeaday3", // 2026-09-12
     "e_rangeexcep", // 2027-05-06T18:00:00Z
   ], "ordered by start key then id");
@@ -391,11 +405,18 @@ test("eventsInRange returns overlapping rows, every master with a rule and its e
   assert.ok(ids.has("e_rangeaday3"), "all-day starting the day after to is kept as slack for eastern zones");
   assert.ok(!ids.has("e_rangeaday4"), "all-day two days after to is out");
   assert.ok(!ids.has("e_rangeother") && !ids.has("e_rangeomast"), "other calendars are not asked for");
+  assert.ok(ids.has("e_rangeflin1"), "a floating row two hours past to may still fall inside the window in an eastern display zone");
+  assert.ok(ids.has("e_rangeflin2"), "a floating row ending an hour before from may still fall inside it in a western one");
+  assert.ok(!ids.has("e_rangeflout"), "a floating row more than a day past to cannot");
+  assert.ok(ids.has("e_rangedexc3"), "an orphaned floating exception row gets the same slack");
 
   const both = await db.store.read((tx) => tx.eventsInRange([CAL1, CAL2], from, to));
   const bothIds = new Set(both.map((e) => e.id));
   assert.ok(bothIds.has("e_rangeother") && bothIds.has("e_rangeomast"), "the second calendar's rows and master arrive when asked for");
   assert.equal(both.length, one.length + 2);
+
+  const eastern = await db.store.read((tx) => tx.eventsInRange([CAL1], "2026-09-12T10:00:00Z", "2026-09-13T00:00:00Z"));
+  assert.ok(eastern.some((e) => e.id === "e_rangeflout") && !eastern.some((e) => e.id === "e_rangeflin1"), "the slack is a day, not open-ended");
 
   assert.deepEqual(await db.store.read((tx) => tx.eventsInRange([], from, to)), [], "no calendars, no rows");
   assert.deepEqual(await db.store.read((tx) => tx.eventsInRange(["c_nosuchcal1"], from, to)), []);

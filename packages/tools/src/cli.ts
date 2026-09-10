@@ -16,6 +16,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import type { AccountAddReceipt } from "./calendar/accounts.ts";
@@ -62,7 +63,7 @@ import { createPool, databaseUrl } from "./db/client.ts";
 import { effectiveLabels, findInbox, indexProjects, projectPath, type ProjectContents, type ProjectNode, type SectionTasks } from "./organize.ts";
 import { PgStore } from "./store.ts";
 import type { CompleteOptions, DeleteOptions, ImportResult, TaskAssign } from "./tasks.ts";
-import { addDays, isValidDate, isValidTimezone, localDate, localTime, parseInstant, relativeDate, toInstant, todayIn, zonedToInstant } from "./time.ts";
+import { addDays, isValidDate, isValidTimezone, localDate, localTime, localWall, parseInstant, relativeDate, toInstant, todayIn, zonedToInstant } from "./time.ts";
 import { Tools } from "./tools.ts";
 import type { TodayView, TrashView, UpcomingView } from "./views.ts";
 
@@ -1559,7 +1560,13 @@ const EVENT_NOTES = [
   "writes go through the provider first (HANDS D59): an unreachable provider is provider_unavailable (exit 3) and a refusal is provider_rejected (exit 1); nothing is stored either way, and the same --key retries safely.",
 ];
 
-/** `--start`/`--end`: "<date> HH:MM" in the display zone (the date may be relative), or an instant; `floating` stores no zone. */
+/**
+ * `--start`/`--end`: "<date> HH:MM" in the display zone (the date may be
+ * relative), or an instant. With `floating` the wall clock itself is stored,
+ * spelled as UTC with no zone (time.ts), so 08:00 stays 08:00 wherever Neel is;
+ * an instant given with an offset becomes the wall clock it reads as in the
+ * display zone.
+ */
 function whenFlag(inv: Setup, name: string, floating: boolean): When | undefined {
   const value = inv.flags.str(name);
   if (value === undefined) return undefined;
@@ -1567,11 +1574,14 @@ function whenFlag(inv: Setup, name: string, floating: boolean): When | undefined
   const wall = /^(\S+)[ T](\d{2}:\d{2})(?::\d{2})?$/.exec(raw);
   if (wall) {
     const date = relativeDate(wall[1]!, inv.today);
-    const instant = date ? zonedToInstant(`${date}T${wall[2]}`, inv.tz) : null;
+    const instant = date ? zonedToInstant(`${date}T${wall[2]}`, floating ? "UTC" : inv.tz) : null;
     if (instant) return { at: toInstant(instant), timezone: floating ? null : inv.tz };
   }
   const instant = parseInstant(raw, inv.tz);
-  if (instant && !isValidDate(raw)) return { at: instant, timezone: floating ? null : inv.tz };
+  if (instant && !isValidDate(raw)) {
+    if (!floating) return { at: instant, timezone: inv.tz };
+    return { at: toInstant(zonedToInstant(localWall(instant, inv.tz), "UTC")!), timezone: null };
+  }
   throw new UsageError(`--${name} expects "YYYY-MM-DD HH:MM" (read in ${inv.tz}) or an instant, got "${value}"`, {
     hint: `pass --${name} "2026-09-10 16:00" (or "tomorrow 09:00"); for an all-day event pass --date YYYY-MM-DD instead`,
   });
@@ -2395,7 +2405,7 @@ const doctor: CommandDef = {
   group: null,
   name: "doctor",
   summary: "Check the setup: env file, database, migrations, Inbox, Google client, accounts and credentials, calendars, timezone, actor",
-  description: "Runs every check and reports each as ok, warn, or fail. Exit 0 when healthy, 3 when the database cannot be reached (or its URL is unset), 1 for any other failure. For the calendar: whether LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown), each account's status and credential file, whether its token still refreshes (one request to Google per connected account), each calendar's copy age, and the primary account. Never migrates.",
+  description: "Runs every check and reports each as ok, warn, or fail. Exit 0 when healthy, 3 when the database cannot be reached (or its URL is unset), 1 for any other failure. For the calendar: whether LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown), each account's status and credential file, whether its token still refreshes (one request to Google per connected account), each calendar's copy age, the primary account, and any credential file that belongs to no live account. Never migrates.",
   positionals: [],
   flags: {},
   examples: ["life doctor", "life doctor --json", "life doctor --verbose --db postgres://life@localhost:5432/life"],
@@ -2552,11 +2562,12 @@ async function calendarChecks(setup: Setup, store: PgStore, checks: Check[]): Pr
   }
   accounts.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   checks.push(googleClientCheck(setup, accounts.some((account) => account.status === "connected")));
+  const credentials = setup.io.credentials ?? new CredentialStore();
   if (!accounts.length) {
     checks.push({ name: "accounts", status: "ok", value: "none connected; the schedule shows tasks only until `life account add google`" });
+    checks.push(await credentialFilesCheck(setup, credentials, accounts));
     return;
   }
-  const credentials = setup.io.credentials ?? new CredentialStore();
   const refresh = setup.io.refreshToken ?? (async (accountId: string) => void (await new GoogleOAuth({ credentials }).refreshAccessToken(accountId)));
   const now = (setup.io.clock?.now() ?? new Date()).getTime();
   const maxAge = maxAgeFromEnv(setup.io.env);
@@ -2606,6 +2617,39 @@ async function calendarChecks(setup: Setup, store: PgStore, checks: Check[]): Pr
       else checks.push({ name, status: "ok", value });
     }
   }
+  checks.push(await credentialFilesCheck(setup, credentials, accounts));
+}
+
+/**
+ * The credential directory against the live accounts. A `pending-*` file is a
+ * sign-in that never became an account (account add failed after the browser
+ * step); any other file no live account owns was left behind by a failed or
+ * removed account. Each holds a refresh token Google still honours, so they
+ * are named with the command that removes them.
+ */
+async function credentialFilesCheck(setup: Setup, credentials: CredentialStore, accounts: Account[]): Promise<Check> {
+  const name = "credential files";
+  let ids: string[];
+  try {
+    ids = await credentials.list();
+  } catch (error) {
+    setup.trace(`doctor: cannot list ${credentials.dir}: ${messageOf(error)}`);
+    return { name, status: "warn", value: `cannot list ${credentials.dir}: ${messageOf(error)}`, hint: "check the directory's permissions" };
+  }
+  if (!ids.length) return { name, status: "ok", value: `none yet in ${credentials.dir}; the first account add creates one` };
+  const live = new Set(accounts.map((account) => account.id));
+  const orphans = ids.filter((id) => !live.has(id));
+  if (!orphans.length) return { name, status: "ok", value: `${ids.length} in ${credentials.dir}, each a live account's` };
+  const pending = orphans.filter((id) => id.startsWith("pending-")).length;
+  const plural = orphans.length === 1 ? "" : "s";
+  const why = pending ? `; pending-* is a sign-in that never became an account` : "";
+  const files = orphans.map((id) => `${id}.json`);
+  return {
+    name,
+    status: "warn",
+    value: `${orphans.length} of ${ids.length} file${ids.length === 1 ? "" : "s"} in ${credentials.dir} belong${plural ? "" : "s"} to no live account: ${files.join(", ")}${why}`,
+    hint: `each holds a live refresh token; delete the file${plural}: rm ${orphans.map((id) => JSON.stringify(credentials.path(id))).join(" ")}; then revoke Life-OS under https://myaccount.google.com/permissions if that Google account keeps no other connection here`,
+  };
 }
 
 function readJournal(): { entries: { tag: string; when: number }[] } {
@@ -3610,20 +3654,25 @@ function section(title: string, tasks: Task[], index: Projects): string[] {
 
 // ------------------------------------------------------------------ calendar output
 
+/** The zone a timed When's `at` is printed through: a floating one carries its wall clock spelled as UTC (time.ts), so UTC reads it back as written. */
+const printZone = (when: { timezone: string | null }, tz: string): string => (when.timezone === null ? "UTC" : tz);
+
 /** A When in the display zone: `2026-09-10 16:00` (with the zone when it is not the display one, `floating` when it has none), or the date. */
 function whenText(when: When, tz: string): string {
   if (!isTimedWhen(when)) return when.date;
   const zone = when.timezone === null ? " floating" : when.timezone !== tz ? ` ${when.timezone}` : "";
-  return `${localDate(when.at, tz)} ${localTime(when.at, tz)}${zone}`;
+  const read = printZone(when, tz);
+  return `${localDate(when.at, read)} ${localTime(when.at, read)}${zone}`;
 }
 
 /** A start and end as one range: `2026-09-10 16:00-17:00`, `2026-09-10 22:00 - 2026-09-11 02:00`, `2026-09-14`, `2026-09-14 to 2026-09-15` (all-day, inclusive). */
 function rangeText(span: { start: When; end: When }, tz: string): string {
   const { start, end } = span;
   if (isTimedWhen(start) && isTimedWhen(end)) {
-    const sameDay = localDate(start.at, tz) === localDate(end.at, tz);
+    const read = printZone(start, tz);
+    const sameDay = localDate(start.at, read) === localDate(end.at, read);
     const zone = start.timezone === null ? " floating" : start.timezone !== tz ? ` ${start.timezone}` : "";
-    return sameDay ? `${localDate(start.at, tz)} ${localTime(start.at, tz)}-${localTime(end.at, tz)}${zone}` : `${localDate(start.at, tz)} ${localTime(start.at, tz)} - ${localDate(end.at, tz)} ${localTime(end.at, tz)}${zone}`;
+    return sameDay ? `${localDate(start.at, read)} ${localTime(start.at, read)}-${localTime(end.at, read)}${zone}` : `${localDate(start.at, read)} ${localTime(start.at, read)} - ${localDate(end.at, read)} ${localTime(end.at, read)}${zone}`;
   }
   if (!isTimedWhen(start) && !isTimedWhen(end)) {
     const last = addDays(end.date, -1);
@@ -3635,9 +3684,10 @@ function rangeText(span: { start: When; end: When }, tz: string): string {
 /** The time column of a schedule line for `date`: `07:00-08:00`, `22:00-` for an event running past midnight, `-10:00` for one that began the day before, `10:30` for a timed task. */
 function timeOnDay(span: { start: When; end: When }, date: string, tz: string): string {
   if (!isTimedWhen(span.start) || !isTimedWhen(span.end)) return "all day";
-  const from = localDate(span.start.at, tz) === date ? localTime(span.start.at, tz) : "";
-  const endsToday = localDate(new Date(Date.parse(span.end.at) - 1), tz) === date;
-  const to = endsToday ? localTime(span.end.at, tz) : "";
+  const read = printZone(span.start, tz);
+  const from = localDate(span.start.at, read) === date ? localTime(span.start.at, read) : "";
+  const endsToday = localDate(new Date(Date.parse(span.end.at) - 1), read) === date;
+  const to = endsToday ? localTime(span.end.at, read) : "";
   return `${from}-${to}`;
 }
 

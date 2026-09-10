@@ -1,6 +1,13 @@
 // Dates, instants, and timezones without a library.
 // A date is "YYYY-MM-DD". An instant is "YYYY-MM-DDTHH:MM:SSZ" (UTC).
 // A wall-clock time is "YYYY-MM-DDTHH:MM[:SS]" and only means something with a timezone.
+//
+// A floating When (`timezone: null`) carries its wall clock spelled as a UTC
+// instant in `at`: 08:00 wherever Neel is, is stored as "…T08:00:00Z". Every
+// layer that needs a real instant for it goes through `instantOf`, which
+// resolves that wall clock in the display zone.
+
+import type { When } from "./contract.ts";
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const WALL = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/;
@@ -124,6 +131,19 @@ export function localTime(instant: string | Date, tz: string): string {
 
 export function localWall(instant: string | Date, tz: string): string {
   return `${localDate(instant, tz)}T${localTime(instant, tz)}`;
+}
+
+/**
+ * The instant a When stands at when read in `zone`, in epoch milliseconds: a
+ * zoned When's `at` as it is; a floating When's wall clock (its `at` read as
+ * UTC) resolved in `zone`; a date's midnight in `zone`. The one place a
+ * floating time becomes a real instant, so every view agrees on where it sits.
+ */
+export function instantOf(when: When, zone: string): number {
+  if (!("at" in when)) return zonedToInstant(`${when.date}T00:00`, zone)?.getTime() ?? Date.parse(`${when.date}T00:00:00Z`);
+  const at = Date.parse(when.at);
+  if (when.timezone !== null || Number.isNaN(at)) return at;
+  return zonedToInstant(toInstant(new Date(at)).slice(0, 19), zone)?.getTime() ?? at;
 }
 
 export function addDays(date: string, days: number): string {

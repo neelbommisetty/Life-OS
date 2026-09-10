@@ -8,7 +8,9 @@ import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { FakeAdapter, ProviderRejected, ProviderUnavailable, type CalendarAdapter, type ProviderCalendar, type SeedEvent } from "./calendar/adapter.ts";
 import { CredentialStore } from "./calendar/credentials.ts";
+import { fromGoogleEvent, toGoogleInsert } from "./calendar/google/map.ts";
 import { NeedsReauth } from "./calendar/google/oauth.ts";
+import type { EventWrite, When } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import { databaseUrl } from "./db/client.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
@@ -932,18 +934,24 @@ test("an unreachable database exits 3 as db_unavailable, naming the variable, th
 
 test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other problems", async () => {
   type Report = { healthy: boolean; checks: { name: string; status: string; value: string; hint?: string }[] };
-  const healthy = await life(["doctor"]);
+  // The credential directory is injected (and absent) so the report does not depend on what this machine's .local/google holds.
+  const noCredentials = new CredentialStore(join(scratch, "no-credentials", "google"));
+  const healthy = await inProcess(["doctor"], { io: { credentials: noCredentials } });
   assert.equal(healthy.code, EXIT.ok, healthy.stdout + healthy.stderr);
   const report = result<Report>(healthy);
   assert.equal(report.healthy, true);
-  assert.deepEqual(report.checks.map((c) => c.name), ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "accounts", "timezone", "actor"]);
+  assert.deepEqual(report.checks.map((c) => c.name), ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "accounts", "credential files", "timezone", "actor"]);
   assert.ok(report.checks.every((c) => c.status === "ok" || (c.name === "google client" && c.status === "warn")), JSON.stringify(report.checks));
   const check = (name: string) => report.checks.find((c) => c.name === name)!;
   assert.match(check("google client").value, /^LIFE_GOOGLE_CLIENT_ID is (set|not set)/);
   assert.ok(!healthy.stdout.includes("CLIENT_SECRET="), "never the secret");
   assert.match(check("accounts").value, /^none connected; .*life account add google/);
+  assert.equal(check("credential files").value, `none yet in ${noCredentials.dir}; the first account add creates one`);
   assert.ok(check("env file").value.includes(ENV_FILE));
-  assert.match(check("database url").value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from LIFE_DATABASE_URL in the environment\)$/);
+  assert.match(check("database url").value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from --db\)$/);
+  const fromEnv = await life(["doctor"]);
+  assert.equal(fromEnv.code, EXIT.ok, fromEnv.stdout + fromEnv.stderr);
+  assert.match(result<Report>(fromEnv).checks.find((c) => c.name === "database url")!.value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from LIFE_DATABASE_URL in the environment\)$/);
   assert.match(check("connectivity").value, /PostgreSQL \d+/);
   assert.ok(check("connectivity").value.includes(db.schema), "connected to the throwaway schema");
   assert.match(check("migrations").value, /^current \(2 applied, latest 0001_calendar\)$/);
@@ -951,7 +959,7 @@ test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other
   assert.equal(check("timezone").value, `${TZ} (LIFE_TZ)`);
   assert.equal(check("actor").value, "neel (LIFE_ACTOR)");
 
-  const human = await inProcess(["doctor"], { tty: true });
+  const human = await inProcess(["doctor"], { tty: true, io: { credentials: noCredentials } });
   assert.equal(human.code, EXIT.ok);
   assert.match(human.stdout, /^env file +ok /m);
   assert.match(human.stdout, /^database url +ok +postgres:\/\/\S+ \(from --db\)/m);
@@ -1057,6 +1065,8 @@ function connecting(inner: FakeAdapter, files: CredentialStore): CalendarAdapter
     update: (accountId, calendar, providerId, patch, etag) => inner.update(accountId, calendar, providerId, patch, etag),
     delete: (accountId, calendar, providerId) => inner.delete(accountId, calendar, providerId),
     respond: (accountId, calendar, providerId, response) => inner.respond(accountId, calendar, providerId, response),
+    move: (accountId, from, to, providerId) => inner.move(accountId, from, to, providerId),
+    instances: (accountId, calendar, masterId) => inner.instances(accountId, calendar, masterId),
     instanceId: (masterId, originalStart) => inner.instanceId(masterId, originalStart),
   };
 }
@@ -1163,11 +1173,16 @@ test("account add google runs the sign-in through the adapter, prints the URL on
   assert.deepEqual(await readdir(credentials.dir), [`${accountId}.json`], "the provisional credential was adopted under the account id");
   assert.ok(!run.stdout.includes("refresh-token-") && !run.stderr.includes("refresh-token-"), "the refresh token is never printed");
 
+  // Signing in again as the same identity re-authorises the account: the new grant replaces the file, the account stays the same row.
+  const tokenBefore = (await credentials.read(accountId))!.refreshToken;
   fake.connectAs("neel@gmail.com");
   const again = await cal(["account", "add", "google"]);
-  const dup = failed(again, "rejected", EXIT.rejected);
-  assert.match(dup.message, /identity: neel@gmail.com is already connected as a_/);
-  assert.deepEqual(await readdir(credentials.dir), [`${accountId}.json`], "the second sign-in's credential was discarded");
+  const reauthorised = created(again, "updated");
+  assert.equal(reauthorised.id, accountId, "the same account, not a second one");
+  assert.equal(reauthorised.status, "connected");
+  assert.deepEqual(await readdir(credentials.dir), [`${accountId}.json`], "one credential file, under the account id");
+  assert.notEqual((await credentials.read(accountId))!.refreshToken, tokenBefore, "holding the new grant");
+  assert.ok(!again.stdout.includes("refresh-token-") && !again.stderr.includes("refresh-token-"));
 
   const list = result<{ id: string; identity: string; primary: boolean }[]>(await cal(["account", "list"]));
   assert.deepEqual(list.map((a) => [a.id, a.identity, a.primary]), [[accountId, "neel@gmail.com", true]]);
@@ -1258,7 +1273,10 @@ test("event add parses --start/--end/--duration/--floating and --date/--end-date
   assert.deepEqual([endDated.start, endDated.end], [{ date: "2026-09-10" }, { date: "2026-09-12" }]);
 
   const floating = created(await cal(["event", "add", "Morning pages", "--start", "2026-09-12 08:00", "--floating"]));
-  assert.deepEqual(floating.start, { at: "2026-09-12T15:00:00Z", timezone: null }, "read in the display zone, stored without one");
+  assert.deepEqual(floating.start, { at: "2026-09-12T08:00:00Z", timezone: null }, "the wall clock itself, spelled as UTC with no zone: 08:00 wherever Neel is");
+  assert.deepEqual(floating.end, { at: "2026-09-12T09:00:00Z", timezone: null });
+  const floatingInstant = created(await cal(["event", "add", "Morning pages (offset)", "--start", "2026-09-13T15:00:00Z", "--floating", "--free"]));
+  assert.deepEqual(floatingInstant.start, { at: "2026-09-13T08:00:00Z", timezone: null }, "an instant with an offset becomes the wall clock it reads as in the display zone");
   const tokyo = created(await cal(["event", "add", "Call Tokyo", "--start", "2026-09-10 09:00", "--end", "2026-09-10 09:30", "--tz", "Asia/Tokyo"]));
   assert.deepEqual(tokyo.start, { at: "2026-09-10T00:00:00Z", timezone: "Asia/Tokyo" }, "--tz names the zone of the wall clock");
   const relative = created(await cal(["event", "add", "Standup tomorrow", "--start", "tomorrow 09:00", "--free"]));
@@ -1549,6 +1567,45 @@ test("today, week, and slots merge events and dated tasks, print occurrence refs
   assert.match(slotsHuman.stdout, /^Free slots \(1\), America\/Los_Angeles\n  2026-09-11 Fri  09:00-12:00  180 min  2026-09-11T16:00:00Z to 2026-09-11T19:00:00Z$/m);
 });
 
+test("a floating event round-trips: the CLI flag, the Google insert body, the readback, and the week view all agree on the wall clock", async () => {
+  const added = created(await cal(["event", "add", "Evening pages", "--start", "2026-09-12 20:00", "--floating"]));
+  const start = added.start as unknown as When;
+  const end = added.end as unknown as When;
+  assert.deepEqual(start, { at: "2026-09-12T20:00:00Z", timezone: null });
+  assert.deepEqual(end, { at: "2026-09-12T21:00:00Z", timezone: null });
+
+  // What the Google adapter would send for this row, and what it would read back from Google's copy.
+  const ctx = { calendarTimezone: TZ, fetchedAt: CAL_NOW };
+  const write: EventWrite = { title: "Evening pages", notes: null, location: null, start, end, repeat: null, busy: true, status: "confirmed" };
+  const body = toGoogleInsert(write, added.id, ctx);
+  assert.deepEqual(body.start, { dateTime: "2026-09-12T20:00:00", timeZone: TZ }, "Google is told 8 PM in the calendar's zone, not the display-zone instant");
+  assert.deepEqual(body.end, { dateTime: "2026-09-12T21:00:00", timeZone: TZ });
+  assert.equal(body.extendedProperties?.private.lifeFloating, "true");
+  const readBack = fromGoogleEvent({ id: "g-evening", etag: '"7"', status: "confirmed", summary: body.summary, start: body.start, end: body.end, extendedProperties: body.extendedProperties, updated: CAL_NOW }, ctx);
+  assert.deepEqual(readBack.start, start, "the readback is the same wall clock, floating again");
+  assert.deepEqual(readBack.end, end);
+
+  // The same item as Google would hand it to sync, authored there: it lands at the same wall clock beside the CLI's.
+  const { external: _external, ...provider } = readBack;
+  fake.seed(accountId, personalCal, [{ ...provider, id: "evening-google", title: "Evening pages (Google)", lifeId: null }]);
+  assert.equal((await cal(["sync"])).code, EXIT.ok);
+  const week = result<{ days: { date: string; timed: AnyEntry[] }[] }>(await cal(["week", "--from", "2026-09-12", "--days", "1"]));
+  const evenings = week.days[0]!.timed.filter((e) => e.kind === "event" && e.occurrence.title.startsWith("Evening pages"));
+  assert.equal(evenings.length, 2, JSON.stringify(labels(week.days[0]!.timed)));
+  for (const entry of evenings) assert.deepEqual(entry.kind === "event" && entry.occurrence.start, { at: "2026-09-12T20:00:00Z", timezone: null });
+  const human = await cal(["week", "--from", "2026-09-12", "--days", "1"], { tty: true });
+  assert.match(human.stdout, /^  20:00-21:00  E  Evening pages +Personal/m, "at 20:00 in Los Angeles");
+  assert.match(human.stdout, /^  20:00-21:00  E  Evening pages \(Google\) +Personal/m);
+  const kolkata = await cal(["week", "--from", "2026-09-12", "--days", "1"], { tty: true, env: { LIFE_TZ: "Asia/Kolkata" } });
+  assert.match(kolkata.stdout, /^Week 2026-09-12 to 2026-09-12 \(Asia\/Kolkata\)$/m);
+  assert.match(kolkata.stdout, /^  20:00-21:00  E  Evening pages +Personal/m, "and at 20:00 in Kolkata: it happens at its wall clock wherever Neel is");
+  assert.match(kolkata.stdout, /^  20:00-21:00  E  Evening pages \(Google\) +Personal/m);
+  const shown = await cal(["event", "get", added.id], { tty: true });
+  assert.match(shown.stdout, /2026-09-12 20:00 floating/, "printed as its wall clock, marked floating");
+  const listed = await cal(["event", "list", "--from", "2026-09-12", "--to", "2026-09-12"], { tty: true });
+  assert.match(listed.stdout, /2026-09-12 20:00-21:00 floating/);
+});
+
 test("doctor reports the Google client, each account with its credential and token, its calendars with copy age, and the primary account", async () => {
   type Report = { healthy: boolean; checks: { name: string; status: string; value: string; hint?: string }[] };
   assert.equal((await cal(["sync"], { clock: fixedClock("2026-09-09T12:30:00Z", TZ) })).code, EXIT.ok);
@@ -1558,7 +1615,7 @@ test("doctor reports the Google client, each account with its credential and tok
   assert.equal(report.healthy, true);
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "primary account", "account neel@gmail.com", "credential neel@gmail.com", "calendar neel@gmail.com/Personal", "calendar neel@gmail.com/Holidays", "timezone", "actor"],
+    ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "primary account", "account neel@gmail.com", "credential neel@gmail.com", "calendar neel@gmail.com/Personal", "calendar neel@gmail.com/Holidays", "credential files", "timezone", "actor"],
   );
   const check = (name: string) => report.checks.find((c) => c.name === name)!;
   assert.match(check("google client").value, /^LIFE_GOOGLE_CLIENT_ID is (set|not set)/);
@@ -1566,6 +1623,8 @@ test("doctor reports the Google client, each account with its credential and tok
   assert.equal(check("account neel@gmail.com").status, "ok");
   assert.match(check("account neel@gmail.com").value, new RegExp(`^${accountId}; connected; primary; synced 2026-09-09T12:30:00Z$`));
   assert.equal(check("credential neel@gmail.com").value, "file present; token refresh works");
+  assert.equal(check("credential files").status, "ok");
+  assert.equal(check("credential files").value, `1 in ${credentials.dir}, each a live account's`);
   assert.match(check("calendar neel@gmail.com/Personal").value, new RegExp(`^${personalId}; copy 0s old$`));
   assert.match(check("calendar neel@gmail.com/Holidays").value, /copy 0s old; hidden; read-only$/);
   assert.ok(!healthy.stdout.includes("refresh-token-") && !healthy.stderr.includes("refresh-token-"), "the token never appears");
@@ -1580,6 +1639,21 @@ test("doctor reports the Google client, each account with its credential and tok
   assert.match(staleCalendar.value, /copy 1800s old; older than LIFE_CAL_MAX_AGE \(300s\)/);
   assert.equal(staleCalendar.hint, "run `life sync`");
   assert.equal(stale.healthy, true, "a stale copy is a warning, not a failure");
+
+  // Files no live account owns: a sign-in that never became an account, and one left behind. Each holds a live grant, so doctor names them and how to remove them.
+  await credentials.write("pending-abc123", { identity: "neel@gmail.com", refreshToken: "refresh-token-orphan-1", scopes: [], obtainedAt: CAL_NOW });
+  await credentials.write("a_gone0000001", { identity: "old@example.com", refreshToken: "refresh-token-orphan-2", scopes: [], obtainedAt: CAL_NOW });
+  const orphaned = await cal(["doctor"], { clock: fixedClock("2026-09-09T12:30:00Z", TZ) });
+  assert.equal(orphaned.code, EXIT.ok, "a warning, not a failure");
+  const files = result<Report>(orphaned).checks.find((c) => c.name === "credential files")!;
+  assert.equal(files.status, "warn");
+  assert.equal(files.value, `2 of 3 files in ${credentials.dir} belong to no live account: a_gone0000001.json, pending-abc123.json; pending-* is a sign-in that never became an account`);
+  assert.equal(files.hint, `each holds a live refresh token; delete the files: rm ${JSON.stringify(credentials.path("a_gone0000001"))} ${JSON.stringify(credentials.path("pending-abc123"))}; then revoke Life-OS under https://myaccount.google.com/permissions if that Google account keeps no other connection here`);
+  assert.ok(!orphaned.stdout.includes("refresh-token-") && !orphaned.stderr.includes("refresh-token-"), "the tokens never appear");
+  const orphanedHuman = await cal(["doctor"], { tty: true, clock: fixedClock("2026-09-09T12:30:00Z", TZ) });
+  assert.match(orphanedHuman.stdout, /^credential files +warn +2 of 3 files .*-> each holds a live refresh token; delete the files: rm /m);
+  await credentials.delete("pending-abc123");
+  await credentials.delete("a_gone0000001");
 
   const revoked = await cal(["doctor"], { clock: fixedClock("2026-09-09T12:30:00Z", TZ), io: { refreshToken: async (id) => { throw new NeedsReauth(id); } } });
   const revokedError = failed(revoked, "rejected", EXIT.rejected);

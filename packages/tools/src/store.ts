@@ -96,10 +96,19 @@ function toLogEntry(row: LogRow): LogEntry {
   };
 }
 
-/** The SQL overlap test again in JS, for exception rows whose master fell outside the calendars asked for. */
+const DAY_MS = 86400000;
+
+/**
+ * The SQL overlap test again in JS, for exception rows whose master fell
+ * outside the calendars asked for. A floating row's `at` is a wall clock
+ * spelled as UTC, up to a day away from the instant it resolves to in a
+ * display zone this method does not know, so it gets a day of slack each way
+ * and the caller's expansion (which knows the zone) trims it.
+ */
 function overlapsWindow(event: Event, from: string, to: string, fromDate: string, toDate: string): boolean {
   if (isTimedWhen(event.start) && isTimedWhen(event.end)) {
-    return Date.parse(event.start.at) < Date.parse(to) && Date.parse(event.end.at) > Date.parse(from);
+    const slack = event.start.timezone === null ? DAY_MS : 0;
+    return Date.parse(event.start.at) < Date.parse(to) + slack && Date.parse(event.end.at) > Date.parse(from) - slack;
   }
   if (!isTimedWhen(event.start) && !isTimedWhen(event.end)) {
     return event.start.date <= toDate && event.end.date >= fromDate;
@@ -220,6 +229,10 @@ export class PgTx implements Tx {
     // overlap; an end on the day of `from` can too, an earlier one cannot.
     const fromDate = fromInstant.slice(0, 10);
     const toDate = addDays(toInstant.slice(0, 10), 1);
+    // A floating row (`start.timezone` is JSON null) carries its wall clock
+    // spelled as UTC, which sits within a day of its instant in any zone; the
+    // window is widened by a day for those and the expansion trims the rest.
+    const floating = sql`jsonb_typeof(${json}->'start'->'timezone') = 'null'`;
     const rows = await this.db
       .select({ json })
       .from(schema.events)
@@ -233,6 +246,11 @@ export class PgTx implements Tx {
             and(
               sql`${startAt}::timestamptz < ${toInstant}::timestamptz`,
               sql`${endAt}::timestamptz > ${fromInstant}::timestamptz`,
+            ),
+            and(
+              floating,
+              sql`${startAt}::timestamptz < ${toInstant}::timestamptz + interval '1 day'`,
+              sql`${endAt}::timestamptz > ${fromInstant}::timestamptz - interval '1 day'`,
             ),
             and(sql`${startDate} <= ${toDate}`, sql`${endDate} >= ${fromDate}`),
           ),

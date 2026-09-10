@@ -5,8 +5,10 @@
 // The rule runs in the event's own wall clock: dtstart and every generated
 // slot are wall-clock parts carried in a UTC Date, and each slot is turned back
 // into an instant with zonedToInstant, so a weekly 9 AM stays 9 AM across a
-// DST change. A floating series (timezone null) has no zone of its own, so its
-// wall clock is read, and the slots are resolved, in the display zone passed in.
+// DST change. A floating series (timezone null) carries its wall clock spelled
+// as UTC in `at` (see time.ts), so its dtstart is that Date as it is and its
+// slots stay floating at the wall clocks the rule produces; only the window
+// check and the sort resolve them, in the display zone, through `instantOf`.
 // All-day series expand by date and overlap the window in the display zone.
 
 import rrule from "rrule";
@@ -14,6 +16,7 @@ import { isTimedWhen, whenKey, type Event, type When } from "../contract.ts";
 import {
   addDays,
   daysBetween,
+  instantOf,
   isInstant,
   isValidDate,
   localDate,
@@ -191,7 +194,9 @@ function timedSlots(
   const start = event.start as { at: string; timezone: string | null };
   const end = event.end as { at: string; timezone: string | null };
   const durationMs = Date.parse(end.at) - Date.parse(start.at);
-  const dtstart = wallDate(new Date(start.at), zone);
+  // A floating start already is its wall clock, carried as a UTC Date; a zoned one is read in its zone.
+  const floating = start.timezone === null;
+  const dtstart = floating ? new Date(start.at) : wallDate(new Date(start.at), zone);
   // A day of slack on each side covers offset changes; the overlap check trims it.
   const after = new Date(wallDate(new Date(opts.from), zone).getTime() - durationMs - DAY_MS);
   const before = new Date(wallDate(new Date(opts.to), zone).getTime() + DAY_MS);
@@ -199,6 +204,11 @@ function timedSlots(
   if (walls === null) return [selfSlot(event)];
   const slots: Slot[] = [];
   for (const wall of walls) {
+    if (floating) {
+      // The slot stays floating: the wall clock the rule produced, spelled as UTC, in no zone.
+      slots.push({ start: { at: toInstant(wall), timezone: null }, end: { at: toInstant(new Date(wall.getTime() + durationMs)), timezone: null } });
+      continue;
+    }
     const instant = zonedToInstant(wallString(wall), zone);
     if (!instant) continue; // a wall clock that does not exist in this zone (a spring-forward gap on an odd rule)
     slots.push({
@@ -331,12 +341,7 @@ function normalizeKey(key: string): string {
   return Number.isNaN(parsed) ? key : toInstant(new Date(parsed));
 }
 
-/** The instant an occurrence sorts and overlaps by: its `at`, or its date's midnight in the display zone. */
-function instantOf(when: When, zone: string): number {
-  if (isTimedWhen(when)) return Date.parse(when.at);
-  return zonedToInstant(`${when.date}T00:00`, zone)?.getTime() ?? Date.parse(when.date + "T00:00:00Z");
-}
-
+/** Overlap and order resolve a When in the display zone (`instantOf`): a floating wall clock lands where it reads in that zone. */
 function overlaps(start: When, end: When, opts: ExpandOptions): boolean {
   return instantOf(start, opts.timezone) < Date.parse(opts.to) && instantOf(end, opts.timezone) > Date.parse(opts.from);
 }

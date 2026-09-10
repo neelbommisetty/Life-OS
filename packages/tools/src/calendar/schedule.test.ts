@@ -308,3 +308,35 @@ test("a stale calendar whose account needs re-authorization is reported as unref
   const stale = await scheduleAt("2026-09-09T17:30:00Z").today({ fresh: false });
   assert.equal(stale.freshness.find((f) => f.name === "Work")!.error, null, "with fresh: false nothing was asked for, so nothing failed");
 });
+
+test("a floating event happens at its wall clock in the display zone: week places it, slots block it, and another zone reads the same clock", async () => {
+  // Stored as 10:00Z with no zone (time.ts): 10:00 wherever Neel is. Read as an instant it would be 03:00 in Los Angeles, outside working hours.
+  fake.seed(account.id, personalCal, [
+    { id: "pages", title: "Morning pages", start: { at: "2026-09-12T10:00:00Z", timezone: null }, end: { at: "2026-09-12T11:00:00Z", timezone: null }, busy: true },
+    { id: "latenight", title: "Late call", start: { at: "2026-09-12T23:30:00Z", timezone: null }, end: { at: "2026-09-13T00:30:00Z", timezone: null }, busy: true },
+  ]);
+  const report = await syncAccount(db.store, clock, fake, account.id);
+  assert.deepEqual(report.calendars.find((c) => c.calendarId === personal.id), { calendarId: personal.id, outcome: "synced", created: 2, updated: 0, deleted: 0 });
+
+  const la = await scheduleAt().week({ from: "2026-09-12", days: 2 });
+  assert.deepEqual(titles(la.days[0]!.timed), ["E:Morning pages", "E:Late call"], "both on Saturday, ordered by their wall clocks");
+  assert.deepEqual(titles(la.days[1]!.timed), ["E:Late call"], "a floating event past midnight touches the next day too");
+  const pages = la.days[0]!.timed[0]!;
+  assert.ok(pages.kind === "event");
+  assert.deepEqual(pages.occurrence.start, { at: "2026-09-12T10:00:00Z", timezone: null }, "the occurrence keeps the floating encoding");
+  assert.equal(pages.occurrence.occurrenceId, `${(await rowByExternal("pages")).id}@2026-09-12T10:00:00Z`);
+
+  const saturday = await scheduleAt().slots({ duration: 60, from: "2026-09-12", to: "2026-09-12", hours: { start: "09:00", end: "18:00", days: [6] } });
+  assert.deepEqual(saturday.slots, [
+    { start: "2026-09-12T16:00:00Z", end: "2026-09-12T17:00:00Z" }, // 09:00 to 10:00 LA
+    { start: "2026-09-12T18:00:00Z", end: "2026-09-13T01:00:00Z" }, // 11:00 to 18:00 LA
+  ], "10:00 to 11:00 Los Angeles is busy, not 03:00 to 04:00");
+
+  // Read in Kolkata the same rows sit at 10:00 and 23:30 there: the same days, the same clocks.
+  const kolkata = createSchedule(db.store, fixedClock(NOW, "Asia/Kolkata"), { tasks, adapters: { google: fake } });
+  const india = await kolkata.week({ from: "2026-09-12", days: 2 });
+  assert.deepEqual(titles(india.days[0]!.timed), ["E:Morning pages", "E:Late call"]);
+  assert.deepEqual(titles(india.days[1]!.timed), ["E:Late call"]);
+  const indiaSlots = await kolkata.slots({ duration: 60, from: "2026-09-12", to: "2026-09-12", hours: { start: "09:00", end: "12:00", days: [6] } });
+  assert.deepEqual(indiaSlots.slots, [{ start: "2026-09-12T03:30:00Z", end: "2026-09-12T04:30:00Z" }, { start: "2026-09-12T05:30:00Z", end: "2026-09-12T06:30:00Z" }], "09:00 to 10:00 and 11:00 to 12:00 Kolkata");
+});

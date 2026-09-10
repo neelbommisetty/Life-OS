@@ -74,10 +74,12 @@ function wallToInstant(wall: string, zone: string): string {
 
 const win = (from: string, to: string, timezone = LA) => ({ from, to, timezone });
 const starts = (list: Occurrence[]) => list.map((o) => ("at" in o.start ? o.start.at : o.start.date));
+/** The wall clock each occurrence starts at: a zoned one read in `zone`, a floating one as spelled (its `at` is the wall clock as UTC). */
 const wallStarts = (list: Occurrence[], zone = LA) =>
   list.map((o) => {
     if (!("at" in o.start)) return o.start.date;
-    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(o.start.at)).map((x) => [x.type, x.value]));
+    const read = o.start.timezone === null ? "UTC" : zone;
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: read, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(new Date(o.start.at)).map((x) => [x.type, x.value]));
     return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
   });
 
@@ -203,16 +205,38 @@ test("a weekly 9 AM survives the DST change in its own zone", () => {
   assert.deepEqual(starts(india), ["2026-03-02T03:30:00Z", "2026-03-09T03:30:00Z", "2026-03-16T03:30:00Z", "2026-03-23T03:30:00Z"], "a zone without DST keeps a constant offset regardless of the display zone");
 });
 
-test("a floating series keeps its wall clock in the display zone", () => {
+test("a floating series happens at its wall clock in every display zone, and its occurrences stay floating", () => {
+  // A floating When carries its wall clock spelled as UTC: 09:00 wherever Neel is, stored as 09:00Z with no zone.
   const floating = timed("2026-10-26T09:00:00", "FREQ=WEEKLY;BYDAY=MO", { zone: null });
-  // Stored as 09:00Z with no zone; read in UTC the wall clock is 09:00 and stays there.
   const utc = expandEvent(floating, [], win("2026-10-26T00:00:00Z", "2026-11-16T00:00:00Z", "UTC"));
   assert.deepEqual(starts(utc), ["2026-10-26T09:00:00Z", "2026-11-02T09:00:00Z", "2026-11-09T09:00:00Z"]);
-  assert.ok(utc.every((o) => "at" in o.start && o.start.timezone === null));
-  // Read in Los Angeles the same row is 02:00 on the wall, and stays 02:00 across the DST change.
-  const la = expandEvent(floating, [], win("2026-10-26T00:00:00Z", "2026-11-16T00:00:00Z", LA));
-  assert.deepEqual(wallStarts(la), ["2026-10-26 02:00", "2026-11-02 02:00", "2026-11-09 02:00"]);
-  assert.deepEqual(starts(la), ["2026-10-26T09:00:00Z", "2026-11-02T10:00:00Z", "2026-11-09T10:00:00Z"]);
+  assert.ok(utc.every((o) => "at" in o.start && o.start.timezone === null && "at" in o.end && o.end.timezone === null), "the slots are floating too");
+  assert.deepEqual(utc.map((o) => o.occurrenceId), [`${floating.id}@2026-10-26T09:00:00Z`, `${floating.id}@2026-11-02T09:00:00Z`, `${floating.id}@2026-11-09T09:00:00Z`], "refs carry the wall clock, the way a floating exdate does");
+  // Read in Los Angeles the same row is still 09:00 on the wall, across the DST change on Nov 1, and its slots are spelled the same.
+  const la = expandEvent(floating, [], win("2026-10-26T07:00:00Z", "2026-11-16T08:00:00Z", LA));
+  assert.deepEqual(wallStarts(la), ["2026-10-26 09:00", "2026-11-02 09:00", "2026-11-09 09:00"]);
+  assert.deepEqual(starts(la), starts(utc));
+  // The window is checked where the wall clock falls in the display zone: 09:00 LA on Oct 26 is 16:00Z, so a window ending at 15:00Z that day has no slot yet, and one starting at 16:30Z still has it.
+  assert.deepEqual(starts(expandEvent(floating, [], win("2026-10-26T00:00:00Z", "2026-10-26T15:00:00Z", LA))), []);
+  assert.deepEqual(starts(expandEvent(floating, [], win("2026-10-26T16:30:00Z", "2026-10-27T00:00:00Z", LA))), ["2026-10-26T09:00:00Z"]);
+  // And ordered by that instant: a floating 09:00 sorts after a zoned 08:30 LA (15:30Z) and before a zoned 09:30 LA, though its `at` reads 09:00Z.
+  const early = timed("2026-10-26T08:30:00", null);
+  const late = timed("2026-10-26T09:30:00", null);
+  const mixed = expandEvents([late, floating, early], win("2026-10-26T07:00:00Z", "2026-10-27T07:00:00Z", LA));
+  assert.deepEqual(mixed.map((o) => o.id), [early.id, floating.id, late.id]);
+});
+
+test("a single floating event overlaps the window where its wall clock falls in the display zone", () => {
+  // 01:00 on Sept 12, floating: 01:00Z as spelled, 08:00Z when read in Los Angeles. The LA day of Sept 12 is [07:00Z Sept 12, 07:00Z Sept 13).
+  const oneAm = timed("2026-09-12T01:00:00", null, { zone: null });
+  const laDay = win("2026-09-12T07:00:00Z", "2026-09-13T07:00:00Z", LA);
+  assert.deepEqual(starts(expandEvent(oneAm, [], laDay)), ["2026-09-12T01:00:00Z"], "shows on Sept 12 in LA, where 01:00 falls after the day began");
+  assert.deepEqual(starts(expandEvent(oneAm, [], win("2026-09-11T07:00:00Z", "2026-09-12T07:00:00Z", LA))), [], "not on Sept 11 in LA, though 01:00Z is inside that UTC span");
+  // The same row read in Kolkata (Sept 12 is [18:30Z Sept 11, 18:30Z Sept 12)) is 01:00 on Sept 12 there too.
+  assert.deepEqual(starts(expandEvent(oneAm, [], win("2026-09-11T18:30:00Z", "2026-09-12T18:30:00Z", "Asia/Kolkata"))), ["2026-09-12T01:00:00Z"]);
+  const [only] = expandEvent(oneAm, [], laDay);
+  assert.deepEqual(only!.start, { at: "2026-09-12T01:00:00Z", timezone: null }, "the occurrence keeps the floating encoding");
+  assert.equal(only!.occurrenceId, `${oneAm.id}@2026-09-12T01:00:00Z`);
 });
 
 test("a window that starts mid-series picks up from the right slot, and counts from the start", () => {
