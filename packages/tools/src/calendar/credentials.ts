@@ -3,7 +3,7 @@
 // is the only reader and writer of those files. It never logs their contents
 // and its errors name the path, never what was in it.
 
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { randomBytes } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,6 +119,27 @@ export class CredentialStore {
       if (isNotFound(error)) return false;
       throw error;
     }
+  }
+
+  /**
+   * The ids of every credential file in the directory, sorted: account ids and
+   * any provisional `pending-*` file a sign-in left behind. `life doctor` uses
+   * it to warn on a file no live account owns. Empty when the directory does
+   * not exist yet; the temp files of an interrupted write are not listed.
+   */
+  async list(): Promise<string[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.dir);
+    } catch (error) {
+      if (isNotFound(error)) return [];
+      throw error;
+    }
+    return names
+      .filter((name) => name.endsWith(".json"))
+      .map((name) => name.slice(0, -".json".length))
+      .filter((id) => ACCOUNT_ID.test(id))
+      .sort();
   }
 
   /**

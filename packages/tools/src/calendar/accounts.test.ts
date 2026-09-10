@@ -6,8 +6,10 @@ import { join } from "node:path";
 import type { Account, Calendar, Ctx, Receipt } from "../contract.ts";
 import { createTestDb, fixedClock, type TestDb } from "../db/testing.ts";
 import { FakeAdapter, ProviderUnavailable, type CalendarAdapter, type ProviderCalendar, type SeedEvent } from "./adapter.ts";
-import { createAccounts, resolveAccount, resolveCalendar, type Accounts } from "./accounts.ts";
+import { createAccounts, resolveAccount, resolveCalendar, type Accounts, type CredentialFiles, type RevokingAdapter } from "./accounts.ts";
 import { CredentialStore } from "./credentials.ts";
+import type { Store } from "../store.ts";
+import { bump, mutate, okMutation, fail } from "../core.ts";
 
 const NOW = "2026-09-09T12:00:00Z";
 const clock = fixedClock(NOW);
@@ -32,6 +34,8 @@ let credentials: CredentialStore;
 let fake: FakeAdapter;
 let ops: Accounts;
 let tempRoot: string;
+/** Every revocation the adapter was asked for, with whether the file was still there at that moment (revoke must come before delete). */
+const revoked: { id: string; filePresent: boolean }[] = [];
 
 before(async () => {
   db = await createTestDb();
@@ -45,8 +49,8 @@ after(async () => {
   await rm(tempRoot, { recursive: true, force: true });
 });
 
-/** The fake as a real adapter behaves: `connect` leaves the credential under the provisional id for `account.add` to adopt. */
-function connecting(inner: FakeAdapter, files: CredentialStore): CalendarAdapter {
+/** The fake as a real adapter behaves: `connect` leaves the credential under the provisional id for `account.add` to adopt, and `revokeCredential` records what it was asked to revoke. */
+function connecting(inner: FakeAdapter, files: CredentialStore): RevokingAdapter {
   return {
     provider: "google",
     async connect(opts) {
@@ -54,12 +58,19 @@ function connecting(inner: FakeAdapter, files: CredentialStore): CalendarAdapter
       await files.write(result.credentialId, { identity: result.identity, refreshToken: `refresh-${result.credentialId}`, scopes: result.scopes, obtainedAt: NOW });
       return result;
     },
+    async revokeCredential(credentialId) {
+      const filePresent = await files.exists(credentialId);
+      revoked.push({ id: credentialId, filePresent });
+      return filePresent;
+    },
     listCalendars: (accountId) => inner.listCalendars(accountId),
     syncPage: (accountId, calendar, cursor, since) => inner.syncPage(accountId, calendar, cursor, since),
     create: (accountId, calendar, event, lifeId) => inner.create(accountId, calendar, event, lifeId),
     update: (accountId, calendar, providerId, patch, etag) => inner.update(accountId, calendar, providerId, patch, etag),
     delete: (accountId, calendar, providerId) => inner.delete(accountId, calendar, providerId),
     respond: (accountId, calendar, providerId, response) => inner.respond(accountId, calendar, providerId, response),
+    move: (accountId, from, to, providerId) => inner.move(accountId, from, to, providerId),
+    instances: (accountId, calendar, masterId) => inner.instances(accountId, calendar, masterId),
     instanceId: (masterId, originalStart) => inner.instanceId(masterId, originalStart),
   };
 }
@@ -135,17 +146,54 @@ test("the first account becomes primary, adopts the credential under its id, and
   assert.equal(added[0].recordId, first.id);
 });
 
-test("a duplicate identity is rejected with the existing id, and the sign-in's credential is not kept", async () => {
-  fake.connectAs("neel@example.com");
+test("adding an identity that already has a live account re-authorises it: new credential, merged scopes, updated receipt, a sync", async () => {
+  const extra = "https://www.googleapis.com/auth/calendar.readonly";
+  fake.connectAs("neel@example.com", [...first.scopes, extra]);
   const receipt = await ops.account.add({ provider: "google", open: noop }, neel);
-  const issues = rejectedIssues(receipt);
-  assert.ok(receipt.ok === false && receipt.outcome === "rejected");
-  assert.equal(receipt.id, first.id);
-  assert.match(issues[0], /already connected/);
-  assert.ok(issues[0].includes(first.id));
+  const account = okRecord<Account>(receipt);
+  assert.equal(receipt.outcome, "updated");
+  assert.equal(receipt.id, first.id, "no second account for the identity");
+  assert.equal(account.status, "connected");
+  assert.deepEqual(account.scopes, [...first.scopes, extra], "scopes merged, order kept");
+  assert.equal(account.label, "home", "an omitted label keeps the old one");
+  assert.equal(account.primary, true);
+  assert.equal(account.version, first.version + 1);
+  assert.ok(receipt.sync, "the re-authorised account is synced");
+  assert.equal(receipt.sync.accountId, first.id);
   assert.equal((await allAccounts()).length, 1);
-  assert.equal(await credentials.exists("fake-credential-2"), false, "the orphaned provisional credential was removed");
-  assert.equal(await credentials.exists(first.id), true, "the existing account keeps its credential");
+
+  // The fresh credential replaced the one on file, under the same id; the provisional file is gone and nothing was revoked.
+  assert.equal((await credentials.read(first.id))?.refreshToken, "refresh-fake-credential-2");
+  assert.equal(await credentials.exists("fake-credential-2"), false);
+  assert.equal(revoked.length, 0, "the grant was adopted, so nothing was revoked");
+  const added = await logOf("account.add");
+  assert.equal(added.length, 2);
+  assert.equal(added[1].recordId, first.id);
+  first = account;
+});
+
+test("a needs_reauth account is reconnected by adding the same identity again", async () => {
+  await mutate(db.store, clock, "account", "account.sync", { actor: "import:google" }, async (tx, _c, now) => {
+    const current = await tx.get("account", first.id);
+    if (!current) return fail(["missing"]);
+    return okMutation("updated", current, bump({ ...current, status: "needs_reauth" }, now));
+  });
+  assert.equal((await ops.account.get(first.id))?.status, "needs_reauth");
+
+  fake.connectAs("neel@example.com");
+  const receipt = await ops.account.add({ provider: "google", label: "main", open: noop }, neel);
+  const account = okRecord<Account>(receipt);
+  assert.equal(receipt.outcome, "updated");
+  assert.equal(account.id, first.id);
+  assert.equal(account.status, "connected");
+  assert.equal(account.label, "main", "a label given on re-authorisation replaces the old one");
+  assert.equal(account.syncedAt, NOW);
+  assert.ok(receipt.sync && receipt.sync.calendars.every((entry) => entry.outcome !== "failed"), JSON.stringify(receipt.sync));
+  assert.equal((await credentials.read(first.id))?.refreshToken, "refresh-fake-credential-3", "the file holds the new token");
+  assert.equal(await credentials.exists("fake-credential-3"), false);
+  assert.equal(revoked.length, 0, "nothing revoked");
+  assert.equal((await allAccounts()).length, 1);
+  first = okRecord(await ops.account.update(first.id, { label: "home" }, neel));
 });
 
 test("a sign-in that fails leaves nothing behind", async () => {
@@ -426,22 +474,26 @@ test("a sync failure on add comes back as a warning, not a hidden empty", async 
 });
 
 test("remove is refused while the account is primary and another exists", async () => {
+  revoked.length = 0;
   const receipt = await ops.account.remove("work@example.com", neel);
   const issues = rejectedIssues(receipt);
   assert.match(issues[0], /primary account/);
   assert.ok(issues[0].includes("neel@example.com"), "names the account to promote");
   assert.equal(receipt.ok === false && receipt.outcome === "rejected" && receipt.id, second.id);
   assert.equal(await credentials.exists(second.id), true, "the credential stays");
+  assert.equal(revoked.length, 0, "and its grant is not revoked");
   assert.equal((await ops.account.get(second.id))?.deletedAt, null);
   assert.ok((await calendarsOf(second.id)).every((c) => c.deletedAt === null));
 });
 
-test("remove soft-deletes the account, its calendars, and their events, and deletes the credential", async () => {
+test("remove soft-deletes the account, its calendars, and their events, and revokes then deletes the credential", async () => {
+  revoked.length = 0;
   const receipt = await ops.account.remove("neel@example.com", { actor: "neel", reason: "old account" });
   const removed = okRecord(receipt);
   assert.equal(receipt.outcome, "updated");
   assert.equal(removed.deletedAt, NOW);
   assert.equal(removed.status, "disconnected");
+  assert.deepEqual(revoked, [{ id: first.id, filePresent: true }], "the grant is revoked at the provider while the file is still there, once the removal is committed");
   assert.equal(await credentials.exists(first.id), false, "credential file deleted");
   assert.equal(await credentials.exists(second.id), true, "the other account's credential is untouched");
 
@@ -503,4 +555,79 @@ test("without an adapter for the provider, sync reports the failure per calendar
     [["failed", "No google adapter is configured"]],
   );
   assert.equal((await ops.calendar.get("Solo"))?.syncError, null, "a missing adapter is reported, not recorded as the calendar's sync error");
+});
+
+
+test("when the database fails after the sign-in, the credential is revoked and deleted before the error propagates", async () => {
+  const broken: Store = {
+    transaction: () => Promise.reject(new Error("connection refused")),
+    read: (work) => db.store.read(work),
+    close: () => db.store.close(),
+  };
+  const offline = createAccounts(broken, clock, { adapters: { google: connecting(fake, credentials) }, credentials });
+  fake.connectAs("nowhere@example.com");
+  const before = (await allAccounts()).length;
+  revoked.length = 0;
+  await assert.rejects(offline.account.add({ provider: "google", open: noop }, neel), /connection refused/);
+  const [call] = revoked;
+  assert.ok(call, "the grant was revoked");
+  assert.match(call.id, /^fake-credential-\d+$/);
+  assert.equal(call.filePresent, true, "revoked while the file was still there, then deleted");
+  assert.equal(await credentials.exists(call.id), false, "no orphan on disk");
+  assert.equal((await allAccounts()).length, before);
+});
+
+test("when the credential cannot be adopted, the account is marked needs_reauth, the grant is discarded, and the add is rejected naming it", async () => {
+  const unwritable: CredentialFiles = {
+    rename: () => Promise.reject(new Error("EROFS: read-only file system")),
+    delete: (id) => credentials.delete(id),
+  };
+  const stuck = createAccounts(db.store, clock, { adapters: { google: connecting(fake, credentials) }, credentials: unwritable });
+
+  // A new identity: the row is created but cannot use its grant.
+  fake.connectAs("adopt@example.com");
+  fake.seed("adopt@example.com", { id: "adopt@example.com", name: "Adopt", color: null, timezone: "UTC", writable: true, primary: true, hidden: false });
+  revoked.length = 0;
+  const created = await stuck.account.add({ provider: "google", open: noop }, neel);
+  const issues = rejectedIssues(created);
+  assert.match(issues[0], /^credential: the credential could not be moved under a_[a-z0-9]{10}: EROFS/);
+  assert.match(issues[0], /status needs_reauth; run life account add google again and pick adopt@example\.com/);
+  assert.ok(created.ok === false && created.outcome === "rejected" && created.id, "the rejection names the account");
+  const stranded = await ops.account.get("adopt@example.com");
+  assert.ok(stranded);
+  assert.equal(stranded.id, created.ok === false && created.outcome === "rejected" ? created.id : "");
+  assert.equal(stranded.status, "needs_reauth");
+  assert.equal(stranded.primary, false);
+  assert.equal(stranded.syncedAt, null, "no sync was attempted without a usable credential");
+  assert.deepEqual(revoked.map((call) => call.filePresent), [true]);
+  assert.equal(await credentials.exists(revoked[0].id), false);
+  assert.equal(await credentials.exists(stranded.id), false);
+  const compensation = (await logOf("account.add")).filter((entry) => entry.recordId === stranded.id);
+  assert.equal(compensation.length, 2, "the creation and the compensating mark");
+  assert.equal(compensation[1].reason, "credential not adopted: the credential could not be moved under " + stranded.id + ": EROFS: read-only file system");
+  assert.equal(compensation[1].key, null, "the compensation does not reuse the caller's key");
+
+  // The next add for the identity re-authorises the stranded row instead of creating another.
+  fake.connectAs("adopt@example.com");
+  revoked.length = 0;
+  const recovered = await ops.account.add({ provider: "google", open: noop }, neel);
+  const account = okRecord<Account>(recovered);
+  assert.equal(recovered.outcome, "updated");
+  assert.equal(account.id, stranded.id);
+  assert.equal(account.status, "connected");
+  assert.equal(account.syncedAt, NOW);
+  assert.equal(await credentials.exists(account.id), true);
+  assert.equal(revoked.length, 0, "nothing revoked");
+
+  // A re-authorisation whose adoption fails: the old file stays, the account is marked needs_reauth, the new grant is discarded.
+  const oldToken = (await credentials.read(account.id))?.refreshToken;
+  fake.connectAs("adopt@example.com");
+  const reauth = await stuck.account.add({ provider: "google", open: noop }, neel);
+  assert.match(rejectedIssues(reauth)[0], /^credential: .*status needs_reauth; run life account add google again/);
+  assert.equal(reauth.ok === false && reauth.outcome === "rejected" && reauth.id, account.id);
+  assert.equal((await ops.account.get(account.id))?.status, "needs_reauth");
+  assert.equal((await credentials.read(account.id))?.refreshToken, oldToken, "the file on disk is untouched");
+  assert.deepEqual(revoked.map((call) => call.filePresent), [true]);
+  assert.equal(await credentials.exists(revoked[0].id), false);
+  assert.equal((await allAccounts()).filter((a) => a.identity === "adopt@example.com").length, 1);
 });

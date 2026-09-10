@@ -75,6 +75,20 @@ test("rename moves a credential from a provisional id to the account's", async (
   assert.equal(await store.rename("a_final", "a_final"), true, "renaming onto itself is a no-op that reports presence");
 });
 
+test("list names every credential file, provisional ones included, and nothing else", async () => {
+  const store = await tempStore();
+  assert.deepEqual(await store.list(), [], "no directory yet is an empty list, not an error");
+  await store.write("a_zeta", credential);
+  await store.write("pending-k9x", credential);
+  await store.write("a_alpha", credential);
+  await writeFile(join(store.dir, "a_alpha.json.deadbeef.tmp"), "half-written");
+  await writeFile(join(store.dir, "notes.txt"), "not a credential");
+  await writeFile(join(store.dir, ".hidden.json"), "{}");
+  assert.deepEqual(await store.list(), ["a_alpha", "a_zeta", "pending-k9x"]);
+  await store.delete("pending-k9x");
+  assert.deepEqual(await store.list(), ["a_alpha", "a_zeta"]);
+});
+
 test("ids that are not plain file names are refused, so nothing escapes the directory", async () => {
   const store = await tempStore();
   for (const bad of ["../escape", "a/b", "", ".hidden", "a b", "x".repeat(200)]) {

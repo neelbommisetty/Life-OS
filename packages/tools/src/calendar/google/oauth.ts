@@ -22,6 +22,7 @@ export const GOOGLE_SCOPES = [
 export const GOOGLE_ENDPOINTS = {
   auth: "https://accounts.google.com/o/oauth2/v2/auth",
   token: "https://oauth2.googleapis.com/token",
+  revoke: "https://oauth2.googleapis.com/revoke",
   userinfo: "https://openidconnect.googleapis.com/v1/userinfo",
 } as const;
 
@@ -255,6 +256,44 @@ export class GoogleOAuth implements TokenSource {
     const fresh: AccessToken = { token: token.access_token, expiresAt: new Date(this.#now().getTime() + expiresIn * 1000).toISOString() };
     this.#cache.set(accountId, fresh);
     return fresh;
+  }
+
+  // ---------------------------------------------------------------- revocation
+
+  /**
+   * Tell Google a grant is no longer wanted: POST the refresh token to the
+   * revoke endpoint. Resolves when Google revoked it or already considered it
+   * dead (400 `invalid_token`); throws ProviderUnavailable on an outage or a
+   * timeout and a plain Error on any other answer. The token never appears in
+   * an error message. Note Google revokes the user's whole grant for this
+   * client, not just one token, so this is only for a grant nobody else uses.
+   */
+  async revoke(refreshToken: string): Promise<void> {
+    const response = await this.#send(this.#endpoints.revoke, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body: new URLSearchParams({ token: refreshToken }).toString(),
+    });
+    if (response.ok) return;
+    const body = await readJson<TokenResponse>(response);
+    const reason = body?.error ?? `HTTP ${response.status}`;
+    if (response.status === 400 && (reason === "invalid_token" || reason === "invalid_grant")) return; // already dead: the outcome we wanted
+    if (response.status >= 500 || response.status === 429) {
+      throw new ProviderUnavailable(`Google's token service is unavailable (${reason})`, response.status);
+    }
+    throw new Error(`Google's revoke request failed (${reason})`);
+  }
+
+  /**
+   * Revoke the token in a credential file, typically a provisional one from
+   * `authorize` that no account adopted. The file is left in place for the
+   * caller to delete once the grant is dead. False when there is no file.
+   */
+  async revokeCredential(credentialId: string): Promise<boolean> {
+    const credential = await this.#credentials.read(credentialId);
+    if (!credential) return false;
+    await this.revoke(credential.refreshToken);
+    return true;
   }
 
   // ---------------------------------------------------------------- Google requests

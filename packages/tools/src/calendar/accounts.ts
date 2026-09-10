@@ -45,7 +45,12 @@ export type AccountAddInput = {
 export type AccountAddReceipt = Receipt<Account> & { sync?: SyncReport; warnings?: string[] };
 
 export interface AccountOps {
-  /** Run the provider's sign-in, create the account (primary when it is the first), adopt the credential, sync. */
+  /**
+   * Run the provider's sign-in, then create the account (primary when it is the
+   * first) or, when a live account already has that identity, re-authorise it
+   * (`updated`: status back to connected, scopes merged); adopt the credential
+   * under the account's id once the mutation is committed; sync.
+   */
   add(input: AccountAddInput, ctx: Ctx): Promise<AccountAddReceipt>;
   /** By id (deleted included; check `deletedAt`), identity email, or label. */
   get(ref: string): Promise<Account | null>;
@@ -77,6 +82,14 @@ export type Accounts = { account: AccountOps; calendar: CalendarOps };
 
 /** What this module needs from the credential files: adopting the sign-in's provisional file and deleting an account's. `CredentialStore` fits; tests inject one on a temp directory. */
 export type CredentialFiles = Pick<CredentialStore, "rename" | "delete">;
+
+/**
+ * An adapter that can revoke a grant its `connect` minted, by the credential
+ * id it returned. `account.add` calls it before deleting a credential nobody
+ * adopted, so the grant does not stay live at the provider. Optional on the
+ * adapter because not every provider has a revoke endpoint.
+ */
+export type RevokingAdapter = CalendarAdapter & { revokeCredential(credentialId: string): Promise<boolean> };
 
 export type AccountsDeps = { adapters: Adapters; credentials: CredentialFiles };
 
@@ -122,6 +135,20 @@ const rejectedLookup = <T>(lookup: { issues: string[]; id?: string }): Receipt<T
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function canRevoke(adapter: CalendarAdapter): adapter is RevokingAdapter {
+  return typeof (adapter as Partial<RevokingAdapter>).revokeCredential === "function";
+}
+
+/**
+ * Drop a credential nothing keeps any more: revoke the grant at the provider
+ * (when the adapter can), then delete the file. Best effort; never throws, so
+ * the receipt it follows still reaches the caller.
+ */
+async function discardCredential(adapter: CalendarAdapter | undefined, credentials: CredentialFiles, credentialId: string): Promise<void> {
+  if (adapter && canRevoke(adapter)) await adapter.revokeCredential(credentialId).catch(() => false);
+  await credentials.delete(credentialId).catch(() => false);
 }
 
 // ------------------------------------------------------------------ reference resolution
@@ -269,36 +296,64 @@ export function createAccounts(store: Store, clock: Clock, deps: AccountsDeps): 
     }
     const { identity, scopes, credentialId } = connected;
 
-    const receipt = await write("account", "account.add", context, async (tx, _c, now) => {
-      const accounts = await tx.all("account");
-      const existing = accounts.find((account) => account.provider === provider && sameIdentity(account.identity, identity));
-      if (existing) return fail([`identity: ${identity} is already connected as ${existing.id}`], { id: existing.id, record: existing });
-      const id = newId("account");
-      // Every check has passed: the credential moves under the new id inside the transaction, so a rollback leaves no account without it.
-      const adopted = await credentials.rename(credentialId, id);
-      if (!adopted) return fail([`credential: the sign-in left no credential under "${credentialId}"; connect the account again`]);
-      const account: Account = {
-        id,
-        provider,
-        identity,
-        label: label ?? null,
-        primary: accounts.length === 0,
-        status: "connected",
-        scopes: unique(scopes),
-        syncedAt: null,
-        version: 1,
-        createdAt: now,
-        updatedAt: now,
-        deletedAt: null,
-      };
-      return okMutation("created", null, account);
-    });
+    /** Drop the sign-in's credential when no account keeps it. */
+    const discard = (): Promise<void> => discardCredential(adapter, credentials, credentialId);
+
+    let receipt: Receipt<Account>;
+    try {
+      receipt = await write("account", "account.add", context, async (tx, _c, now) => {
+        const accounts = await tx.all("account");
+        const existing = accounts.find((account) => account.provider === provider && sameIdentity(account.identity, identity));
+        if (existing) {
+          // A live account already has this identity, so the add is a re-authorisation: the fresh grant replaces the one on file
+          // once this commits, whatever state the old one was in. Always `updated`, since a new grant is worth a log entry even
+          // when no field moves.
+          const next: Account = { ...existing, status: "connected", scopes: unique([...existing.scopes, ...scopes]) };
+          if (label !== undefined) next.label = label;
+          return okMutation("updated", existing, bump(next, now));
+        }
+        const account: Account = {
+          id: newId("account"),
+          provider,
+          identity,
+          label: label ?? null,
+          primary: accounts.length === 0,
+          status: "connected",
+          scopes: unique(scopes),
+          syncedAt: null,
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        };
+        return okMutation("created", null, account);
+      });
+    } catch (error) {
+      // The database failed after the sign-in: the grant must not stay live with a file nobody references.
+      await discard();
+      throw error;
+    }
     if (!receipt.ok) {
-      // A refresh token nobody adopted must not stay on disk.
-      await credentials.delete(credentialId).catch(() => false);
+      await discard();
       return receipt;
     }
-    if (receipt.outcome !== "created") return receipt;
+
+    // The credential is adopted only once the account is committed, so a rollback never leaves a file under an id no row has
+    // (and for a re-authorisation, the old file is replaced only once the record says connected). If the adoption fails the
+    // account cannot use the grant: it is marked needs_reauth, the credential is discarded, and the add is rejected naming
+    // the account, so the next add for this identity re-authorises it.
+    const adoption = await adopt(credentialId, receipt.id);
+    if (adoption !== null) {
+      const compensated = await mutate(store, clock, "account", "account.add", { ...cascadeCtx(context), reason: `credential not adopted: ${adoption}` }, async (tx, _c, now) => {
+        const current = await tx.get("account", receipt.id);
+        if (!current) return fail([`account: ${receipt.id} not found`]);
+        if (current.status === "needs_reauth") return okMutation("unchanged", current, current);
+        return okMutation("updated", current, bump({ ...current, status: "needs_reauth" }, now));
+      });
+      await discard();
+      const record = compensated.ok ? compensated.record : receipt.record;
+      return rejected<Account>([`credential: ${adoption}; ${identity} stays ${receipt.id} with status needs_reauth; run life account add google again and pick ${identity}`], { id: receipt.id, record });
+    }
 
     // The first sync opens its own transactions (one per page), so it runs once the account is committed, never inside its transaction.
     const sync = await syncAccount(store, clock, adapter, receipt.id);
@@ -307,6 +362,16 @@ export function createAccounts(store: Store, clock: Clock, deps: AccountsDeps): 
     const warnings = sync.calendars.filter((entry) => entry.error !== undefined).map((entry) => `${nameOf(entry.calendarId)}: ${entry.error}`);
     const record = after.account ?? receipt.record;
     return { ...receipt, record, version: record.version, sync, ...(warnings.length ? { warnings } : {}) };
+  }
+
+  /** Move the sign-in's credential under the account's id, replacing any file there. Null on success, else what went wrong (never a token). */
+  async function adopt(credentialId: string, accountId: string): Promise<string | null> {
+    try {
+      const adopted = await credentials.rename(credentialId, accountId);
+      return adopted ? null : `the sign-in left no credential under "${credentialId}"`;
+    } catch (error) {
+      return `the credential could not be moved under ${accountId}: ${errorMessage(error)}`;
+    }
   }
 
   async function accountUpdate(tx: Tx, ref: string, input: AccountUpdate, ctx: Ctx, now: string): Promise<Mutation<Account>> {
@@ -412,8 +477,9 @@ export function createAccounts(store: Store, clock: Clock, deps: AccountsDeps): 
     sync: (ref, opts) => accountSync(ref, opts),
     remove: async (ref, ctx) => {
       const receipt = await write("account", "account.remove", ctx, (tx, c, now) => accountRemove(tx, ref, c, now));
-      // The file goes only once the removal is committed; a rejected remove keeps the token for the account that still exists.
-      if (receipt.ok && receipt.outcome === "updated") await credentials.delete(receipt.id);
+      // The grant and its file go only once the removal is committed; a rejected remove keeps the token for the account
+      // that still exists. Revoking is safe here: identities are unique among live accounts, so no other account shares it.
+      if (receipt.ok && receipt.outcome === "updated") await discardCredential(adapters[receipt.record.provider], credentials, receipt.id);
       return receipt;
     },
   };

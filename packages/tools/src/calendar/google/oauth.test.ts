@@ -37,6 +37,7 @@ type Sent = { url: string; method: string; headers: Record<string, string>; form
 function fakeGoogle(opts: { expiresIn?: number; refreshToken?: string | null; email?: string | null } = {}) {
   const sent: Sent[] = [];
   const queued: Response[] = [];
+  const revoked: string[] = [];
   let tokenCalls = 0;
   const fetch: FetchLike = async (input, init) => {
     const url = String(input);
@@ -64,13 +65,17 @@ function fakeGoogle(opts: { expiresIn?: number; refreshToken?: string | null; em
       }
       return json(400, { error: "unsupported_grant_type" });
     }
+    if (url === GOOGLE_ENDPOINTS.revoke) {
+      revoked.push(form?.get("token") ?? "");
+      return json(200, {});
+    }
     if (url === GOOGLE_ENDPOINTS.userinfo) {
       if (opts.email === null) return json(200, { sub: "123" });
       return json(200, { sub: "123", email: opts.email ?? "Neel@Example.com", email_verified: true });
     }
     return json(404, { error: "not_found" });
   };
-  return { fetch, sent, queue: (response: Response) => queued.push(response), tokenCalls: () => tokenCalls };
+  return { fetch, sent, revoked, queue: (response: Response) => queued.push(response), tokenCalls: () => tokenCalls };
 }
 
 function json(status: number, body: unknown): Response {
@@ -315,6 +320,63 @@ test("a fetch that never resolves is cut off by the timeout signal", async () =>
     assert.match(error.message, /did not answer within/);
     return true;
   });
+});
+
+// ---------------------------------------------------------------- revocation
+
+test("revoke posts the refresh token to the revoke endpoint with the timeout and treats an already-dead token as done", async () => {
+  const google = fakeGoogle();
+  const oauth = new GoogleOAuth({ credentials: await tempStore(), config, fetch: google.fetch });
+  await oauth.revoke(REFRESH);
+  assert.deepEqual(google.revoked, [REFRESH]);
+  const request = google.sent[0];
+  assert.equal(request.url, GOOGLE_ENDPOINTS.revoke);
+  assert.equal(request.url, "https://oauth2.googleapis.com/revoke");
+  assert.equal(request.method, "POST");
+  assert.equal(request.headers["content-type"], "application/x-www-form-urlencoded");
+  assert.deepEqual([...(request.form?.keys() ?? [])], ["token"], "only the token goes; no client secret");
+  assert.ok(request.signal instanceof AbortSignal, "the usual timeout applies");
+
+  google.queue(json(400, { error: "invalid_token", error_description: "Token expired or revoked" }));
+  await oauth.revoke("1//already-dead-token");
+
+  google.queue(json(503, { error: "temporarily_unavailable" }));
+  await assert.rejects(oauth.revoke("1//outage-token-value"), (error: Error) => {
+    assert.ok(error instanceof ProviderUnavailable);
+    assert.equal(error.status, 503);
+    assert.ok(!error.message.includes("outage-token-value"));
+    return true;
+  });
+  google.queue(json(403, { error: "forbidden" }));
+  await assert.rejects(oauth.revoke("1//refused-token-value"), (error: Error) => {
+    assert.ok(!(error instanceof ProviderUnavailable));
+    assert.match(error.message, /revoke request failed \(forbidden\)/);
+    assert.ok(!error.message.includes("refused-token-value"));
+    return true;
+  });
+
+  const hanging: FetchLike = (_input, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+    });
+  const slow = new GoogleOAuth({ credentials: await tempStore(), config, fetch: hanging, timeoutMs: 30 });
+  await assert.rejects(slow.revoke(REFRESH), (error: Error) => {
+    assert.ok(error instanceof ProviderUnavailable);
+    assert.match(error.message, /oauth2\.googleapis\.com did not answer within/);
+    return true;
+  });
+});
+
+test("revokeCredential revokes the token in a credential file and leaves the file for the caller to delete", async () => {
+  const google = fakeGoogle();
+  const store = await storeWith("pending-abc", "1//provisional-token-value");
+  const oauth = new GoogleOAuth({ credentials: store, config, fetch: google.fetch });
+  assert.equal(await oauth.revokeCredential("pending-abc"), true);
+  assert.deepEqual(google.revoked, ["1//provisional-token-value"]);
+  assert.equal(await store.exists("pending-abc"), true, "deleting the file is the caller's job");
+  assert.equal(await oauth.revokeCredential("pending-missing"), false);
+  assert.equal(google.sent.length, 1, "nothing is sent for a missing file");
+  assert.ok(!google.sent.some((request) => request.url === GOOGLE_ENDPOINTS.token), "revocation needs no client credentials");
 });
 
 // ---------------------------------------------------------------- the client configuration
