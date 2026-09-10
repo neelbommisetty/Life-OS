@@ -926,7 +926,7 @@ test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other
   assert.match(check("database url").value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from LIFE_DATABASE_URL in the environment\)$/);
   assert.match(check("connectivity").value, /PostgreSQL \d+/);
   assert.ok(check("connectivity").value.includes(db.schema), "connected to the throwaway schema");
-  assert.match(check("migrations").value, /^current \(1 applied, latest 0000_initial\)$/);
+  assert.match(check("migrations").value, /^current \(2 applied, latest 0001_calendar\)$/);
   assert.match(check("inbox").value, /^p_[a-z0-9]{10} \(Inbox\)$/);
   assert.equal(check("timezone").value, `${TZ} (LIFE_TZ)`);
   assert.equal(check("actor").value, "neel (LIFE_ACTOR)");

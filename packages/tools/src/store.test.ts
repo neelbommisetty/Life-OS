@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { setTimeout as sleep } from "node:timers/promises";
-import type { Label, LogEntry, Task } from "./contract.ts";
+import type { Event, Label, LogEntry, Task } from "./contract.ts";
 import { createTestDb, type TestDb } from "./db/testing.ts";
 import { withSavepoint, type Tx } from "./store.ts";
 
@@ -277,4 +277,131 @@ test("withSavepoint undoes only the step that threw and keeps the transaction us
   assert.deepEqual(await db.store.read((tx) => tx.history("label", "l_savept0002")), [], "the log entry went with it");
   assert.equal(await db.store.read((tx) => tx.getReceipt("savept-key")), null, "and the receipt");
   await assert.rejects(withSavepoint({} as Tx, async () => 1), /no Postgres client/);
+});
+
+// ------------------------------------------------------------------ eventsInRange
+
+const CAL1 = "c_range00001";
+const CAL2 = "c_range00002";
+const timed = (start: string, end: string): Pick<Event, "start" | "end"> => ({
+  start: { at: start, timezone: "America/Los_Angeles" },
+  end: { at: end, timezone: "America/Los_Angeles" },
+});
+const allDay = (start: string, end: string): Pick<Event, "start" | "end"> => ({ start: { date: start }, end: { date: end } });
+
+const event = (id: string, extra: Partial<Event> = {}): Event => ({
+  id,
+  calendarId: CAL1,
+  accountId: "a_range00001",
+  title: `Event ${id}`,
+  notes: null,
+  location: null,
+  ...timed("2026-09-10T16:00:00Z", "2026-09-10T17:00:00Z"),
+  repeat: null,
+  masterId: null,
+  originalStart: null,
+  status: "confirmed",
+  busy: true,
+  organizer: null,
+  attendees: [],
+  myResponse: null,
+  conferencing: null,
+  reminders: null,
+  origin,
+  external: { provider: "google", id: `g-${id}`, etag: "1", iCalUID: `${id}@google.com`, updatedAt: now },
+  version: 1,
+  createdAt: now,
+  updatedAt: now,
+  deletedAt: null,
+  ...extra,
+});
+
+const rule = { rrule: "RRULE:FREQ=WEEKLY;BYDAY=TH", exdates: [] };
+
+test("eventsInRange returns overlapping rows, every master with a rule and its exceptions, never deleted rows", async () => {
+  const from = "2026-09-10T00:00:00Z";
+  const to = "2026-09-11T00:00:00Z";
+  await db.store.transaction(async (tx) => {
+    // Timed rows against the window [from, to).
+    await tx.put("event", event("e_rangein001"));
+    await tx.put("event", event("e_rangeafter", timed("2026-09-12T16:00:00Z", "2026-09-12T17:00:00Z")));
+    await tx.put("event", event("e_rangestrad", timed("2026-09-09T23:00:00Z", "2026-09-10T01:00:00Z")));
+    await tx.put("event", event("e_rangeendat", timed("2026-09-09T22:00:00Z", "2026-09-10T00:00:00Z")));
+    await tx.put("event", event("e_rangestart", timed("2026-09-11T00:00:00Z", "2026-09-11T01:00:00Z")));
+    await tx.put("event", event("e_rangespans", timed("2026-09-01T00:00:00Z", "2026-09-30T00:00:00Z")));
+    await tx.put("event", event("e_rangedelet", { deletedAt: now }));
+    // A master with a rule far outside the window, and its exception row further still.
+    await tx.put("event", event("e_rangemastr", { ...timed("2025-01-02T17:00:00Z", "2025-01-02T18:00:00Z"), repeat: rule }));
+    await tx.put("event", event("e_rangeexcep", {
+      ...timed("2027-05-06T18:00:00Z", "2027-05-06T19:00:00Z"),
+      masterId: "e_rangemastr",
+      originalStart: { at: "2027-05-06T17:00:00Z", timezone: "America/Los_Angeles" },
+    }));
+    // A deleted master: neither it nor its out-of-window exception row comes back, but an exception row overlapping the window on its own does.
+    await tx.put("event", event("e_rangedmast", { ...timed("2025-01-02T17:00:00Z", "2025-01-02T18:00:00Z"), repeat: rule, deletedAt: now }));
+    await tx.put("event", event("e_rangedexc1", {
+      ...timed("2027-05-06T18:00:00Z", "2027-05-06T19:00:00Z"),
+      masterId: "e_rangedmast",
+      originalStart: { at: "2027-05-06T17:00:00Z", timezone: "America/Los_Angeles" },
+    }));
+    await tx.put("event", event("e_rangedexc2", {
+      ...timed("2026-09-10T18:00:00Z", "2026-09-10T19:00:00Z"),
+      masterId: "e_rangedmast",
+      originalStart: { at: "2026-09-10T17:00:00Z", timezone: "America/Los_Angeles" },
+    }));
+    // All-day rows: matched by date with a day of slack after `to`.
+    await tx.put("event", event("e_rangeaday1", { ...allDay("2026-09-10", "2026-09-11"), busy: false }));
+    await tx.put("event", event("e_rangeaday2", { ...allDay("2026-09-01", "2026-09-02"), busy: false }));
+    await tx.put("event", event("e_rangeaday3", { ...allDay("2026-09-12", "2026-09-13"), busy: false }));
+    await tx.put("event", event("e_rangeaday4", { ...allDay("2026-09-13", "2026-09-14"), busy: false }));
+    await tx.put("event", event("e_rangeaday5", { ...allDay("2026-09-09", "2026-09-10"), busy: false }));
+    // Another calendar.
+    await tx.put("event", event("e_rangeother", { calendarId: CAL2 }));
+    await tx.put("event", event("e_rangeomast", { calendarId: CAL2, ...timed("2025-01-02T17:00:00Z", "2025-01-02T18:00:00Z"), repeat: rule }));
+  });
+
+  const one = await db.store.read((tx) => tx.eventsInRange([CAL1], from, to));
+  assert.deepEqual(one.map((e) => e.id), [
+    "e_rangemastr", // 2025-01-02T17:00:00Z
+    "e_rangespans", // 2026-09-01T00:00:00Z
+    "e_rangeaday5", // 2026-09-09
+    "e_rangestrad", // 2026-09-09T23:00:00Z
+    "e_rangeaday1", // 2026-09-10
+    "e_rangein001", // 2026-09-10T16:00:00Z
+    "e_rangedexc2", // 2026-09-10T18:00:00Z
+    "e_rangeaday3", // 2026-09-12
+    "e_rangeexcep", // 2027-05-06T18:00:00Z
+  ], "ordered by start key then id");
+  const ids = new Set(one.map((e) => e.id));
+  assert.ok(ids.has("e_rangein001"), "inside the window");
+  assert.ok(ids.has("e_rangestrad"), "straddles the start");
+  assert.ok(ids.has("e_rangespans"), "spans the whole window");
+  assert.ok(!ids.has("e_rangeendat"), "ending exactly at from does not overlap");
+  assert.ok(!ids.has("e_rangestart"), "starting exactly at to does not overlap");
+  assert.ok(!ids.has("e_rangeafter"), "after the window");
+  assert.ok(!ids.has("e_rangedelet"), "deleted rows are never returned");
+  assert.ok(ids.has("e_rangemastr"), "a master with a rule comes regardless of the window");
+  assert.ok(ids.has("e_rangeexcep"), "and its exception rows with it");
+  assert.ok(!ids.has("e_rangedmast"), "a deleted master is excluded");
+  assert.ok(!ids.has("e_rangedexc1"), "an orphaned exception row outside the window is excluded");
+  assert.ok(ids.has("e_rangedexc2"), "an orphaned exception row inside the window earns its place");
+  assert.ok(ids.has("e_rangeaday1"), "all-day on the day");
+  assert.ok(ids.has("e_rangeaday5"), "all-day ending on the day of from may still overlap in a western zone");
+  assert.ok(!ids.has("e_rangeaday2"), "all-day well before");
+  assert.ok(ids.has("e_rangeaday3"), "all-day starting the day after to is kept as slack for eastern zones");
+  assert.ok(!ids.has("e_rangeaday4"), "all-day two days after to is out");
+  assert.ok(!ids.has("e_rangeother") && !ids.has("e_rangeomast"), "other calendars are not asked for");
+
+  const both = await db.store.read((tx) => tx.eventsInRange([CAL1, CAL2], from, to));
+  const bothIds = new Set(both.map((e) => e.id));
+  assert.ok(bothIds.has("e_rangeother") && bothIds.has("e_rangeomast"), "the second calendar's rows and master arrive when asked for");
+  assert.equal(both.length, one.length + 2);
+
+  assert.deepEqual(await db.store.read((tx) => tx.eventsInRange([], from, to)), [], "no calendars, no rows");
+  assert.deepEqual(await db.store.read((tx) => tx.eventsInRange(["c_nosuchcal1"], from, to)), []);
+
+  const later = await db.store.read((tx) => tx.eventsInRange([CAL1], "2027-05-06T00:00:00Z", "2027-05-07T00:00:00Z"));
+  assert.deepEqual(later.map((e) => e.id).sort(), ["e_rangedexc1", "e_rangeexcep", "e_rangemastr"], "an exception row overlaps on its own too");
+
+  assert.deepEqual(one.find((e) => e.id === "e_rangein001"), event("e_rangein001"), "rows come back whole");
 });

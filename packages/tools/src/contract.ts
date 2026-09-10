@@ -1,16 +1,26 @@
-// The contract: what a task, project, section, label, and filter are, what the
-// operations accept, and what every mutation returns. Everything is validated
-// here before anything is written, regardless of who is calling.
+// The contract: what a task, project, section, label, filter, account,
+// calendar, and event are, what the operations accept, and what every mutation
+// returns. Everything is validated here before anything is written,
+// regardless of who is calling.
 
 import { z } from "zod";
 import { isValidDate, isValidTimezone } from "./time.ts";
 import { parseRule } from "./recurrence.ts";
 import { parseFilter } from "./filter.ts";
 
-export const ID_PREFIXES = { task: "t", project: "p", section: "s", label: "l", filter: "f" } as const;
+export const ID_PREFIXES = {
+  task: "t",
+  project: "p",
+  section: "s",
+  label: "l",
+  filter: "f",
+  account: "a",
+  calendar: "c",
+  event: "e",
+} as const;
 export type RecordKind = keyof typeof ID_PREFIXES;
 
-export const recordId = z.string().regex(/^[tpslfc]_[a-z0-9]{10}$/, "Not a Life-OS id");
+export const recordId = z.string().regex(/^[tpslface]_[a-z0-9]{10}$/, "Not a Life-OS id");
 const idOf = (kind: RecordKind) =>
   z.string().regex(new RegExp(`^${ID_PREFIXES[kind]}_[a-z0-9]{10}$`), `Not a ${kind} id`);
 export const taskId = idOf("task");
@@ -18,6 +28,9 @@ export const projectId = idOf("project");
 export const sectionId = idOf("section");
 export const labelId = idOf("label");
 export const filterId = idOf("filter");
+export const accountId = idOf("account");
+export const calendarId = idOf("calendar");
+export const eventId = idOf("event");
 
 export const slug = z
   .string()
@@ -179,6 +192,185 @@ export const taskSchema = z
     message: "A repeating task needs a due date",
   });
 
+// ------------------------------------------------------------------ calendar records
+
+/** A moment: timed (timezone null means floating) or a date for an all-day event. */
+export const timedWhen = z.strictObject({ at: timestamp, timezone: timezone.nullable() });
+export const dateWhen = z.strictObject({ date: isoDate });
+export const when = z.union([timedWhen, dateWhen]);
+export type TimedWhen = z.infer<typeof timedWhen>;
+export type DateWhen = z.infer<typeof dateWhen>;
+export type When = z.infer<typeof when>;
+
+export function isTimedWhen(value: When): value is TimedWhen {
+  return "at" in value;
+}
+
+/** The sortable key of a moment: the instant, or the date. Comparable only between moments of the same kind. */
+export function whenKey(value: When): string {
+  return isTimedWhen(value) ? value.at : value.date;
+}
+
+/** True when both sides are timed or both are dates. */
+export function sameWhenKind(a: When, b: When): boolean {
+  return isTimedWhen(a) === isTimedWhen(b);
+}
+
+/**
+ * True when `end` comes after `start`: a later instant for timed moments, a
+ * later date for all-day ones (the end date is exclusive, so a one-day event
+ * ends on the next date). False for mixed kinds.
+ */
+export function endsAfterStart(start: When, end: When): boolean {
+  if (isTimedWhen(start) && isTimedWhen(end)) return Date.parse(end.at) > Date.parse(start.at);
+  if (!isTimedWhen(start) && !isTimedWhen(end)) return end.date > start.date;
+  return false;
+}
+
+/** Adds the span issues to `ctx`: same kind on both sides, end after start. Returns true when the span is sound. */
+function checkSpan(start: When, end: When, ctx: z.RefinementCtx, path: (string | number)[] = ["end"]): boolean {
+  if (!sameWhenKind(start, end)) {
+    ctx.addIssue({ code: "custom", path, message: "Start and end must both be timed or both be dates" });
+    return false;
+  }
+  if (!endsAfterStart(start, end)) {
+    ctx.addIssue({
+      code: "custom",
+      path,
+      message: isTimedWhen(start) ? "End must be after start" : "End date must be after the start date (it is exclusive)",
+    });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * A provider's recurrence rule. Providers deliver arbitrary RRULEs, expanded
+ * by the rrule package in src/calendar/expand.ts, so this only checks that a
+ * FREQ is named; the todo list's `rrule` subset is not applied here.
+ */
+export const eventRrule = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2000)
+  .refine((value) => /(^|[;:\s])FREQ=[A-Z]+/i.test(value), "Not an RRULE (no FREQ)");
+/** An original start as an exdate or an originalStart key: the instant for a timed series, the date for an all-day one. */
+const originalStartKey = z.union([timestamp, isoDate]);
+export const eventRepeat = z.strictObject({
+  rrule: eventRrule,
+  exdates: z.array(originalStartKey).max(2000),
+});
+export const provider = z.literal("google");
+export const accountStatus = z.enum(["connected", "needs_reauth", "disconnected"]);
+export const eventStatus = z.enum(["confirmed", "tentative", "cancelled"]);
+export const attendeeResponse = z.enum(["needsAction", "accepted", "declined", "tentative"]);
+export const emailAddress = z.string().trim().min(1).max(320);
+export const organizer = z.strictObject({ email: emailAddress, name: text.nullable(), self: z.boolean() });
+export const attendee = z.strictObject({
+  email: emailAddress,
+  name: text.nullable(),
+  response: attendeeResponse,
+  self: z.boolean(),
+  optional: z.boolean(),
+});
+export const conferencing = z.strictObject({
+  kind: z.string().trim().min(1).max(100),
+  url: z.string().trim().min(1).max(2000),
+});
+export const reminder = z.strictObject({
+  method: z.string().trim().min(1).max(50),
+  minutes: z.number().int().min(0).max(4 * 7 * 24 * 60),
+});
+export const providerItemId = z.string().min(1).max(1024);
+export const eventExternal = z.strictObject({
+  provider,
+  id: providerItemId,
+  etag: z.string().min(1).max(200),
+  iCalUID: z.string().min(1).max(1024),
+  updatedAt: timestamp,
+});
+export const calendarExternal = z.strictObject({
+  id: providerItemId,
+  syncToken: z.string().min(1).max(4000).nullable(),
+});
+
+export const accountSchema = z.strictObject({
+  id: accountId,
+  provider,
+  identity: emailAddress,
+  label: text.nullable(),
+  primary: z.boolean(),
+  status: accountStatus,
+  scopes: z.array(z.string().trim().min(1).max(200)).max(50),
+  syncedAt: timestamp.nullable(),
+  ...bookkeeping,
+});
+
+export const calendarSchema = z.strictObject({
+  id: calendarId,
+  accountId,
+  name: text,
+  color: color.nullable(),
+  timezone,
+  labels: z.array(slug).max(50),
+  writable: z.boolean(),
+  hidden: z.boolean(),
+  primaryOfAccount: z.boolean(),
+  order,
+  external: calendarExternal,
+  syncedAt: timestamp.nullable(),
+  syncError: z.string().max(4000).nullable(),
+  ...bookkeeping,
+});
+
+/** The shape of an event before the cross-field rules; `eventSchema` adds them. */
+const eventFields = {
+  id: eventId,
+  calendarId,
+  accountId,
+  title: text,
+  notes: longText.nullable(),
+  location: text.nullable(),
+  start: when,
+  end: when,
+  repeat: eventRepeat.nullable(),
+  masterId: eventId.nullable(),
+  originalStart: when.nullable(),
+  status: eventStatus,
+  busy: z.boolean(),
+  organizer: organizer.nullable(),
+  attendees: z.array(attendee).max(1000),
+  myResponse: attendeeResponse.nullable(),
+  conferencing: conferencing.nullable(),
+  reminders: z.array(reminder).max(20).nullable(),
+  origin,
+  external: eventExternal,
+  ...bookkeeping,
+};
+
+/** The cross-field rules shared by the record and the provider-side write shapes. */
+function checkEventShape(
+  value: { start: When; end: When; repeat: unknown; masterId?: string | null; originalStart?: When | null },
+  ctx: z.RefinementCtx,
+): void {
+  checkSpan(value.start, value.end, ctx);
+  if (value.repeat && value.masterId) {
+    ctx.addIssue({ code: "custom", path: ["repeat"], message: "Only a master carries a rule; an exception row cannot repeat" });
+  }
+  const hasMaster = value.masterId !== null && value.masterId !== undefined;
+  const hasOriginal = value.originalStart !== null && value.originalStart !== undefined;
+  if (hasMaster !== hasOriginal) {
+    ctx.addIssue({
+      code: "custom",
+      path: [hasMaster ? "originalStart" : "masterId"],
+      message: "masterId and originalStart go together: both set on an exception row, both null otherwise",
+    });
+  }
+}
+
+export const eventSchema = z.strictObject(eventFields).superRefine(checkEventShape);
+
 // ------------------------------------------------------------------ inputs
 
 /** A project reference: an id, or a slug path like `health/dental`, or `inbox`. */
@@ -289,6 +481,88 @@ export const filterUpdateSchema = z.strictObject({
   query: filterQuery.optional(),
 });
 
+/** A calendar reference: an id, `<identity>/<name>`, or a name unique among non-deleted calendars. */
+export const calendarRef = z.string().trim().min(1).max(600);
+/** Minutes for a timed event, days for an all-day one. */
+const eventDuration = z.number().int().min(1).max(366 * 24 * 60);
+
+export const eventAddSchema = z
+  .strictObject({
+    title: text,
+    calendar: calendarRef.optional(),
+    start: when,
+    end: when.optional(),
+    duration: eventDuration.optional(),
+    notes: longText.optional(),
+    location: text.optional(),
+    repeat: eventRrule.optional(),
+    busy: z.boolean().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.end !== undefined && value.duration !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["duration"], message: "Give end or duration, not both" });
+    }
+    if (value.end !== undefined) checkSpan(value.start, value.end, ctx);
+  });
+
+export const eventUpdateSchema = z
+  .strictObject({
+    title: text.optional(),
+    notes: longText.nullable().optional(),
+    location: text.nullable().optional(),
+    start: when.optional(),
+    end: when.optional(),
+    duration: eventDuration.optional(),
+    repeat: eventRrule.nullable().optional(),
+    busy: z.boolean().optional(),
+    status: eventStatus.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.end !== undefined && value.duration !== undefined) {
+      ctx.addIssue({ code: "custom", path: ["duration"], message: "Give end or duration, not both" });
+    }
+    if (value.start !== undefined && value.end !== undefined) checkSpan(value.start, value.end, ctx);
+  });
+
+/** The provider-neutral shape of a whole event as written to a provider. */
+export const eventWriteSchema = z
+  .strictObject({
+    title: text,
+    notes: longText.nullable(),
+    location: text.nullable(),
+    start: when,
+    end: when,
+    repeat: eventRepeat.nullable(),
+    busy: z.boolean(),
+    status: eventStatus,
+  })
+  .superRefine((value, ctx) => {
+    checkSpan(value.start, value.end, ctx);
+  });
+
+/** The provider-neutral shape of a partial change; every field optional, `null` clears notes, location, repeat. */
+export const eventPatchSchema = z
+  .strictObject({
+    title: text.optional(),
+    notes: longText.nullable().optional(),
+    location: text.nullable().optional(),
+    start: when.optional(),
+    end: when.optional(),
+    repeat: eventRepeat.nullable().optional(),
+    busy: z.boolean().optional(),
+    status: eventStatus.optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.start !== undefined && value.end !== undefined) checkSpan(value.start, value.end, ctx);
+  });
+
+export const accountUpdateSchema = z.strictObject({ label: text.nullable().optional() });
+export const calendarUpdateSchema = z.strictObject({
+  labels: z.array(slug).max(50).optional(),
+  hidden: z.boolean().optional(),
+  color: color.nullable().optional(),
+});
+
 /**
  * An idempotency key as a caller passes it. No control characters: core.ts
  * derives per-item keys for batch, reorder, and import with one, so a caller's
@@ -332,8 +606,25 @@ export type LabelAdd = z.infer<typeof labelAddSchema>;
 export type LabelUpdate = z.infer<typeof labelUpdateSchema>;
 export type FilterAdd = z.infer<typeof filterAddSchema>;
 export type FilterUpdate = z.infer<typeof filterUpdateSchema>;
+export type Account = z.infer<typeof accountSchema>;
+export type AccountStatus = z.infer<typeof accountStatus>;
+export type Calendar = z.infer<typeof calendarSchema>;
+export type Event = z.infer<typeof eventSchema>;
+export type EventStatus = z.infer<typeof eventStatus>;
+export type EventRepeat = z.infer<typeof eventRepeat>;
+export type Attendee = z.infer<typeof attendee>;
+export type AttendeeResponse = z.infer<typeof attendeeResponse>;
+export type Organizer = z.infer<typeof organizer>;
+export type EventAdd = z.infer<typeof eventAddSchema>;
+export type EventUpdate = z.infer<typeof eventUpdateSchema>;
+export type EventWrite = z.infer<typeof eventWriteSchema>;
+export type EventPatch = z.infer<typeof eventPatchSchema>;
+export type AccountUpdate = z.infer<typeof accountUpdateSchema>;
+export type CalendarUpdate = z.infer<typeof calendarUpdateSchema>;
 
+/** The todo list's records. The CLI renders these; the calendar's are `CalendarRecord`. */
 export type AnyRecord = Task | Project | Section | Label | Filter;
+export type CalendarRecord = Account | Calendar | Event;
 
 export type Outcome = "created" | "updated" | "unchanged" | "duplicate" | "rejected";
 

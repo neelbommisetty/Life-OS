@@ -5,8 +5,18 @@ import { createDb, createPool, databaseUrl } from "./client.ts";
 import { migrate } from "./migrate.ts";
 import { createTestDb, fixedClock, type TestDb } from "./testing.ts";
 
-const EXPECTED_TABLES = ["__drizzle_migrations", "filters", "labels", "log", "projects", "receipts", "sections", "tasks"];
-const EXPECTED_INDEXES = ["log_record_idx", "tasks_due_date_idx", "tasks_project_idx", "tasks_status_idx"];
+const EXPECTED_TABLES = ["__drizzle_migrations", "accounts", "calendars", "events", "filters", "labels", "log", "projects", "receipts", "sections", "tasks"];
+const EXPECTED_INDEXES = [
+  "events_calendar_idx",
+  "events_external_id_idx",
+  "events_master_idx",
+  "events_start_at_idx",
+  "events_start_date_idx",
+  "log_record_idx",
+  "tasks_due_date_idx",
+  "tasks_project_idx",
+  "tasks_status_idx",
+];
 
 const tablesIn = async (pool: pg.Pool | pg.Client, schema: string) =>
   (await pool.query<{ table_name: string }>("select table_name from information_schema.tables where table_schema = $1 order by 1", [schema])).rows.map((row) => row.table_name);
@@ -46,7 +56,7 @@ test("migrate is idempotent on the same schema", async () => {
   await migrate(createDb(db.pool), { schema: db.schema });
   assert.deepEqual(await tablesIn(db.pool, db.schema), EXPECTED_TABLES);
   const applied = await db.pool.query<{ n: string }>("select count(*)::text as n from __drizzle_migrations");
-  assert.equal(applied.rows[0]!.n, "1");
+  assert.equal(applied.rows[0]!.n, "2");
 });
 
 test("migrate over a single client sets its search_path and migrates that schema", async () => {
@@ -77,7 +87,7 @@ test("migrate without a schema option journals where search_path points, not in 
     // A second run is a no-op because it reads the same journal.
     await migrate(createDb(client));
     const applied = await client.query<{ n: string }>("select count(*)::text as n from __drizzle_migrations");
-    assert.equal(applied.rows[0]!.n, "1");
+    assert.equal(applied.rows[0]!.n, "2");
   } finally {
     await client.query(`drop schema if exists "${schema}" cascade`);
     await client.end();

@@ -7,7 +7,10 @@ import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
   ID_PREFIXES,
+  accountSchema,
+  calendarSchema,
   ctxSchema,
+  eventSchema,
   filterSchema,
   issuesOf,
   labelSchema,
@@ -76,6 +79,9 @@ const SCHEMAS = {
   section: sectionSchema,
   label: labelSchema,
   filter: filterSchema,
+  account: accountSchema,
+  calendar: calendarSchema,
+  event: eventSchema,
 } as const;
 
 /** Fields the diff ignores: bookkeeping that every mutation touches. */

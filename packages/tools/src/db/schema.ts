@@ -28,6 +28,16 @@ export const sections = pgTable("sections", recordColumns());
 export const labels = pgTable("labels", recordColumns());
 export const filters = pgTable("filters", recordColumns());
 
+export const accounts = pgTable("accounts", recordColumns());
+export const calendars = pgTable("calendars", recordColumns());
+export const events = pgTable("events", recordColumns(), (t) => [
+  index("events_calendar_idx").on(sql`(${t.json}->>'calendarId')`),
+  index("events_master_idx").on(sql`(${t.json}->>'masterId')`),
+  index("events_start_at_idx").on(sql`(${t.json}->'start'->>'at')`),
+  index("events_start_date_idx").on(sql`(${t.json}->'start'->>'date')`),
+  index("events_external_id_idx").on(sql`(${t.json}->'external'->>'id')`),
+]);
+
 export const log = pgTable(
   "log",
   {

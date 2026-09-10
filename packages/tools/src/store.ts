@@ -3,14 +3,40 @@
 // transaction takes the advisory lock so writers never interleave.
 
 import type { Pool, PoolClient } from "pg";
-import { and, asc, eq, isNull } from "drizzle-orm";
-import type { Filter, Label, LogEntry, Project, RecordKind, Section, Task } from "./contract.ts";
-import { toInstant } from "./time.ts";
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import {
+  isTimedWhen,
+  type Account,
+  type Calendar,
+  type Event,
+  type Filter,
+  type Label,
+  type LogEntry,
+  type Project,
+  type RecordKind,
+  type Section,
+  type Task,
+} from "./contract.ts";
+import { addDays, toInstant } from "./time.ts";
 import { createDb, type Db } from "./db/client.ts";
 import * as schema from "./db/schema.ts";
 
-export type Kind = "task" | "project" | "section" | "label" | "filter";
-export type RecordOf<K extends Kind> = K extends "task" ? Task : K extends "project" ? Project : K extends "section" ? Section : K extends "label" ? Label : Filter;
+export type Kind = "task" | "project" | "section" | "label" | "filter" | "account" | "calendar" | "event";
+export type RecordOf<K extends Kind> = K extends "task"
+  ? Task
+  : K extends "project"
+    ? Project
+    : K extends "section"
+      ? Section
+      : K extends "label"
+        ? Label
+        : K extends "filter"
+          ? Filter
+          : K extends "account"
+            ? Account
+            : K extends "calendar"
+              ? Calendar
+              : Event;
 
 export interface Tx {
   get<K extends Kind>(kind: K, id: string): Promise<RecordOf<K> | null>;              // deleted records included
@@ -21,6 +47,16 @@ export interface Tx {
   allLog(): Promise<LogEntry[]>;
   getReceipt(key: string): Promise<unknown | null>;
   putReceipt(key: string, receipt: unknown, at: string): Promise<void>;
+  /**
+   * The non-deleted events in `calendarIds` a window needs: rows whose start
+   * is before `to` and end after `from`, plus every master with a rule
+   * (expanded in JS; an unbounded series cannot be range-filtered in SQL),
+   * plus the exception rows of those masters. All-day rows are matched by
+   * date without a zone, so the match is a superset (a day of slack after
+   * `to`) and the caller makes the exact cut in the calendar's timezone.
+   * Ordered by start key, then id.
+   */
+  eventsInRange(calendarIds: string[], fromInstant: string, toInstant: string): Promise<Event[]>;
 }
 export interface Store {
   transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T>; // BEGIN, advisory lock, work, COMMIT; ROLLBACK and rethrow on error
@@ -37,6 +73,9 @@ const TABLES = {
   section: schema.sections,
   label: schema.labels,
   filter: schema.filters,
+  account: schema.accounts,
+  calendar: schema.calendars,
+  event: schema.events,
 } as const;
 
 type RecordTable = (typeof TABLES)[Kind];
@@ -55,6 +94,17 @@ function toLogEntry(row: LogRow): LogEntry {
     evidence: row.evidence as string[],
     key: row.key,
   };
+}
+
+/** The SQL overlap test again in JS, for exception rows whose master fell outside the calendars asked for. */
+function overlapsWindow(event: Event, from: string, to: string, fromDate: string, toDate: string): boolean {
+  if (isTimedWhen(event.start) && isTimedWhen(event.end)) {
+    return Date.parse(event.start.at) < Date.parse(to) && Date.parse(event.end.at) > Date.parse(from);
+  }
+  if (!isTimedWhen(event.start) && !isTimedWhen(event.end)) {
+    return event.start.date <= toDate && event.end.date >= fromDate;
+  }
+  return false;
 }
 
 /**
@@ -156,6 +206,49 @@ export class PgTx implements Tx {
   async allLog(): Promise<LogEntry[]> {
     const rows = await this.db.select().from(schema.log).orderBy(asc(schema.log.seq));
     return rows.map(toLogEntry);
+  }
+
+  async eventsInRange(calendarIds: string[], fromInstant: string, toInstant: string): Promise<Event[]> {
+    if (calendarIds.length === 0) return [];
+    const { json } = schema.events;
+    const startAt = sql`(${json}->'start'->>'at')`;
+    const endAt = sql`(${json}->'end'->>'at')`;
+    const startDate = sql`(${json}->'start'->>'date')`;
+    const endDate = sql`(${json}->'end'->>'date')`;
+    // A zone-agnostic date window: in UTC terms an all-day event may start up
+    // to 14 hours before its date, so a start on the day after `to` can still
+    // overlap; an end on the day of `from` can too, an earlier one cannot.
+    const fromDate = fromInstant.slice(0, 10);
+    const toDate = addDays(toInstant.slice(0, 10), 1);
+    const rows = await this.db
+      .select({ json })
+      .from(schema.events)
+      .where(
+        and(
+          isNull(schema.events.deletedAt),
+          inArray(sql`(${json}->>'calendarId')`, calendarIds),
+          or(
+            sql`jsonb_typeof(${json}->'repeat') = 'object'`,
+            isNotNull(sql`(${json}->>'masterId')`),
+            and(
+              sql`${startAt}::timestamptz < ${toInstant}::timestamptz`,
+              sql`${endAt}::timestamptz > ${fromInstant}::timestamptz`,
+            ),
+            and(sql`${startDate} <= ${toDate}`, sql`${endDate} >= ${fromDate}`),
+          ),
+        ),
+      )
+      .orderBy(sql`coalesce(${startAt}, ${startDate}) collate "C"`, asc(schema.events.id));
+    const events = rows.map((row) => row.json as Event);
+    // An exception row rides along with its master; without one in the result
+    // it has to earn its place by overlapping the window on its own.
+    const masters = new Set(events.filter((event) => event.repeat).map((event) => event.id));
+    return events.filter(
+      (event) =>
+        event.masterId === null ||
+        masters.has(event.masterId) ||
+        overlapsWindow(event, fromInstant, toInstant, fromDate, toDate),
+    );
   }
 
   async getReceipt(key: string): Promise<unknown | null> {
