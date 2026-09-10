@@ -2,15 +2,17 @@
 // then pulls each calendar's events page by page, full or incremental, and
 // stores them as the provider's version. Every write goes through applyIn
 // under actor import:<provider>, so a change made on the phone shows up in
-// the log like any other mutation. refreshIfStale is what the views call
-// first: it syncs whatever copy is older than the threshold and hands back
-// what it refreshed and what failed, swallowing nothing.
+// the log like any other mutation. Sync bookkeeping (cursor, sync time, last
+// error) is state about the copy, not a change to it, and is stored without a
+// log entry so a quiet sync writes nothing. refreshIfStale is what the views
+// call first: it syncs whatever copy is older than the threshold and hands
+// back what it refreshed and what failed, swallowing nothing.
 
 import { eventId, isTimedWhen, type Account, type Calendar, type Ctx, type Event, type LogEntry } from "../contract.ts";
 import { applyIn, bump, diff, fail, mutate, newId, nowIso, okMutation, type Clock } from "../core.ts";
 import type { Store, Tx } from "../store.ts";
 import { isValidTimezone, toInstant } from "../time.ts";
-import { CursorExpired, type CalendarAdapter, type ProviderCalendar, type ProviderEvent, type SyncPage } from "./adapter.ts";
+import { CursorExpired, ProviderRejected, type CalendarAdapter, type ProviderCalendar, type ProviderEvent, type SyncPage } from "./adapter.ts";
 import { NeedsReauth } from "./google/oauth.ts";
 
 export type SyncOutcome = "synced" | "unchanged" | "resynced" | "failed";
@@ -93,6 +95,41 @@ function byOrder(a: Calendar, b: Calendar): number {
   return a.order - b.order || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
+// ------------------------------------------------------------------ bookkeeping
+
+type CalendarStamp = { syncToken?: string | null; syncedAt?: string; syncError?: string | null };
+
+/**
+ * Store sync bookkeeping on a calendar: the cursor to continue from, when the
+ * copy was last pulled, the last failure. None of it is a change to what the
+ * copy holds, so it goes on the record with `tx.put` and no log entry or
+ * version bump: a quiet sync writes nothing to the log, while `isStale` and
+ * the views still see the copy's real age and error. Everything the provider
+ * changed still goes through `applyIn`. A calendar that vanished meanwhile
+ * has nothing to stamp.
+ */
+async function stampCalendar(tx: Tx, calendarId: string, stamp: CalendarStamp): Promise<void> {
+  const current = await tx.get("calendar", calendarId);
+  if (!current) return;
+  const after: Calendar = {
+    ...current,
+    ...(stamp.syncedAt !== undefined ? { syncedAt: stamp.syncedAt } : {}),
+    ...(stamp.syncError !== undefined ? { syncError: stamp.syncError } : {}),
+    external: stamp.syncToken !== undefined ? { ...current.external, syncToken: stamp.syncToken } : current.external,
+  };
+  if (Object.keys(diff(current, after)).length === 0) return;
+  await tx.put("calendar", after);
+}
+
+/** The account's sync time, stored the same way: on the record, not in the log. */
+async function stampAccount(store: Store, accountId: string, syncedAt: string): Promise<void> {
+  await store.transaction(async (tx) => {
+    const current = await tx.get("account", accountId);
+    if (!current || current.syncedAt === syncedAt) return;
+    await tx.put("account", { ...current, syncedAt });
+  });
+}
+
 // ------------------------------------------------------------------ the calendar list
 
 /**
@@ -161,13 +198,13 @@ async function reconcileCalendars(store: Store, clock: Clock, ctx: Ctx, account:
           primaryOfAccount: provider.primary,
           color: ours.has("color") ? existing.color : provider.color,
           hidden: ours.has("hidden") ? existing.hidden : provider.hidden,
-          // A calendar that comes back after being unlisted starts over: its events were deleted with it.
-          external: existing.deletedAt ? { ...existing.external, syncToken: null } : existing.external,
           deletedAt: null,
         };
         if (Object.keys(diff(existing, after)).length === 0) return okMutation("unchanged", existing, existing);
         return okMutation("updated", existing, bump(after, now));
       });
+      // A calendar that comes back after being unlisted starts over: its events were deleted with it.
+      if (existing?.deletedAt) await stampCalendar(tx, existing.id, { syncToken: null, syncError: null });
     }
 
     const removed: CalendarSyncReport[] = [];
@@ -240,13 +277,31 @@ class EventIndex {
 type ItemOutcome = "created" | "updated" | "deleted" | "unchanged" | "deferred" | "rejected";
 type Tally = { created: number; updated: number; deleted: number; rejections: string[] };
 
-/** A provider item's row: by our id when the provider carries it, else by provider id within the calendar. */
-async function findRow(tx: Tx, index: EventIndex, item: ProviderEvent): Promise<Event | null> {
-  if (item.lifeId && eventId.safeParse(item.lifeId).success) {
-    const byLife = await tx.get("event", item.lifeId);
-    if (byLife) return byLife;
-  }
-  return index.byExternal(item.external.id);
+/** The row a provider item met, and whether its lifeId already names some row (so a new row cannot take it). */
+type Match = { row: Event | null; lifeIdTaken: boolean };
+
+/**
+ * Whether the row our id led to is the row this item is about. The lifeId
+ * follows an event through a restore (same id, new provider copy) and a move
+ * (same provider id, another calendar), so the old copy's tombstone carries it
+ * too. A tombstone names one provider copy in one calendar and only that row
+ * is its business. A live item under another provider id claims the row only
+ * when the row is deleted or the item is newer, which is what a restore or a
+ * move that left an old copy looks like; an older stranger with our id (a
+ * retry's leftover) becomes its own row instead of hijacking this one.
+ */
+function isAbout(row: Event, calendar: Calendar, item: ProviderEvent): boolean {
+  if (row.external.id === item.external.id) return !item.deleted || row.calendarId === calendar.id;
+  if (item.deleted) return false;
+  return row.deletedAt !== null || Date.parse(item.external.updatedAt) > Date.parse(row.external.updatedAt);
+}
+
+/** A provider item's row: by our id when the provider carries it and it agrees on identity, else by provider id within the calendar. */
+async function findRow(tx: Tx, index: EventIndex, calendar: Calendar, item: ProviderEvent): Promise<Match> {
+  const lifeId = item.lifeId && eventId.safeParse(item.lifeId).success ? item.lifeId : null;
+  const byLife = lifeId ? await tx.get("event", lifeId) : null;
+  if (byLife && isAbout(byLife, calendar, item)) return { row: byLife, lifeIdTaken: true };
+  return { row: index.byExternal(item.external.id), lifeIdTaken: byLife !== null };
 }
 
 async function softDelete(tx: Tx, clock: Clock, ctx: Ctx, event: Event): Promise<Event | null> {
@@ -271,12 +326,15 @@ async function applyItem(
   tally: Tally,
   standalone: boolean,
 ): Promise<ItemOutcome> {
-  const row = await findRow(tx, index, item);
+  const { row, lifeIdTaken } = await findRow(tx, index, calendar, item);
 
   if (item.deleted) {
     if (!row) return "unchanged"; // Never had it: nothing to delete, and a tombstone for a stranger helps nobody.
     mentioned.add(row.id);
     if (row.deletedAt !== null) return "unchanged";
+    // event.cancel keeps the row visible with status cancelled, and the provider reports a cancelled
+    // event as gone: the same etag says nothing happened since Neel cancelled it, so the row stays.
+    if (row.status === "cancelled" && row.external.etag === item.external.etag) return "unchanged";
     const deleted = await softDelete(tx, clock, ctx, row);
     if (!deleted) return "rejected";
     index.put(deleted);
@@ -299,7 +357,7 @@ async function applyItem(
     else if (!standalone) return "deferred";
   }
 
-  const id = row?.id ?? (item.lifeId && eventId.safeParse(item.lifeId).success ? item.lifeId : newId("event"));
+  const id = row?.id ?? (item.lifeId && !lifeIdTaken && eventId.safeParse(item.lifeId).success ? item.lifeId : newId("event"));
   mentioned.add(id);
   if (row && row.deletedAt === null && row.external.etag === item.external.etag) return "unchanged";
 
@@ -330,7 +388,13 @@ type PageState = {
   tally: Tally;
 };
 
-/** One page inside one transaction: the items, the orphans and pruning on the last page, then the cursor on the calendar. */
+/**
+ * One page inside one transaction: the items, then on the last page the
+ * orphans, the pruning, and the bookkeeping. Only the last page's cursor is
+ * stored: a page token names a place inside one listing and is short-lived,
+ * so it stays in memory and a crash mid-listing starts the listing over,
+ * which is safe because applying a page twice changes nothing.
+ */
 async function applyPage(tx: Tx, clock: Clock, ctx: Ctx, calendar: Calendar, page: SyncPage, state: PageState): Promise<void> {
   const index = new EventIndex(calendar.id, await tx.all("event", { includeDeleted: true }));
   // Masters and single events first, so an exception in the same page finds its master.
@@ -351,28 +415,13 @@ async function applyPage(tx: Tx, clock: Clock, ctx: Ctx, calendar: Calendar, pag
         state.tally.deleted += 1;
       }
     }
+    await stampCalendar(tx, calendar.id, { syncToken: page.nextCursor, syncedAt: nowIso(clock), syncError: null });
   }
-  await applyIn(tx, clock, "calendar", "calendar.sync", ctx, async (t, _c, now) => {
-    const current = await t.get("calendar", calendar.id);
-    if (!current) return fail([`calendar: ${calendar.id} disappeared during sync`]);
-    const after: Calendar = {
-      ...current,
-      external: { ...current.external, syncToken: page.nextCursor },
-      ...(page.done ? { syncedAt: now, syncError: null } : {}),
-    };
-    if (Object.keys(diff(current, after)).length === 0) return okMutation("unchanged", current, current);
-    return okMutation("updated", current, bump(after, now));
-  });
 }
 
 /** Record a calendar's failure on its row, so the views can report it until a sync succeeds. */
-async function recordFailure(store: Store, clock: Clock, ctx: Ctx, calendarId: string, message: string): Promise<void> {
-  await mutate(store, clock, "calendar", "calendar.sync", ctx, async (tx, _c, now) => {
-    const current = await tx.get("calendar", calendarId);
-    if (!current) return fail([`calendar: ${calendarId} not found`]);
-    if (current.syncError === message) return okMutation("unchanged", current, current);
-    return okMutation("updated", current, bump({ ...current, syncError: message }, now));
-  });
+async function recordFailure(store: Store, calendarId: string, message: string): Promise<void> {
+  await store.transaction((tx) => stampCalendar(tx, calendarId, { syncError: message }));
 }
 
 function failed(calendarId: string, error: string): CalendarSyncReport {
@@ -382,10 +431,16 @@ function failed(calendarId: string, error: string): CalendarSyncReport {
 /**
  * The provider no longer accepts the account's credential (a 401 after one
  * refresh attempt, or no credential on file): mark the account so the views
- * say so and refreshIfStale stops trying, until `life account add` reconnects it.
+ * say so, refreshIfStale stops trying, and event writes are refused, until
+ * `life account add` reconnects it. Its own `account.sync` mutation as the
+ * provider's sync actor, shared with events.ts so a dead grant found during a
+ * write lands the same way as one found during a sync; a no-op when the
+ * account is gone or already marked.
  */
-async function markNeedsReauth(store: Store, clock: Clock, ctx: Ctx, accountId: string): Promise<void> {
-  await mutate(store, clock, "account", "account.sync", ctx, async (tx, _c, now) => {
+export async function markNeedsReauth(store: Store, clock: Clock, accountId: string): Promise<void> {
+  const account = await store.read((tx) => tx.get("account", accountId));
+  if (!account || account.status === "needs_reauth") return;
+  await mutate(store, clock, "account", "account.sync", syncCtx(account.provider), async (tx, _c, now) => {
     const current = await tx.get("account", accountId);
     if (!current) return fail([`account: ${accountId} not found`]);
     if (current.status === "needs_reauth") return okMutation("unchanged", current, current);
@@ -397,11 +452,16 @@ async function markNeedsReauth(store: Store, clock: Clock, ctx: Ctx, accountId: 
  * Pull one calendar: pages from the stored cursor (or from `since` when there
  * is none or `full` was asked), each page in its own transaction. An expired
  * cursor starts a full listing over, after which rows the listing did not
- * mention and that start after `since` are soft-deleted. Any failure lands on
- * the calendar's `syncError` and in the report; nothing is thrown.
+ * mention and that start after `since` are soft-deleted. A page cursor the
+ * provider refuses outright (a 400) counts as expired too: page tokens are
+ * short-lived and the listing they belonged to can simply start over. Any
+ * failure lands on the calendar's `syncError` and in the report; nothing is
+ * thrown.
  */
 async function syncCalendar(store: Store, clock: Clock, adapter: CalendarAdapter, ctx: Ctx, calendar: Calendar, opts: { full: boolean; since: string }): Promise<CalendarSyncReport> {
   let cursor = opts.full ? null : calendar.external.syncToken;
+  /** The cursor in hand came from a page that was not done: it names a place inside this listing and lives only here. */
+  let midListing = false;
   const state: PageState = { since: opts.since, prune: cursor === null, mentioned: new Set(), orphans: [], tally: { created: 0, updated: 0, deleted: 0, rejections: [] } };
   let resynced = false;
   try {
@@ -410,8 +470,10 @@ async function syncCalendar(store: Store, clock: Clock, adapter: CalendarAdapter
       try {
         page = await adapter.syncPage(calendar.accountId, calendar.external.id, cursor, opts.since);
       } catch (error) {
-        if (error instanceof CursorExpired && cursor !== null) {
+        const expired = error instanceof CursorExpired || (midListing && error instanceof ProviderRejected && error.status === 400);
+        if (expired && cursor !== null) {
           cursor = null;
+          midListing = false;
           resynced = true;
           state.prune = true;
           state.mentioned.clear();
@@ -424,11 +486,12 @@ async function syncCalendar(store: Store, clock: Clock, adapter: CalendarAdapter
       if (page.done) break;
       if (page.nextCursor === null) throw new Error("The provider returned a page that is not done and no cursor to continue from");
       cursor = page.nextCursor;
+      midListing = true;
     }
   } catch (error) {
     const message = errorMessage(error);
-    await recordFailure(store, clock, ctx, calendar.id, message);
-    if (error instanceof NeedsReauth) await markNeedsReauth(store, clock, ctx, calendar.accountId);
+    await recordFailure(store, calendar.id, message);
+    if (error instanceof NeedsReauth) await markNeedsReauth(store, clock, calendar.accountId);
     return { calendarId: calendar.id, outcome: "failed", created: state.tally.created, updated: state.tally.updated, deleted: state.tally.deleted, error: message };
   }
   const { created, updated, deleted, rejections } = state.tally;
@@ -466,10 +529,10 @@ export async function syncAccount(store: Store, clock: Clock, adapter: CalendarA
     const message = errorMessage(error);
     const calendars: CalendarSyncReport[] = [];
     for (const calendar of await targetCalendars(store, accountId, opts.calendarIds)) {
-      await recordFailure(store, clock, ctx, calendar.id, message);
+      await recordFailure(store, calendar.id, message);
       calendars.push(failed(calendar.id, message));
     }
-    if (error instanceof NeedsReauth) await markNeedsReauth(store, clock, ctx, accountId);
+    if (error instanceof NeedsReauth) await markNeedsReauth(store, clock, accountId);
     return { accountId, calendars };
   }
 
@@ -479,14 +542,7 @@ export async function syncAccount(store: Store, clock: Clock, adapter: CalendarA
     calendars.push(await syncCalendar(store, clock, adapter, ctx, calendar, { full: Boolean(opts.full), since }));
   }
 
-  if (targets.length === 0 || calendars.some((report) => report.outcome !== "failed")) {
-    await mutate(store, clock, "account", "account.sync", ctx, async (tx, _c, now) => {
-      const current = await tx.get("account", accountId);
-      if (!current) return fail([`account: ${accountId} not found`]);
-      if (current.syncedAt === now) return okMutation("unchanged", current, current);
-      return okMutation("updated", current, bump({ ...current, syncedAt: now }, now));
-    });
-  }
+  if (targets.length === 0 || calendars.some((report) => report.outcome !== "failed")) await stampAccount(store, accountId, nowIso(clock));
   return { accountId, calendars };
 }
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { Account, Calendar, Ctx, Event, Receipt } from "../contract.ts";
 import { mutate, newId, okMutation, type Clock } from "../core.ts";
 import { createTestDb, fixedClock, type TestDb } from "../db/testing.ts";
-import { FakeAdapter, ProviderUnavailable, type CalendarAdapter, type ProviderCalendar, type SeedEvent } from "./adapter.ts";
+import { FakeAdapter, ProviderRejected, ProviderUnavailable, type CalendarAdapter, type ProviderCalendar, type ProviderEvent, type SeedEvent } from "./adapter.ts";
 import { historyStart, isStale, refreshIfStale, syncAccount, type SyncReport } from "./sync.ts";
 
 const NOW = "2026-09-09T12:00:00Z";
@@ -63,8 +63,14 @@ const entry = (report: SyncReport, calendarId: string) => {
   return found;
 };
 
+/** A clock that moves `stepSeconds` forward on every read, for tests where "now" must not stand still. */
+function tickingClock(start: string, stepSeconds: number): Clock {
+  let reads = 0;
+  return { now: () => new Date(Date.parse(start) + stepSeconds * 1000 * reads++), timezone: "America/Los_Angeles" };
+}
+
 /** A row written locally, the way a write-through or an older sync would have left it. */
-async function putLocalEvent(calendar: Calendar, id: string, externalId: string, start: Event["start"], end: Event["end"]): Promise<Event> {
+async function putLocalEvent(calendar: Calendar, id: string, externalId: string, start: Event["start"], end: Event["end"], externalUpdatedAt = NOW): Promise<Event> {
   return okRecord(
     await mutate(db.store, clock, "event", "event.add", neel, async (_tx, _c, now) =>
       okMutation("created", null, {
@@ -87,13 +93,25 @@ async function putLocalEvent(calendar: Calendar, id: string, externalId: string,
         conferencing: null,
         reminders: null,
         origin: { actor: "neel", at: now, evidence: [] },
-        external: { provider: "google", id: externalId, etag: "etag-local", iCalUID: `${externalId}@google.com`, updatedAt: now },
+        external: { provider: "google", id: externalId, etag: "etag-local", iCalUID: `${externalId}@google.com`, updatedAt: externalUpdatedAt },
         version: 1,
         createdAt: now,
         updatedAt: now,
         deletedAt: null,
       }),
     ),
+  );
+}
+
+/** What an EventOps write stores after the provider answered: the readback's fields on the row, under Neel's actor. */
+async function storeReadback(id: string, op: string, readback: ProviderEvent, base: Partial<Pick<Event, "calendarId" | "accountId" | "deletedAt">> = {}): Promise<Event> {
+  const { providerMasterId: _m, deleted: _d, lifeId: _l, ...fields } = readback;
+  return okRecord(
+    await mutate(db.store, clock, "event", op, neel, async (tx, _c, now) => {
+      const current = await tx.get("event", id);
+      if (!current) throw new Error(`no event ${id}`);
+      return okMutation("updated", current, { ...current, ...fields, ...base, version: current.version + 1, updatedAt: now });
+    }),
   );
 }
 
@@ -108,22 +126,36 @@ async function neelUpdates(calendarId: string, patch: Partial<Pick<Calendar, "la
   );
 }
 
-/** The fake behind an adapter that throws `error()` (when not null) on syncPage for one calendar. */
-function failingOn(fake: FakeAdapter, calendarExternalId: string, error: () => Error | null): CalendarAdapter {
-  return {
-    provider: "google",
-    connect: (opts) => fake.connect(opts),
-    listCalendars: (accountId) => fake.listCalendars(accountId),
-    syncPage: (accountId, calendar, cursor, since) => {
-      const failure = calendar === calendarExternalId ? error() : null;
-      return failure ? Promise.reject(failure) : fake.syncPage(accountId, calendar, cursor, since);
+/** The fake with `syncPage` replaced; every other call goes to the fake untouched. */
+function withSyncPage(fake: FakeAdapter, syncPage: CalendarAdapter["syncPage"]): CalendarAdapter {
+  return new Proxy(fake, {
+    get(target, property, receiver) {
+      if (property === "syncPage") return syncPage;
+      const value: unknown = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
     },
-    create: (a, c, e, l) => fake.create(a, c, e, l),
-    update: (a, c, p, patch, etag) => fake.update(a, c, p, patch, etag),
-    delete: (a, c, p) => fake.delete(a, c, p),
-    respond: (a, c, p, r) => fake.respond(a, c, p, r),
-    instanceId: (m, o) => fake.instanceId(m, o),
-  };
+  });
+}
+
+/** The fake behind an adapter that throws `error(cursor)` (when not null) on syncPage for one calendar. */
+function failingOn(fake: FakeAdapter, calendarExternalId: string, error: (cursor: string | null) => Error | null): CalendarAdapter {
+  return withSyncPage(fake, (accountId, calendar, cursor, since) => {
+    const failure = calendar === calendarExternalId ? error(cursor) : null;
+    return failure ? Promise.reject(failure) : fake.syncPage(accountId, calendar, cursor, since);
+  });
+}
+
+/** The fake behind an adapter whose pages for one calendar pass through `rewrite`: extra items, or items changed the way a real mapping would. */
+function rewritingPages(fake: FakeAdapter, calendarExternalId: string, rewrite: (items: ProviderEvent[]) => ProviderEvent[]): CalendarAdapter {
+  return withSyncPage(fake, async (accountId, calendar, cursor, since) => {
+    const page = await fake.syncPage(accountId, calendar, cursor, since);
+    return calendar === calendarExternalId ? { ...page, items: rewrite(page.items) } : page;
+  });
+}
+
+/** The tombstone the provider keeps for a copy of `event` that is gone, still stamped with our id the way Google's is. */
+function tombstoneOf(event: ProviderEvent, etag = `${event.external.etag}-gone`): ProviderEvent {
+  return { ...structuredClone(event), deleted: true, external: { ...event.external, etag } };
 }
 
 test("historyStart and isStale", () => {
@@ -136,7 +168,7 @@ test("historyStart and isStale", () => {
   assert.equal(isStale("2026-09-09T11:54:59Z", now, 300), true);
 });
 
-test("a first sync adds the calendars, pulls the events page by page with the cursor stored per page, and stamps the account", async () => {
+test("a first sync adds the calendars, pulls the events page by page storing only the last page's cursor, and stamps the account", async () => {
   const account = await addAccount("first@example.com");
   const fake = new FakeAdapter({ clock, pageSize: 2 });
   fake.seed(account.id, personal, [timed("2026-09-10", 16, "p1"), timed("2026-09-11", 16, "p2"), timed("2026-09-12", 16, "p3"), timed("2026-09-13", 16, "p4"), timed("2026-09-14", 16, "p5")]);
@@ -167,10 +199,11 @@ test("a first sync adds the calendars, pulls the events page by page with the cu
   assert.match(String(cal.external.syncToken), new RegExp(`^sync:${personal.id.replace(".", "\\.")}:`), "the done page's cursor is the one stored");
 
   const history = await db.store.read((tx) => tx.history("calendar", cal.id));
-  assert.deepEqual(history.map((e) => [e.op, e.actor]), Array.from({ length: 4 }, () => ["calendar.sync", "import:google"]), "one create, then one entry per page");
-  assert.deepEqual(history.slice(1, 3).map((e) => Object.keys(e.patch)), [["external"], ["external"]], "an intermediate page stores only its cursor");
-  assert.match(String((history[1]!.patch.external!.to as Calendar["external"]).syncToken), /^page:full:/);
-  assert.deepEqual(Object.keys(history[3]!.patch).sort(), ["external", "syncedAt"], "the last page stores the sync cursor and the sync time");
+  assert.deepEqual(history.map((e) => [e.op, e.actor]), [["calendar.sync", "import:google"]], "the create is the only entry: cursors and sync times are bookkeeping, not history");
+  assert.equal(cal.version, 1, "bookkeeping bumps nothing");
+  assert.deepEqual(history.map((e) => (e.patch.external?.to as Calendar["external"]).syncToken), [null], "no cursor ever lands in the log");
+  const accountHistory = await db.store.read((tx) => tx.history("account", account.id));
+  assert.deepEqual(accountHistory.map((e) => e.op), ["account.add"], "the account's sync time is bookkeeping too");
 
   const events = await eventsOf(cal.id);
   assert.equal(events.length, 5);
@@ -255,28 +288,226 @@ test("exception rows link to their master even when they arrive first, and a del
   assert.equal((await getEvent(orphan.id))!.deletedAt, null);
 });
 
-test("matching: lifeId finds the row before the provider id does, a free lifeId is taken, a malformed one is ignored", async () => {
+test("matching: a newer lifeId item claims the row before the provider id does, an older one becomes its own row, a free lifeId is taken, a malformed one is ignored", async () => {
   const account = await addAccount("matching@example.com");
   const fake = new FakeAdapter({ clock });
   fake.seed(account.id, personal, []);
   await syncAccount(db.store, clock, fake, account.id);
   const [cal] = (await calendarsOf(account.id)) as [Calendar];
-  await putLocalEvent(cal, "e_local00000", "old-provider-id", { at: "2026-09-10T16:00:00Z", timezone: "UTC" }, { at: "2026-09-10T17:00:00Z", timezone: "UTC" });
+  // The row's provider copy was last touched an hour before the items below were.
+  await putLocalEvent(cal, "e_local00000", "old-provider-id", { at: "2026-09-10T16:00:00Z", timezone: "UTC" }, { at: "2026-09-10T17:00:00Z", timezone: "UTC" }, "2026-09-09T11:00:00Z");
+  // This row's provider copy was touched an hour after them.
+  await putLocalEvent(cal, "e_local00001", "kept-provider-id", { at: "2026-09-13T16:00:00Z", timezone: "UTC" }, { at: "2026-09-13T17:00:00Z", timezone: "UTC" }, "2026-09-09T13:00:00Z");
 
   fake.seed(account.id, personal, [
     timed("2026-09-10", 16, "new-provider-id", { lifeId: "e_local00000", title: "Recreated after a failed local write" }),
     timed("2026-09-11", 16, "free", { lifeId: "e_freeid0001" }),
     timed("2026-09-12", 16, "junk", { lifeId: "not-an-id" }),
+    // A retry's leftover: the provider holds an older copy stamped with a row's id, while the row points at a newer copy.
+    timed("2026-09-13", 16, "leftover-provider-id", { lifeId: "e_local00001", title: "Older copy with our id" }),
   ]);
   const report = await syncAccount(db.store, clock, fake, account.id);
-  assert.deepEqual(report.calendars, [{ calendarId: cal.id, outcome: "synced", created: 2, updated: 1, deleted: 0 }]);
+  assert.deepEqual(report.calendars, [{ calendarId: cal.id, outcome: "synced", created: 3, updated: 1, deleted: 0 }]);
   const events = await eventsOf(cal.id);
-  assert.equal(events.length, 3, "the lifeId item met its own row instead of creating a second one");
+  assert.equal(events.length, 5, "the newer lifeId item met its own row instead of creating a second one; the older one did not take the row over");
   const relinked = byExternal(events, "new-provider-id");
   assert.deepEqual({ id: relinked.id, title: relinked.title, version: relinked.version }, { id: "e_local00000", title: "Recreated after a failed local write", version: 2 });
   assert.equal(byExternal(events, "free").id, "e_freeid0001");
   assert.match(byExternal(events, "junk").id, /^e_[a-z0-9]{10}$/);
   assert.notEqual(byExternal(events, "junk").id, "not-an-id");
+  const leftover = byExternal(events, "leftover-provider-id");
+  assert.match(leftover.id, /^e_[a-z0-9]{10}$/);
+  assert.notEqual(leftover.id, "e_local00001", "a taken lifeId is not reused for a new row");
+  assert.deepEqual({ id: byExternal(events, "kept-provider-id").id, version: byExternal(events, "kept-provider-id").version }, { id: "e_local00001", version: 1 }, "the row it named was left alone");
+});
+
+test("a tombstone with our id deletes only the copy it names: after a move the row stays in its new calendar, whichever side syncs first or alone", async () => {
+  const account = await addAccount("moved@example.com");
+  const fake = new FakeAdapter({ clock });
+  fake.seed(account.id, personal, []);
+  const [seeded] = fake.seed(account.id, work, [timed("2026-09-10", 18, "mv1", { lifeId: "e_moved00001" })]);
+  await syncAccount(db.store, clock, fake, account.id);
+  const [cal, wrk] = (await calendarsOf(account.id)) as [Calendar, Calendar];
+  const row = (await getEvent("e_moved00001"))!;
+  assert.equal(row.calendarId, wrk.id);
+
+  // Moved to Personal in Google's UI: the same provider id now lives in the destination, the source keeps a tombstone.
+  // Personal is ordered first, so the destination syncs before the source delivers the tombstone.
+  fake.seed(account.id, personal, [{ ...timed("2026-09-10", 18, "mv1", { lifeId: "e_moved00001" }), etag: "etag-mv1-moved" }]);
+  const tombstone = tombstoneOf(seeded!);
+  const source = rewritingPages(fake, work.id, (items) => [...items, tombstone]);
+  const before = await logSize();
+  const moved = await syncAccount(db.store, clock, source, account.id);
+  assert.deepEqual(moved.calendars, [
+    { calendarId: cal.id, outcome: "synced", created: 0, updated: 1, deleted: 0 },
+    { calendarId: wrk.id, outcome: "unchanged", created: 0, updated: 0, deleted: 0 },
+  ]);
+  const after = (await getEvent("e_moved00001"))!;
+  assert.deepEqual({ calendarId: after.calendarId, deletedAt: after.deletedAt, externalId: after.external.id, etag: after.external.etag }, { calendarId: cal.id, deletedAt: null, externalId: "mv1", etag: "etag-mv1-moved" }, "the row followed the event");
+  assert.equal(await logSize(), before + 1, "one move, one entry: the tombstone wrote nothing");
+  assert.equal((await eventsOf(cal.id)).length + (await eventsOf(wrk.id)).length, 1, "no second row for the same event");
+
+  // The source alone, again and again (what `life calendar sync <source>` does): the tombstone still names a copy that is not this row.
+  const again = await syncAccount(db.store, clock, source, account.id, { calendarIds: [wrk.id] });
+  assert.deepEqual(again.calendars, [{ calendarId: wrk.id, outcome: "unchanged", created: 0, updated: 0, deleted: 0 }]);
+  const full = await syncAccount(db.store, clock, source, account.id, { calendarIds: [wrk.id], full: true });
+  assert.deepEqual(full.calendars, [{ calendarId: wrk.id, outcome: "unchanged", created: 0, updated: 0, deleted: 0 }], "a full listing of the source does not prune a row that is not in it");
+  assert.equal((await getEvent("e_moved00001"))!.deletedAt, null);
+  assert.equal(await logSize(), before + 1);
+
+  // event.move stored the readback itself before any sync: the source's tombstone must not undo it either.
+  const [other] = fake.seed(account.id, work, [timed("2026-09-11", 18, "mv2", { lifeId: "e_moved00002" })]);
+  await syncAccount(db.store, clock, fake, account.id);
+  fake.remove(account.id, "mv2");
+  const [readback] = fake.seed(account.id, personal, [{ ...timed("2026-09-11", 18, "mv2", { lifeId: "e_moved00002" }), etag: "etag-mv2-moved" }]);
+  await storeReadback("e_moved00002", "event.move", readback!, { calendarId: cal.id, accountId: account.id });
+  const sourceOnly = await syncAccount(db.store, clock, rewritingPages(fake, work.id, (items) => [...items, tombstoneOf(other!)]), account.id, { calendarIds: [wrk.id] });
+  assert.deepEqual(sourceOnly.calendars, [{ calendarId: wrk.id, outcome: "unchanged", created: 0, updated: 0, deleted: 0 }]);
+  const kept = (await getEvent("e_moved00002"))!;
+  assert.deepEqual({ calendarId: kept.calendarId, deletedAt: kept.deletedAt }, { calendarId: cal.id, deletedAt: null });
+});
+
+test("after a restore the old copy's tombstone leaves the restored row alone, on an incremental and on a full pass, and the log does not grow", async () => {
+  const account = await addAccount("restored@example.com");
+  const fake = new FakeAdapter({ clock });
+  fake.seed(account.id, personal, [timed("2026-09-10", 16, "r1", { lifeId: "e_restore001" })]);
+  await syncAccount(db.store, clock, fake, account.id);
+  const [cal] = (await calendarsOf(account.id)) as [Calendar];
+
+  // What event.delete then event.restore leave behind: the provider holds r1 as a tombstone and a new copy under the same lifeId; the row points at the new copy.
+  await fake.delete(account.id, personal.id, "r1");
+  const deletedRow = okRecord(
+    await mutate(db.store, clock, "event", "event.delete", neel, async (tx, _c, now) => {
+      const current = (await tx.get("event", "e_restore001"))!;
+      return okMutation("updated", current, { ...current, deletedAt: now, version: current.version + 1, updatedAt: now });
+    }),
+  );
+  const recreated = await fake.create(account.id, personal.id, { title: deletedRow.title, notes: null, location: null, start: deletedRow.start, end: deletedRow.end, repeat: null, busy: true, status: "confirmed" }, "e_restore001");
+  await storeReadback("e_restore001", "event.restore", recreated, { deletedAt: null });
+  assert.ok(fake.event(account.id, "r1")!.deleted && fake.event(account.id, "r1")!.lifeId === "e_restore001", "the tombstone still carries our id");
+
+  const before = await logSize();
+  const incremental = await syncAccount(db.store, clock, fake, account.id);
+  assert.deepEqual(incremental.calendars, [{ calendarId: cal.id, outcome: "unchanged", created: 0, updated: 0, deleted: 0 }]);
+  const full = await syncAccount(db.store, clock, fake, account.id, { full: true });
+  assert.deepEqual(full.calendars, [{ calendarId: cal.id, outcome: "unchanged", created: 0, updated: 0, deleted: 0 }], "the same page carries the tombstone and the live copy; neither touches the row");
+  const row = (await getEvent("e_restore001"))!;
+  assert.deepEqual({ deletedAt: row.deletedAt, externalId: row.external.id, version: row.version }, { deletedAt: null, externalId: recreated.external.id, version: deletedRow.version + 1 });
+  assert.equal((await eventsOf(cal.id)).length, 1, "the tombstone did not become a row of its own");
+  assert.equal(await logSize(), before, "no spurious event.sync entries");
+});
+
+test("a row Neel cancelled stays visible when the provider reports the same version as gone; a later change at the provider still deletes it", async () => {
+  const account = await addAccount("cancelled@example.com");
+  const fake = new FakeAdapter({ clock });
+  fake.seed(account.id, personal, [timed("2026-09-10", 16, "c1", { organizer: { email: "cancelled@example.com", name: null, self: true } })]);
+  await syncAccount(db.store, clock, fake, account.id);
+  const [cal] = (await calendarsOf(account.id)) as [Calendar];
+  const row = byExternal(await eventsOf(cal.id), "c1");
+
+  // event.cancel: patch status at the provider, store the readback as a live row.
+  const readback = await fake.update(account.id, personal.id, "c1", { status: "cancelled" }, row.external.etag);
+  await storeReadback(row.id, "event.cancel", readback);
+  // Google reports a cancelled event as deleted (map.ts sets `deleted` for a cancelled non-instance); model that mapping on the fake's pages.
+  const google = rewritingPages(fake, personal.id, (items) => items.map((item) => (item.status === "cancelled" && !item.providerMasterId ? { ...item, deleted: true } : item)));
+
+  const before = await logSize();
+  const report = await syncAccount(db.store, clock, google, account.id);
+  assert.deepEqual(report.calendars, [{ calendarId: cal.id, outcome: "unchanged", created: 0, updated: 0, deleted: 0 }]);
+  const kept = (await getEvent(row.id))!;
+  assert.deepEqual({ status: kept.status, deletedAt: kept.deletedAt, etag: kept.external.etag }, { status: "cancelled", deletedAt: null, etag: readback.external.etag });
+  assert.equal(await logSize(), before, "a cancelled row the provider agrees on writes nothing");
+  const full = await syncAccount(db.store, clock, google, account.id, { full: true });
+  assert.equal(full.calendars[0]!.outcome, "unchanged", "a full listing does not prune it either: the tombstone mentioned it");
+  assert.equal((await getEvent(row.id))!.deletedAt, null);
+
+  fake.change(account.id, "c1", { deleted: true });
+  const gone = await syncAccount(db.store, clock, google, account.id);
+  assert.deepEqual(gone.calendars, [{ calendarId: cal.id, outcome: "synced", created: 0, updated: 0, deleted: 1 }]);
+  const trashed = (await getEvent(row.id))!;
+  assert.deepEqual({ status: trashed.status, deletedAt: trashed.deletedAt }, { status: "cancelled", deletedAt: NOW }, "a new version from the provider is a real deletion, status left as it was");
+});
+
+test("a quiet sync writes nothing even as the clock moves: sync times land on the records, not in the log", async () => {
+  const account = await addAccount("quiet@example.com");
+  const fake = new FakeAdapter({ clock });
+  fake.seed(account.id, personal, [timed("2026-09-10", 16, "q1")]);
+  fake.seed(account.id, holidays, []);
+  await syncAccount(db.store, clock, fake, account.id);
+  const [cal, hol] = (await calendarsOf(account.id)) as [Calendar, Calendar];
+
+  const ticking = tickingClock("2026-09-09T12:10:00Z", 1);
+  const before = await logSize();
+  const first = await syncAccount(db.store, ticking, fake, account.id);
+  const second = await syncAccount(db.store, ticking, fake, account.id);
+  assert.deepEqual([...first.calendars, ...second.calendars].map((c) => c.outcome), ["unchanged", "unchanged", "unchanged", "unchanged"]);
+  assert.equal(await logSize(), before, "two quiet syncs with a moving clock added no log rows");
+  const [calAfter, holAfter, accountAfter] = [(await getCalendar(cal.id))!, (await getCalendar(hol.id))!, (await getAccount(account.id))!];
+  for (const record of [calAfter, holAfter, accountAfter]) {
+    assert.ok(record.syncedAt! > "2026-09-09T12:10:00Z", `syncedAt moved: ${record.syncedAt}`);
+  }
+  assert.ok(accountAfter.syncedAt! >= calAfter.syncedAt!, "the account is stamped after its calendars");
+  assert.deepEqual([calAfter.version, holAfter.version, accountAfter.version], [cal.version, hol.version, account.version], "no version moved");
+  assert.equal(isStale(calAfter.syncedAt, ticking.now(), 300), false);
+
+  // A failure is bookkeeping too: it lands on the calendar without a log entry, and so does its clearing.
+  fake.failNext(new ProviderUnavailable("down", 503));
+  await syncAccount(db.store, ticking, fake, account.id);
+  assert.equal((await getCalendar(cal.id))!.syncError, "ProviderUnavailable: down");
+  await syncAccount(db.store, ticking, fake, account.id);
+  assert.equal((await getCalendar(cal.id))!.syncError, null);
+  assert.equal(await logSize(), before, "neither the failure nor the recovery wrote to the log");
+});
+
+test("page cursors live in memory: a listing that dies mid-way starts over from the stored token, and a page token the provider refuses restarts the listing", async () => {
+  const account = await addAccount("pages@example.com");
+  const fake = new FakeAdapter({ clock, pageSize: 2 });
+  fake.seed(account.id, personal, [timed("2026-09-10", 16, "g1"), timed("2026-09-11", 16, "g2"), timed("2026-09-12", 16, "g3")]);
+  let crashed = false;
+  const crashing = failingOn(fake, personal.id, (cursor) => {
+    if (crashed || cursor === null || !cursor.startsWith("page:")) return null;
+    crashed = true;
+    return new ProviderUnavailable("connection reset", 502);
+  });
+
+  const died = await syncAccount(db.store, clock, crashing, account.id);
+  const [cal] = (await calendarsOf(account.id)) as [Calendar];
+  assert.deepEqual(died.calendars, [{ calendarId: cal.id, outcome: "failed", created: 2, updated: 0, deleted: 0, error: "ProviderUnavailable: connection reset" }], "the first page was applied before the second failed");
+  const interrupted = (await getCalendar(cal.id))!;
+  assert.deepEqual({ token: interrupted.external.syncToken, syncedAt: interrupted.syncedAt, error: interrupted.syncError }, { token: null, syncedAt: null, error: "ProviderUnavailable: connection reset" }, "no page token was stored");
+  assert.equal((await eventsOf(cal.id)).length, 2);
+
+  const resumed = await syncAccount(db.store, clock, crashing, account.id);
+  assert.deepEqual(resumed.calendars, [{ calendarId: cal.id, outcome: "synced", created: 1, updated: 0, deleted: 0 }], "the pages already applied are unchanged; the missing one lands");
+  assert.equal(fake.callsTo("syncPage").filter((call) => call.args[1] === personal.id).at(-2)!.args[2], null, "the retry started the listing over rather than from the dead page token");
+  assert.match(String((await getCalendar(cal.id))!.external.syncToken), /^sync:/);
+  assert.equal((await getCalendar(cal.id))!.syncError, null);
+
+  // A page token the provider no longer accepts comes back as a 400: the listing starts over, and the copy converges.
+  fake.change(account.id, "g1", { title: "Edited" });
+  fake.seed(account.id, personal, [timed("2026-09-13", 16, "g4"), timed("2026-09-14", 16, "g5")]);
+  let refused = false;
+  const refusing = failingOn(fake, personal.id, (cursor) => {
+    if (refused || cursor === null || !cursor.startsWith("page:")) return null;
+    refused = true;
+    return new ProviderRejected("Invalid page token", 400);
+  });
+  const pagesBefore = fake.callsTo("syncPage").length;
+  const restarted = await syncAccount(db.store, clock, refusing, account.id);
+  assert.deepEqual(restarted.calendars, [{ calendarId: cal.id, outcome: "resynced", created: 2, updated: 1, deleted: 0 }]);
+  assert.deepEqual(
+    fake.callsTo("syncPage").slice(pagesBefore).map((call) => (call.args[2] === null ? "full" : String(call.args[2]).split(":")[0])),
+    ["sync", "full", "page", "page"],
+    "the incremental listing's second page was refused (the refusal itself never reached the fake), so a full listing ran from the start",
+  );
+  assert.equal((await eventsOf(cal.id)).length, 5);
+  assert.equal(byExternal(await eventsOf(cal.id), "g1").title, "Edited");
+  assert.equal((await getCalendar(cal.id))!.syncError, null);
+
+  // A 400 on the stored sync token is not a page token problem: it is a failure, reported as one.
+  const broken = failingOn(fake, personal.id, (cursor) => (cursor !== null && cursor.startsWith("sync:") ? new ProviderRejected("Bad request", 400) : null));
+  const failed = await syncAccount(db.store, clock, broken, account.id);
+  assert.deepEqual(failed.calendars, [{ calendarId: cal.id, outcome: "failed", created: 0, updated: 0, deleted: 0, error: "ProviderRejected: Bad request" }]);
 });
 
 test("an expired cursor starts a full listing over and prunes unmentioned rows after since; older rows and a full pass behave the same way", async () => {
