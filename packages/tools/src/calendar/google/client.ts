@@ -1,6 +1,7 @@
 // Thin typed calls to the Google Calendar REST API over the global fetch:
 // calendarList.list, events.list with sync tokens, insert, patch, delete,
-// instances. Bearer tokens come from a TokenSource; one 401 triggers one
+// move, instances, and the rows sharing an iCalUID (a master and its
+// exception rows). Bearer tokens come from a TokenSource; one 401 triggers one
 // refresh and retry, a second one is a NeedsReauth signal. Google's failures
 // are mapped to the adapter's errors here so nothing above this module reads
 // an HTTP status. Access tokens never appear in an error message.
@@ -217,6 +218,37 @@ export class GoogleClient {
 
     delete: async (accountId: string, calendarId: string, eventId: string): Promise<void> => {
       await this.#request<unknown>(accountId, { method: "DELETE", path: eventPath(calendarId, eventId), query: { sendUpdates: "none" } });
+    },
+
+    /** Move to another calendar of the same account: the id and everything on the event stay; `sendUpdates=none` as on every write. Returns the event as it now is in the destination. */
+    move: async (accountId: string, calendarId: string, eventId: string, destinationCalendarId: string): Promise<GoogleEvent> => {
+      const event = await this.#request<GoogleEvent>(accountId, {
+        method: "POST",
+        path: `${eventPath(calendarId, eventId)}/move`,
+        query: { destination: destinationCalendarId, sendUpdates: "none" },
+      });
+      return required(event, "events.move");
+    },
+
+    /**
+     * Every resource in the calendar sharing an iCalUID: with `singleEvents=false`
+     * that is a repeating master and its exception rows (cancelled ones included,
+     * via `showDeleted=true`), never the occurrences the rule lays out. Follows
+     * page tokens to the end.
+     */
+    byICalUID: async (accountId: string, calendarId: string, iCalUID: string): Promise<GoogleEvent[]> => {
+      const items: GoogleEvent[] = [];
+      let pageToken: string | null = null;
+      do {
+        const raw: RawEventsPage | null = await this.#request<RawEventsPage>(accountId, {
+          method: "GET",
+          path: `/calendars/${encodeURIComponent(calendarId)}/events`,
+          query: { iCalUID, singleEvents: false, showDeleted: true, maxResults: PAGE_SIZE, pageToken },
+        });
+        items.push(...(raw?.items ?? []));
+        pageToken = raw?.nextPageToken ?? null;
+      } while (pageToken);
+      return items;
     },
 
     /** The instances of a recurring event, `originalStart` narrowing to one; exception rows come back with their `recurringEventId`. */

@@ -1,11 +1,12 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Account, Calendar, Ctx, Event, EventWrite, Receipt } from "../contract.ts";
-import { mutate, newId, okMutation } from "../core.ts";
+import { bump, mutate, newId, okMutation } from "../core.ts";
 import { createTestDb, fixedClock, type TestDb } from "../db/testing.ts";
 import { FakeAdapter, ProviderRejected, ProviderUnavailable, type CalendarAdapter, type ProviderCalendar, type SeedEvent } from "./adapter.ts";
 import { createEvents, keyedEventId, type EventOps, type EventReceipt } from "./events.ts";
 import { occurrenceRef, type Occurrence } from "./expand.ts";
+import { NeedsReauth } from "./google/oauth.ts";
 import { syncAccount } from "./sync.ts";
 
 const NOW = "2026-09-09T12:00:00Z";
@@ -146,7 +147,7 @@ const lastCall = (method: Parameters<FakeAdapter["callsTo"]>[0]) => {
 const startsOf = (list: Occurrence[]): string[] => list.map((o) => ("at" in o.start ? o.start.at : o.start.date));
 
 /** The fake behind an adapter whose `method` fails with `error()` instead of reaching the fake; everything else passes through. */
-function failing(inner: FakeAdapter, method: "create" | "update" | "delete", error: () => Error): CalendarAdapter {
+function failing(inner: FakeAdapter, method: "create" | "update" | "delete" | "instances", error: () => Error): CalendarAdapter {
   return {
     provider: "google",
     connect: (opts) => inner.connect(opts),
@@ -156,9 +157,17 @@ function failing(inner: FakeAdapter, method: "create" | "update" | "delete", err
     update: (accountId, calendar, providerId, patch, etag) => (method === "update" ? Promise.reject(error()) : inner.update(accountId, calendar, providerId, patch, etag)),
     delete: (accountId, calendar, providerId) => (method === "delete" ? Promise.reject(error()) : inner.delete(accountId, calendar, providerId)),
     respond: (accountId, calendar, providerId, response) => inner.respond(accountId, calendar, providerId, response),
+    move: (accountId, from, to, providerId) => inner.move(accountId, from, to, providerId),
+    instances: (accountId, calendar, masterId) => (method === "instances" ? Promise.reject(error()) : inner.instances(accountId, calendar, masterId)),
     instanceId: (masterId, originalStart) => inner.instanceId(masterId, originalStart),
   };
 }
+
+const accountStatus = async (id: string): Promise<Account["status"]> => {
+  const account = await db.store.read((tx) => tx.get("account", id));
+  assert.ok(account, `no account ${id}`);
+  return account.status;
+};
 
 // ------------------------------------------------------------------ add
 
@@ -267,6 +276,37 @@ test("ProviderUnavailable is rejected with provider_unavailable and leaves no ro
   assert.equal(stuck.record?.title, "Dentist");
   assert.deepEqual(await getEvent(dentist.id), dentist);
   assert.equal(await logSize(), log);
+});
+
+test("a credential the provider no longer accepts rejects the write with needs_reauth, stores nothing for the event, and marks the account until it is reconnected", async () => {
+  const events = await eventCount();
+  const log = await logSize();
+  assert.equal(await accountStatus(home.id), "connected");
+
+  fake.failNext(new NeedsReauth(home.id));
+  const receipt = rejectedOf(await ops.update(dentist.id, { title: "Dentist (revoked)" }, neel));
+  assert.deepEqual(receipt.issues, [`needs_reauth: Google access for ${home.id} needs to be granted again`]);
+  assert.deepEqual({ id: receipt.id, version: receipt.record?.version, partial: receipt.partial }, { id: dentist.id, version: dentist.version, partial: undefined });
+  assert.deepEqual(await getEvent(dentist.id), dentist, "the row is untouched");
+  assert.equal(await eventCount(), events);
+  assert.equal(await accountStatus(home.id), "needs_reauth", "the account is marked");
+  assert.equal(await logSize(), log + 1, "the account's status is the only write");
+  const entry = (await db.store.read((tx) => tx.history("account", home.id))).at(-1)!;
+  assert.deepEqual({ op: entry.op, actor: entry.actor, status: entry.patch.status }, { op: "account.sync", actor: "import:google", status: { from: "connected", to: "needs_reauth" } }, "the same account.sync write sync makes");
+
+  // Until it is reconnected, writes on its calendars are refused before any provider call, and the primary account's default calendar is out of reach.
+  const calls = fake.calls.length;
+  assert.match(rejectedIssues(await ops.add({ title: "Blocked", start: at("2026-09-16T16:00:00Z") }, neel))[0]!, /^account: "neel@example.com" is needs_reauth; run life account add google/);
+  assert.match(rejectedIssues(await ops.update(dentist.id, { title: "Blocked" }, neel))[0]!, /is needs_reauth/);
+  assert.equal(fake.calls.length, calls, "no provider call while the account needs reauth");
+  assert.equal(await logSize(), log + 1);
+
+  // A second dead credential on an account already marked writes nothing more.
+  await mutate(db.store, clock, "account", "account.update", neel, async (tx, _c, now) => {
+    const current = (await tx.get("account", home.id))!;
+    return okMutation("updated", current, bump({ ...current, status: "connected" }, now));
+  });
+  assert.equal(await accountStatus(home.id), "connected");
 });
 
 test("the key-derived id makes a retry meet its own row: a replay returns the receipt, a row synced back is unchanged", async () => {
@@ -427,16 +467,73 @@ test("scope all shifts the whole series by the same delta and keeps the exceptio
   assert.deepEqual({ start: shifted.start, end: shifted.end, rule: shifted.repeat?.rrule }, { start: at("2026-09-15T14:00:00Z"), end: at("2026-09-15T15:00:00Z"), rule: "RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=6" });
   assert.equal(lastCall("update").args[2], yoga.external.id, "the master was patched at the provider");
 
+  // The exception rows are what the provider handed back, not a local shift: Google re-keys them from the new start.
+  assert.deepEqual(lastCall("instances").args, [home.id, personal.id, yoga.external.id], "the occurrences were read back through the provider");
   const exception = await getEvent(noted.id);
   assert.deepEqual({ originalStart: exception.originalStart, start: exception.start, end: exception.end, notes: exception.notes }, { originalStart: at("2026-09-22T14:00:00Z"), start: at("2026-09-22T14:00:00Z"), end: at("2026-09-22T15:00:00Z"), notes: "Bring the mat" });
+  assert.equal(exception.external.id, fake.instanceId(yoga.external.id, at("2026-09-22T14:00:00Z")), "the row names the provider's new instance id");
+  assert.notEqual(exception.external.id, noted.external.id);
+  assert.deepEqual(exception.external, providerEvent(exception.external.id).external, "etag and all, from the readback");
+  assert.equal(fake.event(home.id, noted.external.id), null, "the provider no longer has the old instance");
+  assert.equal(exception.version, noted.version + 1);
+  assert.deepEqual((await historyOf(noted.id)).map((e) => e.op), ["event.update", "event.reschedule"]);
 
   const all = (await ops.list({ from: "2026-09-15", to: "2026-10-31" })).filter((o) => o.id === yoga.id || o.masterId === yoga.id);
   assert.deepEqual(startsOf(all), ["2026-09-15T14:00:00Z", "2026-09-22T14:00:00Z", "2026-09-29T14:00:00Z", "2026-10-06T14:00:00Z", "2026-10-13T14:00:00Z", "2026-10-20T14:00:00Z"]);
   assert.equal(all[1]!.id, noted.id, "the exception still stands in for its slot");
 
+  // The copy has converged: a sync afterwards finds every etag it already has and no instance it lacks a row for.
+  const histories = [(await historyOf(yoga.id)).length, (await historyOf(noted.id)).length];
+  await syncAccount(db.store, clock, fake, home.id);
+  assert.deepEqual([(await historyOf(yoga.id)).length, (await historyOf(noted.id)).length], histories, "nothing to reconcile after the readback");
+  assert.equal((await exceptionsOf(yoga.id)).length, 1, "and no second row for the re-keyed instance");
+
   const retitled = okRecord(await ops.update(yoga.id, { title: "Yoga flow" }, neel, { scope: "all" }));
   assert.equal(retitled.title, "Yoga flow");
   assert.equal(retitled.version, 3);
+  assert.equal(fake.callsTo("instances").length, 1, "a change that leaves the occurrences alone does not read them back");
+
+  // Dropping the rule drops the exception rows at the provider, and the readback puts them in the trash.
+  const single = okRecord(await ops.update(yoga.id, { repeat: null }, neel, { scope: "all" }));
+  assert.equal(single.repeat, null);
+  assert.equal(providerEvent(exception.external.id).deleted, true, "the provider deleted the instance with the rule");
+  assert.equal((await getEvent(noted.id)).deletedAt, NOW, "and the row followed");
+  assert.equal(fake.callsTo("instances").length, 2);
+});
+
+test("an all-scope time change whose readback fails is rejected with partial and stores nothing; one the provider forgot an occurrence on trashes that row and warns", async () => {
+  const piano = okRecord(await ops.add({ title: "Piano", start: at("2026-09-16T01:00:00Z"), duration: 30, repeat: "RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=4" }, neel));
+  const room = okRecord(await ops.update(occurrenceRef(piano.id, "2026-09-23T01:00:00Z"), { location: "Room B" }, neel, { scope: "this" }));
+  const events = await eventCount();
+  const log = await logSize();
+
+  const flaky = createEvents(db.store, clock, { google: failing(fake, "instances", () => new ProviderUnavailable("timeout", 504)) });
+  const receipt = rejectedOf(await flaky.reschedule(piano.id, { start: at("2026-09-16T02:00:00Z") }, neel, { scope: "all" }));
+  assert.equal(receipt.partial, true);
+  assert.equal(receipt.issues[0], "provider_unavailable: timeout");
+  assert.ok(receipt.issues.some((issue) => issue.startsWith("partial:") && issue.includes(piano.id)), JSON.stringify(receipt.issues));
+  assert.deepEqual(await getEvent(piano.id), piano, "the local master is untouched");
+  assert.deepEqual(await getEvent(room.id), room);
+  assert.equal(await eventCount(), events);
+  assert.equal(await logSize(), log);
+  assert.deepEqual(providerEvent(piano.external.id).start, at("2026-09-16T02:00:00Z"), "the provider already holds the change");
+
+  // The provider now holds the series an hour later and the exception re-keyed; forget that exception provider-side, then change the series again.
+  const rekeyed = fake.instanceId(piano.external.id, at("2026-09-23T02:00:00Z"));
+  assert.ok(fake.event(home.id, rekeyed), "the provider re-keyed the exception when the master moved");
+  fake.remove(home.id, rekeyed);
+  const synced = await syncAccount(db.store, clock, fake, home.id);
+  assert.ok(synced.calendars.every((c) => c.outcome !== "failed"));
+  const shiftedReceipt = await ops.reschedule(piano.id, { start: at("2026-09-16T03:00:00Z") }, neel, { scope: "all" });
+  const shifted = okRecord(shiftedReceipt);
+  assert.deepEqual({ start: shifted.start, partial: shiftedReceipt.partial }, { start: at("2026-09-16T03:00:00Z"), partial: undefined });
+  assert.equal(shiftedReceipt.warnings?.length, 1);
+  assert.ok(shiftedReceipt.warnings![0]!.includes(room.id) && shiftedReceipt.warnings![0]!.includes("2026-09-23T01:00:00Z"), `the warning names the row and its slot: ${shiftedReceipt.warnings![0]}`);
+  const dropped = await getEvent(room.id);
+  assert.equal(dropped.deletedAt, NOW, "a row the provider no longer lists goes to the trash");
+  assert.equal((await historyOf(room.id)).at(-1)!.op, "event.reschedule");
+  const occurrences = (await ops.list({ from: "2026-09-15", to: "2026-10-15" })).filter((o) => o.id === piano.id || o.masterId === piano.id);
+  assert.deepEqual(startsOf(occurrences), ["2026-09-16T03:00:00Z", "2026-09-23T03:00:00Z", "2026-09-30T03:00:00Z", "2026-10-07T03:00:00Z"], "the rule lays the slot out again");
 });
 
 test("scope following splits the series: a new id continues from the occurrence, the truncated original is named in warnings", async () => {
@@ -547,17 +644,46 @@ test("reschedule keeps the duration when end is omitted, takes a new end when gi
   dentist = okRecord(await ops.reschedule(dentist.id, { start: at("2026-09-16T18:00:00Z") }, neel));
 });
 
-test("move changes the calendar within the account and is rejected across accounts with a hint", async () => {
-  const oldExternal = dentist.external.id;
+test("move is a provider move: the provider id, the guests, and the exception rows stay with the event; across accounts it is rejected with a hint", async () => {
+  const creates = fake.callsTo("create").length;
+  const deletes = fake.callsTo("delete").length;
   const receipt = await ops.move(dentist.id, "Side", neel);
   const moved = okRecord(receipt);
   assert.equal(receipt.outcome, "updated");
-  assert.deepEqual({ id: moved.id, calendarId: moved.calendarId, accountId: moved.accountId, title: moved.title, start: moved.start }, { id: dentist.id, calendarId: sideCal.id, accountId: home.id, title: "Dentist", start: dentist.start });
-  const inSide = fake.events(home.id, side.id).find((e) => e.lifeId === dentist.id);
-  assert.ok(inSide, "the provider holds it in the destination under the same Life-OS id");
-  assert.equal(moved.external.id, inSide.external.id);
-  assert.equal(providerEvent(oldExternal).deleted, true, "and no longer in the source");
+  assert.deepEqual(
+    { id: moved.id, calendarId: moved.calendarId, accountId: moved.accountId, title: moved.title, start: moved.start, external: moved.external.id },
+    { id: dentist.id, calendarId: sideCal.id, accountId: home.id, title: "Dentist", start: dentist.start, external: dentist.external.id },
+    "same row, same provider id, new calendar",
+  );
+  assert.deepEqual(lastCall("move").args, [home.id, personal.id, side.id, dentist.external.id]);
+  assert.deepEqual([fake.callsTo("create").length, fake.callsTo("delete").length], [creates, deletes], "no create, no delete: the provider moved it");
+  assert.ok(fake.events(home.id, side.id).some((e) => e.external.id === dentist.external.id), "the provider holds it in the destination");
+  assert.ok(!fake.events(home.id, personal.id).some((e) => e.external.id === dentist.external.id), "and not in the source");
+  assert.deepEqual(moved.external, providerEvent(dentist.external.id).external, "the row holds the readback");
   assert.equal((await ops.move(dentist.id, sideCal.id, neel)).outcome, "unchanged");
+
+  // A meeting with guests keeps its guests, organizer, and identity; a recreate would have lost them.
+  const lunch = await byExternal("own1");
+  const movedLunch = okRecord(await ops.move(lunch.id, "Side", neel));
+  assert.deepEqual(
+    { external: movedLunch.external.id, iCalUID: movedLunch.external.iCalUID, attendees: movedLunch.attendees, organizer: movedLunch.organizer, myResponse: movedLunch.myResponse, calendarId: movedLunch.calendarId },
+    { external: "own1", iCalUID: lunch.external.iCalUID, attendees: lunch.attendees, organizer: lunch.organizer, myResponse: "accepted", calendarId: sideCal.id },
+  );
+
+  // A series takes its exception rows along; they are read back from the destination rather than re-pointed locally.
+  const gym = okRecord(await ops.add({ title: "Gym", start: at("2026-11-10T01:00:00Z"), repeat: "RRULE:FREQ=DAILY;COUNT=5" }, neel));
+  const late = okRecord(await ops.reschedule(occurrenceRef(gym.id, "2026-11-12T01:00:00Z"), { start: at("2026-11-12T02:00:00Z") }, neel, { scope: "this" }));
+  const movedGym = okRecord(await ops.move(gym.id, "Side", neel));
+  assert.deepEqual({ external: movedGym.external.id, calendarId: movedGym.calendarId, rule: movedGym.repeat?.rrule }, { external: gym.external.id, calendarId: sideCal.id, rule: "RRULE:FREQ=DAILY;COUNT=5" });
+  assert.deepEqual(lastCall("instances").args, [home.id, side.id, gym.external.id], "the exception rows were read back from the destination");
+  const movedLate = await getEvent(late.id);
+  assert.deepEqual(
+    { calendarId: movedLate.calendarId, accountId: movedLate.accountId, external: movedLate.external.id, masterId: movedLate.masterId, start: movedLate.start, deletedAt: movedLate.deletedAt },
+    { calendarId: sideCal.id, accountId: home.id, external: late.external.id, masterId: gym.id, start: at("2026-11-12T02:00:00Z"), deletedAt: null },
+  );
+  assert.deepEqual(movedLate.external, providerEvent(late.external.id).external, "the exception row holds the provider's readback");
+  const inSide = (await ops.list({ from: "2026-11-11", to: "2026-11-11", calendars: ["Side"] })).filter((o) => o.id === gym.id || o.masterId === gym.id);
+  assert.deepEqual(inSide.map((o) => [o.id, o.start]), [[late.id, at("2026-11-12T02:00:00Z")]], "the moved exception still stands in for its slot");
 
   const across = rejectedOf(await ops.move(dentist.id, "work@example.com/Work", neel));
   assert.match(across.issues[0]!, /another account/);
@@ -609,8 +735,23 @@ test("cancel needs the organizer and a reason; the row stays visible as cancelle
   assert.deepEqual({ op: entry.op, reason: entry.reason, status: entry.patch.status }, { op: "event.cancel", reason: "Trip moved", status: { from: "confirmed", to: "cancelled" } });
   assert.equal((await ops.cancel(own.id, { actor: "neel", reason: "again" })).outcome, "unchanged");
 
+  // To the provider a cancelled single event is a deleted one (map.ts reads it so); the next sync must not trash a row already cancelled with the etag it holds.
+  assert.equal(providerEvent("own1").deleted, true);
+  const report = await syncAccount(db.store, clock, fake, home.id, { calendarIds: [cancelled.calendarId] });
+  assert.ok(report.calendars.every((c) => c.outcome !== "failed"), JSON.stringify(report));
+  const afterSync = await getEvent(own.id);
+  assert.deepEqual({ status: afterSync.status, deletedAt: afterSync.deletedAt, version: afterSync.version }, { status: "cancelled", deletedAt: null, version: cancelled.version }, "a sync leaves the cancelled row as it is");
+
   const day = await ops.list({ from: "2026-09-18", to: "2026-09-18" });
   assert.deepEqual(day.map((o) => [o.title, o.status]), [["Team lunch", "cancelled"]], "still listed; the views decide what to show");
+
+  // Deleting a cancelled event: the provider already counts it gone (Google answers 410), and the row goes to the trash all the same.
+  const trashed = okRecord(await ops.delete(own.id, neel));
+  assert.deepEqual({ deletedAt: trashed.deletedAt, status: trashed.status }, { deletedAt: NOW, status: "cancelled" });
+  assert.deepEqual(lastCall("delete").args, [home.id, side.id, "own1"], "the provider was asked, and its 410 was taken as done");
+  assert.deepEqual(await ops.list({ from: "2026-09-18", to: "2026-09-18" }), []);
+  fake.failNext(new ProviderRejected("Forbidden", 403));
+  assert.deepEqual(rejectedIssues(await ops.delete(allDay.id, neel)), ["provider_rejected: Forbidden"], "any other refusal still stands");
 
   // Repeating: the scope rule applies, and cancelling one occurrence is an exception row.
   const series = okRecord(await ops.add({ title: "Office hours", start: at("2026-09-18T22:00:00Z"), repeat: "RRULE:FREQ=WEEKLY;BYDAY=FR" }, neel));

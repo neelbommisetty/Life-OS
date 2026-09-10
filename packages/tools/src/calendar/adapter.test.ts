@@ -266,6 +266,131 @@ test("instanceId builds the provider's occurrence id, and writes to an instance 
   assert.equal(allDay!.busy, false);
 });
 
+test("update: a cancelled non-instance is deleted the way map.ts reads it, and a cancelled instance is a cancelled exception row", async () => {
+  const fake = new FakeAdapter({ clock });
+  fake.seed(ACCOUNT, personal, [
+    timed("2026-09-10", 16, "single"),
+    { id: "m1", title: "Standup", start: { at: "2026-09-07T16:00:00Z", timezone: "America/Los_Angeles" }, end: { at: "2026-09-07T16:15:00Z", timezone: "America/Los_Angeles" }, repeat: { rrule: "RRULE:FREQ=WEEKLY;BYDAY=MO", exdates: [] } },
+  ]);
+  const before = await drain(fake, personal.id, null);
+  const cancelled = await fake.update(ACCOUNT, personal.id, "single", { status: "cancelled" }, "");
+  assert.deepEqual({ status: cancelled.status, deleted: cancelled.deleted }, { status: "cancelled", deleted: true });
+  const instance = await fake.update(ACCOUNT, personal.id, fake.instanceId("m1", { at: "2026-09-14T16:00:00Z", timezone: "America/Los_Angeles" }), { status: "cancelled" }, "");
+  assert.deepEqual({ status: instance.status, deleted: instance.deleted, master: instance.providerMasterId }, { status: "cancelled", deleted: false, master: "m1" });
+  const after = await drain(fake, personal.id, before.cursor);
+  assert.deepEqual(after.items.map((i) => [i.external.id, i.deleted]), [["single", true], [instance.external.id, false]], "a sync sees the single event as gone and the instance as a cancelled exception");
+});
+
+test("update: a time change on a master re-keys its exception rows from the new start; dropping the rule or the kind deletes them", async () => {
+  const fake = new FakeAdapter({ clock });
+  const LA = "America/Los_Angeles";
+  fake.seed(ACCOUNT, personal, [
+    { id: "m1", title: "Yoga", start: { at: "2026-09-15T13:00:00Z", timezone: LA }, end: { at: "2026-09-15T14:00:00Z", timezone: LA }, repeat: { rrule: "RRULE:FREQ=WEEKLY;BYDAY=TU;COUNT=6", exdates: [] } },
+    { id: "ad", title: "Retreat", start: { date: "2026-10-01" }, end: { date: "2026-10-02" }, repeat: { rrule: "RRULE:FREQ=MONTHLY", exdates: [] } },
+  ]);
+  const noted = await fake.update(ACCOUNT, personal.id, fake.instanceId("m1", { at: "2026-09-22T13:00:00Z", timezone: LA }), { notes: "Bring the mat" }, "");
+  const moved = await fake.update(ACCOUNT, personal.id, fake.instanceId("m1", { at: "2026-09-29T13:00:00Z", timezone: LA }), { start: { at: "2026-09-29T15:00:00Z", timezone: LA }, end: { at: "2026-09-29T16:00:00Z", timezone: LA } }, "");
+  await fake.delete(ACCOUNT, personal.id, fake.instanceId("m1", { at: "2026-10-06T13:00:00Z", timezone: LA }));
+  const gone = fake.instanceId("m1", { at: "2026-10-06T13:00:00Z", timezone: LA });
+  const before = await drain(fake, personal.id, null);
+
+  // Title only: nothing happens to the instances.
+  await fake.update(ACCOUNT, personal.id, "m1", { title: "Yoga flow" }, "");
+  assert.deepEqual((await drain(fake, personal.id, before.cursor)).items.map((i) => i.external.id), ["m1"]);
+
+  // An hour later: every exception row moves with it, under a new id, and shows up in the next sync.
+  const shifted = await fake.update(ACCOUNT, personal.id, "m1", { start: { at: "2026-09-15T14:00:00Z", timezone: LA }, end: { at: "2026-09-15T15:00:00Z", timezone: LA } }, "");
+  assert.deepEqual(shifted.start, { at: "2026-09-15T14:00:00Z", timezone: LA });
+  for (const old of [noted.external.id, moved.external.id, gone]) assert.equal(fake.event(ACCOUNT, old), null, `${old} is no longer a row`);
+  const notedNow = fake.event(ACCOUNT, fake.instanceId("m1", { at: "2026-09-22T14:00:00Z", timezone: LA }));
+  assert.ok(notedNow);
+  assert.deepEqual(
+    { originalStart: notedNow.originalStart, start: notedNow.start, end: notedNow.end, notes: notedNow.notes },
+    { originalStart: { at: "2026-09-22T14:00:00Z", timezone: LA }, start: { at: "2026-09-22T14:00:00Z", timezone: LA }, end: { at: "2026-09-22T15:00:00Z", timezone: LA }, notes: "Bring the mat" },
+  );
+  assert.notEqual(notedNow.external.etag, noted.external.etag, "a re-keyed row has a new etag");
+  const movedNow = fake.event(ACCOUNT, fake.instanceId("m1", { at: "2026-09-29T14:00:00Z", timezone: LA }));
+  assert.deepEqual({ start: movedNow?.start, originalStart: movedNow?.originalStart }, { start: { at: "2026-09-29T16:00:00Z", timezone: LA }, originalStart: { at: "2026-09-29T14:00:00Z", timezone: LA } }, "its own time moves by the same delta");
+  const goneNow = fake.event(ACCOUNT, fake.instanceId("m1", { at: "2026-10-06T14:00:00Z", timezone: LA }));
+  assert.deepEqual({ status: goneNow?.status, deleted: goneNow?.deleted }, { status: "cancelled", deleted: false }, "a cancelled instance is re-keyed too");
+  const listed = await fake.instances(ACCOUNT, personal.id, "m1");
+  assert.deepEqual(listed.map((i) => i.external.id).sort(), [notedNow.external.id, movedNow!.external.id, goneNow!.external.id].sort(), "instances lists the exception rows, cancelled included, and nothing the rule lays out");
+  assert.deepEqual(fake.calls.at(-1), { method: "instances", args: [ACCOUNT, personal.id, "m1"] });
+  const synced = await drain(fake, personal.id, before.cursor);
+  assert.deepEqual(synced.items.map((i) => i.external.id).sort(), ["m1", notedNow.external.id, movedNow!.external.id, goneNow!.external.id].sort(), "the master and the re-keyed rows arrive with the next incremental sync");
+
+  // A zone change at the same instant keeps the ids and takes the zone on; a shift of an all-day series moves dates.
+  const zoned = await fake.update(ACCOUNT, personal.id, "m1", { start: { at: "2026-09-15T14:00:00Z", timezone: "Europe/Paris" }, end: { at: "2026-09-15T15:00:00Z", timezone: "Europe/Paris" } }, "");
+  assert.deepEqual(zoned.start, { at: "2026-09-15T14:00:00Z", timezone: "Europe/Paris" });
+  assert.deepEqual(fake.event(ACCOUNT, notedNow.external.id)?.originalStart, { at: "2026-09-22T14:00:00Z", timezone: "Europe/Paris" });
+  const adNoted = await fake.update(ACCOUNT, personal.id, fake.instanceId("ad", { date: "2026-11-01" }), { title: "Retreat (moved)" }, "");
+  await fake.update(ACCOUNT, personal.id, "ad", { start: { date: "2026-10-03" }, end: { date: "2026-10-04" } }, "");
+  assert.equal(fake.event(ACCOUNT, adNoted.external.id), null);
+  assert.deepEqual(fake.event(ACCOUNT, fake.instanceId("ad", { date: "2026-11-03" }))?.originalStart, { date: "2026-11-03" });
+
+  // Between timed and all-day, or without the rule, the exception rows are gone.
+  await fake.update(ACCOUNT, personal.id, "ad", { start: { at: "2026-10-03T16:00:00Z", timezone: LA }, end: { at: "2026-10-03T17:00:00Z", timezone: LA } }, "");
+  assert.equal(fake.event(ACCOUNT, fake.instanceId("ad", { date: "2026-11-03" }))?.deleted, true, "a change of kind deletes them");
+  await fake.update(ACCOUNT, personal.id, "m1", { repeat: null }, "");
+  assert.ok((await fake.instances(ACCOUNT, personal.id, "m1")).every((i) => i.deleted), "and so does dropping the rule");
+  await assert.rejects(fake.instances(ACCOUNT, personal.id, "nope"), (error: unknown) => error instanceof ProviderRejected && error.status === 404);
+  await assert.rejects(fake.instances(ACCOUNT, "missing", "m1"), (error: unknown) => error instanceof ProviderRejected && error.status === 404);
+});
+
+test("move keeps the provider id and everything on the event, takes the exception rows along, and leaves a tombstone in the source calendar's listing", async () => {
+  const fake = new FakeAdapter({ clock });
+  const side: ProviderCalendar = { id: "side@group.calendar.google.com", name: "Side", color: null, timezone: "America/Los_Angeles", writable: true, primary: false, hidden: false };
+  fake.seed(ACCOUNT, personal, [
+    timed("2026-09-10", 16, "own", {
+      organizer: { email: "neel@gmail.com", name: null, self: true },
+      attendees: [
+        { email: "neel@gmail.com", name: null, response: "accepted", self: true, optional: false },
+        { email: "sam@example.com", name: "Sam", response: "needsAction", self: false, optional: false },
+      ],
+      myResponse: "accepted",
+      conferencing: { kind: "meet", url: "https://meet.google.com/abc-defg-hij" },
+    }),
+    { id: "m1", title: "Standup", start: { at: "2026-09-07T16:00:00Z", timezone: "America/Los_Angeles" }, end: { at: "2026-09-07T16:15:00Z", timezone: "America/Los_Angeles" }, repeat: { rrule: "RRULE:FREQ=WEEKLY;BYDAY=MO", exdates: [] } },
+  ]);
+  fake.seed(ACCOUNT, side, []);
+  fake.seed(ACCOUNT, holidays, []);
+  const exception = await fake.update(ACCOUNT, personal.id, fake.instanceId("m1", { at: "2026-09-14T16:00:00Z", timezone: "America/Los_Angeles" }), { title: "Standup (long)" }, "");
+  const sourceBefore = await drain(fake, personal.id, null);
+  const sideBefore = await drain(fake, side.id, null);
+  const ownBefore = fake.event(ACCOUNT, "own")!;
+
+  const moved = await fake.move(ACCOUNT, personal.id, side.id, "own");
+  assert.deepEqual(fake.calls.at(-1), { method: "move", args: [ACCOUNT, personal.id, side.id, "own"] });
+  assert.deepEqual(
+    { id: moved.external.id, iCalUID: moved.external.iCalUID, attendees: moved.attendees, organizer: moved.organizer, conferencing: moved.conferencing, deleted: moved.deleted },
+    { id: "own", iCalUID: ownBefore.external.iCalUID, attendees: ownBefore.attendees, organizer: ownBefore.organizer, conferencing: ownBefore.conferencing, deleted: false },
+  );
+  assert.notEqual(moved.external.etag, ownBefore.external.etag, "a move is a change");
+  assert.deepEqual(fake.events(ACCOUNT, side.id).map((e) => e.external.id), ["own"]);
+  assert.deepEqual(fake.events(ACCOUNT, personal.id).map((e) => e.external.id).sort(), ["m1", exception.external.id].sort(), "no longer an event of the source");
+
+  const series = await fake.move(ACCOUNT, personal.id, side.id, "m1");
+  assert.equal(series.external.id, "m1");
+  assert.deepEqual(fake.events(ACCOUNT, side.id).map((e) => e.external.id).sort(), ["own", "m1", exception.external.id].sort(), "the exception rows went with the master");
+  assert.deepEqual((await fake.instances(ACCOUNT, side.id, "m1")).map((i) => i.external.id), [exception.external.id]);
+  await assert.rejects(fake.instances(ACCOUNT, personal.id, "m1"), (error: unknown) => error instanceof ProviderRejected && error.status === 404, "not in the source any more");
+
+  const source = await drain(fake, personal.id, sourceBefore.cursor);
+  assert.deepEqual(source.items.map((i) => [i.external.id, i.deleted]).sort(), [["own", true], ["m1", true], [exception.external.id, true]].sort(), "the source lists them as gone, the way Google reports a move");
+  assert.deepEqual((await drain(fake, side.id, sideBefore.cursor)).items.map((i) => [i.external.id, i.deleted]).sort(), [["own", false], ["m1", false], [exception.external.id, false]].sort(), "the destination lists them live");
+  assert.ok((await drain(fake, personal.id, null)).items.every((i) => i.deleted), "a full sync of the source still mentions the tombstones");
+  assert.deepEqual((await fake.move(ACCOUNT, side.id, side.id, "own")).external.etag, fake.event(ACCOUNT, "own")!.external.etag, "a move to the same calendar changes nothing");
+
+  await assert.rejects(fake.move(ACCOUNT, side.id, holidays.id, "own"), (error: unknown) => error instanceof ProviderRejected && error.status === 403, "a read-only destination");
+  await assert.rejects(fake.move(ACCOUNT, side.id, personal.id, exception.external.id), (error: unknown) => error instanceof ProviderRejected && error.status === 400, "one instance cannot move on its own");
+  await assert.rejects(fake.move(ACCOUNT, personal.id, side.id, "own"), (error: unknown) => error instanceof ProviderRejected && error.status === 404, "not in that calendar");
+  await fake.delete(ACCOUNT, side.id, "own");
+  await assert.rejects(fake.move(ACCOUNT, side.id, personal.id, "own"), (error: unknown) => error instanceof ProviderRejected && error.status === 410);
+  fake.removeCalendar(ACCOUNT, personal.id);
+  fake.seed(ACCOUNT, personal, []);
+  assert.deepEqual((await drain(fake, personal.id, null)).items, [], "the tombstones go with the calendar");
+});
+
 test("respond updates the self attendee and refuses when Neel is not invited", async () => {
   const fake = new FakeAdapter({ clock });
   fake.seed(ACCOUNT, personal, [

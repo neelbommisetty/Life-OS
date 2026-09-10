@@ -54,6 +54,8 @@ function connecting(inner: FakeAdapter, files: CredentialStore): CalendarAdapter
     update: (accountId, calendar, providerId, patch, etag) => inner.update(accountId, calendar, providerId, patch, etag),
     delete: (accountId, calendar, providerId) => inner.delete(accountId, calendar, providerId),
     respond: (accountId, calendar, providerId, response) => inner.respond(accountId, calendar, providerId, response),
+    move: (accountId, from, to, providerId) => inner.move(accountId, from, to, providerId),
+    instances: (accountId, calendar, masterId) => inner.instances(accountId, calendar, masterId),
     instanceId: (masterId, originalStart) => inner.instanceId(masterId, originalStart),
   };
 }

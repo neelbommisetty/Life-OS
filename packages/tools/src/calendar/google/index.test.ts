@@ -253,6 +253,95 @@ test("delete calls the provider with sendUpdates=none and returns nothing", asyn
   assert.equal(calls[0].url.searchParams.get("sendUpdates"), "none");
 });
 
+// ---------------------------------------------------------------- move
+
+test("move asks Google to move the event and maps the readback in the destination calendar's zone, id and guests intact", async () => {
+  const { adapter, api } = await adapterWithCredential([
+    json(200, {
+      items: [
+        { id: CALENDAR_ID, summary: "Neel", timeZone: "America/Los_Angeles", accessRole: "owner", primary: true },
+        { id: "side@group.calendar.google.com", summary: "Side", timeZone: "Europe/Paris", accessRole: "owner" },
+      ],
+    }),
+    json(200, {
+      id: "evt1",
+      etag: '"e-moved"',
+      summary: "Team lunch",
+      status: "confirmed",
+      start: { dateTime: "2026-09-18T12:00:00-07:00" },
+      end: { dateTime: "2026-09-18T13:00:00-07:00" },
+      organizer: { email: "neel@example.com", self: true },
+      attendees: [
+        { email: "neel@example.com", self: true, responseStatus: "accepted" },
+        { email: "sam@example.com", displayName: "Sam", responseStatus: "needsAction" },
+      ],
+      extendedProperties: { private: { lifeId: "e_abc0000002" } },
+    }),
+  ]);
+  await adapter.listCalendars(ACCOUNT);
+
+  const moved = await adapter.move(ACCOUNT, CALENDAR_ID, "side@group.calendar.google.com", "evt1");
+  assert.equal(moved.external.id, "evt1");
+  assert.equal(moved.external.etag, '"e-moved"');
+  assert.equal(moved.lifeId, "e_abc0000002");
+  assert.deepEqual(moved.attendees.map((a) => [a.email, a.response, a.self]), [["neel@example.com", "accepted", true], ["sam@example.com", "needsAction", false]]);
+  assert.deepEqual(moved.start, { at: "2026-09-18T19:00:00Z", timezone: "Europe/Paris" }, "a dateTime naming no zone takes the destination calendar's");
+
+  const calls = calendarCalls(api.sent);
+  const move = calls[calls.length - 1];
+  assert.equal(move.method, "POST");
+  assert.equal(move.url.pathname, `/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events/evt1/move`);
+  assert.equal(move.url.searchParams.get("destination"), "side@group.calendar.google.com");
+  assert.equal(move.url.searchParams.get("sendUpdates"), "none");
+  assert.equal(move.body, null);
+});
+
+// ---------------------------------------------------------------- instances
+
+test("instances reads the master for its iCalUID, lists what shares it, and keeps the rows naming the master, cancelled ones as cancelled exception rows", async () => {
+  const master = {
+    id: "m1",
+    etag: '"m"',
+    summary: "Yoga",
+    iCalUID: "uid-m1@google.com",
+    recurrence: ["RRULE:FREQ=WEEKLY;BYDAY=TU"],
+    start: { dateTime: "2026-09-15T07:00:00-07:00", timeZone: "America/Los_Angeles" },
+    end: { dateTime: "2026-09-15T08:00:00-07:00", timeZone: "America/Los_Angeles" },
+  };
+  const { adapter, api } = await adapterWithCredential([
+    json(200, master),
+    json(200, {
+      items: [
+        master,
+        { id: "m1_20260922T140000Z", etag: '"x1"', summary: "Yoga", description: "Bring the mat", recurringEventId: "m1", originalStartTime: { dateTime: "2026-09-22T07:00:00-07:00", timeZone: "America/Los_Angeles" }, start: { dateTime: "2026-09-22T07:00:00-07:00", timeZone: "America/Los_Angeles" }, end: { dateTime: "2026-09-22T08:00:00-07:00", timeZone: "America/Los_Angeles" } },
+        { id: "m1_20260929T140000Z", etag: '"x2"', status: "cancelled", recurringEventId: "m1", originalStartTime: { dateTime: "2026-09-29T07:00:00-07:00", timeZone: "America/Los_Angeles" } },
+        { id: "other_20260929T140000Z", etag: '"x3"', summary: "Not ours", recurringEventId: "other", originalStartTime: { dateTime: "2026-09-29T07:00:00-07:00" } },
+      ],
+    }),
+  ]);
+
+  const rows = await adapter.instances(ACCOUNT, CALENDAR_ID, "m1");
+  assert.deepEqual(
+    rows.map((row) => ({ id: row.external.id, master: row.providerMasterId, originalStart: row.originalStart, status: row.status, deleted: row.deleted, repeat: row.repeat })),
+    [
+      { id: "m1_20260922T140000Z", master: "m1", originalStart: { at: "2026-09-22T14:00:00Z", timezone: "America/Los_Angeles" }, status: "confirmed", deleted: false, repeat: null },
+      { id: "m1_20260929T140000Z", master: "m1", originalStart: { at: "2026-09-29T14:00:00Z", timezone: "America/Los_Angeles" }, status: "cancelled", deleted: false, repeat: null },
+    ],
+    "the master itself and another series' rows are left out",
+  );
+  assert.equal(rows[0].notes, "Bring the mat");
+
+  const calls = calendarCalls(api.sent);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].method, "GET");
+  assert.equal(calls[0].url.pathname, `/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events/m1`);
+  assert.equal(calls[1].url.pathname, `/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`);
+  assert.equal(calls[1].url.searchParams.get("iCalUID"), "uid-m1@google.com");
+  assert.equal(calls[1].url.searchParams.get("singleEvents"), "false");
+  assert.equal(calls[1].url.searchParams.get("showDeleted"), "true");
+  assert.equal(calls[1].url.searchParams.get("timeMin"), null);
+});
+
 // ---------------------------------------------------------------- respond
 
 test("respond patches Neel's own attendee entry, leaving the others alone", async () => {
@@ -307,6 +396,21 @@ test("respond rejects when Neel is not an attendee", async () => {
     }),
   ]);
   await assert.rejects(adapter.respond(ACCOUNT, CALENDAR_ID, "evt1", "accepted"), ProviderRejected);
+});
+
+// ---------------------------------------------------------------- revokeCredential
+
+test("revokeCredential posts the credential's refresh token to the revoke endpoint and answers false when there is no file", async () => {
+  const { adapter, api, credentials } = await adapterWithCredential([empty(200)]);
+  assert.equal(await adapter.revokeCredential(ACCOUNT), true);
+  const [revoke] = api.sent.filter((s) => s.url.toString() === GOOGLE_ENDPOINTS.revoke);
+  assert.ok(revoke, "the revoke endpoint was called");
+  assert.equal(revoke.method, "POST");
+  assert.equal((revoke.body as Record<string, string>).token, "1//refresh-token");
+  assert.equal(await credentials.exists(ACCOUNT), true, "the file is left for the caller to delete");
+
+  assert.equal(await adapter.revokeCredential("a_nobody000001"), false, "no file, nothing to revoke");
+  assert.equal(api.sent.filter((s) => s.url.toString() === GOOGLE_ENDPOINTS.revoke).length, 1, "and no second call");
 });
 
 // ---------------------------------------------------------------- instanceId

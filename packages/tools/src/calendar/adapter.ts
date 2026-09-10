@@ -75,6 +75,18 @@ export interface CalendarAdapter {
   update(accountId: string, calendarExternalId: string, providerId: string, patch: EventPatch, etag: string): Promise<ProviderEvent>;
   delete(accountId: string, calendarExternalId: string, providerId: string): Promise<void>;
   respond(accountId: string, calendarExternalId: string, providerId: string, response: "accepted" | "declined" | "tentative"): Promise<ProviderEvent>;
+  /** Move a master or single event to another calendar of the same account. The provider keeps the id and everything on the event (attendees, conferencing, exception rows). */
+  move(accountId: string, fromCalendarExternalId: string, toCalendarExternalId: string, providerId: string): Promise<ProviderEvent>;
+  /** The exception rows of a repeating event as the provider holds them now, cancelled and deleted ones included: the readback after a change that touches every occurrence. */
+  instances(accountId: string, calendarExternalId: string, providerMasterId: string): Promise<ProviderEvent[]>;
+  /**
+   * Revoke the grant behind a credential file at the provider, leaving the
+   * file for the caller to delete: what `account.add` does with a sign-in no
+   * account adopted and `account.remove` with the account's own. Optional
+   * because not every provider has a revoke endpoint; false when there is no
+   * such file.
+   */
+  revokeCredential?(credentialId: string): Promise<boolean>;
   instanceId(providerMasterId: string, originalStart: When): string; // the provider's id for one occurrence
 }
 
@@ -101,6 +113,8 @@ type FakeAccount = {
   /** Cursor epochs per calendar: bumping one expires every cursor issued before it. */
   epochs: Map<string, number>;
   events: Map<string, FakeEvent>;
+  /** What a calendar an event was moved out of still lists: the event as deleted, the way Google's source calendar reports a move. */
+  tombstones: FakeEvent[];
 };
 
 const DEFAULT_SCOPES = [
@@ -131,6 +145,19 @@ function stampToWhen(stamp: string, master: When): When | null {
   return null;
 }
 
+/** The signed span from `a` to `b`: milliseconds for timed moments, days for dates; zero across kinds. */
+function spanBetween(a: When, b: When): number {
+  if (isTimedWhen(a) && isTimedWhen(b)) return Date.parse(b.at) - Date.parse(a.at);
+  if (!isTimedWhen(a) && !isTimedWhen(b)) return daysBetween(a.date, b.date);
+  return 0;
+}
+
+/** `when` moved by `span` (milliseconds or days, per its kind), in `timezone` when one is given. */
+function shiftWhen(when: When, span: number, timezone?: string | null): When {
+  if (isTimedWhen(when)) return { at: toInstant(new Date(Date.parse(when.at) + span)), timezone: timezone === undefined ? when.timezone : timezone };
+  return { date: addDays(when.date, span) };
+}
+
 /** The end that keeps `master`'s duration when an occurrence starts at `start`. */
 function endFor(start: When, master: { start: When; end: When }): When {
   if (isTimedWhen(start) && isTimedWhen(master.start) && isTimedWhen(master.end)) {
@@ -151,6 +178,14 @@ function endFor(start: When, master: { start: When; end: When }): When {
  * Every provider call is recorded in `calls`; `failNext` makes the next one
  * throw. Cursors encode a change sequence number: a full sync returns what the
  * calendar holds, an incremental sync returns what changed after the cursor.
+ *
+ * It models what Google does around a repeating master and a move, so the
+ * operations are tested against the provider's behaviour rather than a local
+ * guess: a cancelled non-instance is a deleted one; a time change on a master
+ * re-keys its exception rows (new instance ids and original starts, their own
+ * times moved by the same delta); dropping the rule or changing between timed
+ * and all-day deletes them; a move keeps the provider id and leaves a
+ * tombstone in the source calendar's listing.
  */
 export class FakeAdapter implements CalendarAdapter {
   readonly provider = "google" as const;
@@ -195,7 +230,7 @@ export class FakeAdapter implements CalendarAdapter {
     const parsed = parseCursor(cursor, calendarExternalId, epoch);
     if (!parsed) throw new CursorExpired();
     const bound = parsed.bound ?? this.#seq;
-    const inCalendar = [...account.events.values()].filter((fake) => fake.calendarExternalId === calendarExternalId && fake.seq <= bound);
+    const inCalendar = [...account.events.values(), ...account.tombstones].filter((fake) => fake.calendarExternalId === calendarExternalId && fake.seq <= bound);
     const candidates = parsed.mode === "full" ? inCalendar.filter((fake) => mentionedByFullSync(fake.event, since)) : inCalendar.filter((fake) => fake.seq > parsed.after);
     candidates.sort((a, b) => a.seq - b.seq);
     const page = candidates.slice(parsed.offset, parsed.offset + this.pageSize);
@@ -248,6 +283,7 @@ export class FakeAdapter implements CalendarAdapter {
       throw new ProviderRejected(`Etag mismatch on ${providerId}: the event changed since it was read`, 412);
     }
     const target = fake.event;
+    const before = { start: target.start, repeat: target.repeat };
     if (patch.title !== undefined) target.title = patch.title;
     if (patch.notes !== undefined) target.notes = patch.notes;
     if (patch.location !== undefined) target.location = patch.location;
@@ -256,7 +292,10 @@ export class FakeAdapter implements CalendarAdapter {
     if (patch.repeat !== undefined) target.repeat = patch.repeat;
     if (patch.busy !== undefined) target.busy = patch.busy;
     if (patch.status !== undefined) target.status = patch.status;
+    // To Google a cancelled event that is not an instance is a deleted one; map.ts reads it back that way.
+    if (patch.status === "cancelled" && target.providerMasterId === null) target.deleted = true;
     this.#touch(fake);
+    if (target.providerMasterId === null && before.repeat) this.#rekeyExceptions(account, fake, before.start);
     return structuredClone(fake.event);
   }
 
@@ -292,6 +331,38 @@ export class FakeAdapter implements CalendarAdapter {
     fake.event.myResponse = response;
     this.#touch(fake);
     return structuredClone(fake.event);
+  }
+
+  async move(accountId: string, fromCalendarExternalId: string, toCalendarExternalId: string, providerId: string): Promise<ProviderEvent> {
+    this.#call("move", [accountId, fromCalendarExternalId, toCalendarExternalId, providerId]);
+    const account = this.#account(accountId);
+    this.#writable(account, fromCalendarExternalId);
+    const destination = this.#writable(account, toCalendarExternalId);
+    const fake = account.events.get(providerId);
+    if (!fake || fake.calendarExternalId !== fromCalendarExternalId) throw new ProviderRejected(`Event not found: ${providerId}`, 404);
+    if (fake.event.deleted) throw new ProviderRejected(`Already deleted: ${providerId}`, 410);
+    if (fake.event.providerMasterId !== null) throw new ProviderRejected(`Cannot move one instance of a recurring event: ${providerId}`, 400);
+    if (destination.id === fromCalendarExternalId) return structuredClone(fake.event);
+    const exceptions = [...account.events.values()].filter((other) => other.event.providerMasterId === providerId);
+    for (const moving of [fake, ...exceptions]) {
+      // The source calendar goes on listing the item, as deleted, the way Google reports a move to a sync of the source.
+      account.tombstones.push({ event: { ...structuredClone(moving.event), deleted: true }, calendarExternalId: fromCalendarExternalId, seq: ++this.#seq, revision: moving.revision });
+      moving.calendarExternalId = destination.id;
+      this.#touch(moving);
+    }
+    return structuredClone(fake.event);
+  }
+
+  async instances(accountId: string, calendarExternalId: string, providerMasterId: string): Promise<ProviderEvent[]> {
+    this.#call("instances", [accountId, calendarExternalId, providerMasterId]);
+    const account = this.#account(accountId);
+    if (!account.calendars.has(calendarExternalId)) throw new ProviderRejected(`Calendar not found: ${calendarExternalId}`, 404);
+    const master = account.events.get(providerMasterId);
+    if (!master || master.calendarExternalId !== calendarExternalId) throw new ProviderRejected(`Event not found: ${providerMasterId}`, 404);
+    return [...account.events.values()]
+      .filter((fake) => fake.event.providerMasterId === providerMasterId && fake.calendarExternalId === calendarExternalId)
+      .sort((a, b) => a.seq - b.seq)
+      .map((fake) => structuredClone(fake.event));
   }
 
   instanceId(providerMasterId: string, originalStart: When): string {
@@ -364,7 +435,9 @@ export class FakeAdapter implements CalendarAdapter {
 
   /** Forget an event entirely, so a full sync no longer mentions it (unlike `change(..., { deleted: true })`, which it does). */
   remove(accountId: string, providerId: string): void {
-    this.#account(accountId).events.delete(providerId);
+    const account = this.#account(accountId);
+    account.events.delete(providerId);
+    account.tombstones = account.tombstones.filter((fake) => fake.event.external.id !== providerId);
   }
 
   /** Rename or re-permission a calendar provider-side. */
@@ -381,6 +454,7 @@ export class FakeAdapter implements CalendarAdapter {
     const account = this.#account(accountId);
     account.calendars.delete(calendarExternalId);
     for (const [id, fake] of account.events) if (fake.calendarExternalId === calendarExternalId) account.events.delete(id);
+    account.tombstones = account.tombstones.filter((fake) => fake.calendarExternalId !== calendarExternalId);
   }
 
   /** Every cursor issued so far for the calendar now throws CursorExpired. */
@@ -395,7 +469,7 @@ export class FakeAdapter implements CalendarAdapter {
     return fake ? structuredClone(fake.event) : null;
   }
 
-  /** The provider's events for an account (or one of its calendars), oldest change first. */
+  /** The provider's events for an account (or one of its calendars), oldest change first. Tombstones left by a move are not events and are not listed here. */
   events(accountId: string, calendarExternalId?: string): ProviderEvent[] {
     return [...this.#account(accountId).events.values()]
       .filter((fake) => calendarExternalId === undefined || fake.calendarExternalId === calendarExternalId)
@@ -438,7 +512,7 @@ export class FakeAdapter implements CalendarAdapter {
   #byIdentity(identity: string): FakeAccount {
     let account = this.#accounts.get(identity);
     if (!account) {
-      account = { identity, linkedId: null, calendars: new Map(), epochs: new Map(), events: new Map() };
+      account = { identity, linkedId: null, calendars: new Map(), epochs: new Map(), events: new Map(), tombstones: [] };
       this.#accounts.set(identity, account);
     }
     return account;
@@ -459,7 +533,7 @@ export class FakeAdapter implements CalendarAdapter {
     }
     // A key with an @ is an identity seeded before any connect; anything else is an account id nobody connected.
     if (accountId.includes("@")) return this.#byIdentity(accountId);
-    const fresh: FakeAccount = { identity: `${accountId}@fake.local`, linkedId: accountId, calendars: new Map(), epochs: new Map(), events: new Map() };
+    const fresh: FakeAccount = { identity: `${accountId}@fake.local`, linkedId: accountId, calendars: new Map(), epochs: new Map(), events: new Map(), tombstones: [] };
     this.#accounts.set(accountId, fresh);
     return fresh;
   }
@@ -469,6 +543,41 @@ export class FakeAdapter implements CalendarAdapter {
     if (!calendar) throw new ProviderRejected(`Calendar not found: ${calendarExternalId}`, 404);
     if (!calendar.writable) throw new ProviderRejected(`Calendar is read-only: ${calendar.name}`, 403);
     return calendar;
+  }
+
+  /**
+   * What Google does to a master's exception rows when the master changed:
+   * gone with the rule or with a change between timed and all-day; otherwise
+   * re-keyed from the new start (a new instance id and original start, their
+   * own times moved by the same delta, the new zone taken on). Every row that
+   * changed gets a new etag and shows up in the next incremental sync.
+   */
+  #rekeyExceptions(account: FakeAccount, master: FakeEvent, startBefore: When): void {
+    const masterId = master.event.external.id;
+    const exceptions = [...account.events.entries()].filter(([, other]) => other.event.providerMasterId === masterId && !other.event.deleted);
+    if (!exceptions.length) return;
+    const start = master.event.start;
+    if (!master.event.repeat || isTimedWhen(start) !== isTimedWhen(startBefore)) {
+      for (const [, other] of exceptions) {
+        other.event.deleted = true;
+        this.#touch(other);
+      }
+      return;
+    }
+    const span = spanBetween(startBefore, start);
+    const timezone = isTimedWhen(start) ? start.timezone : undefined;
+    const zoneChanged = isTimedWhen(start) && isTimedWhen(startBefore) && start.timezone !== startBefore.timezone;
+    if (span === 0 && !zoneChanged) return;
+    for (const [id, other] of exceptions) {
+      const originalStart = shiftWhen(other.event.originalStart ?? other.event.start, span, timezone);
+      other.event.originalStart = originalStart;
+      other.event.start = shiftWhen(other.event.start, span, timezone);
+      other.event.end = shiftWhen(other.event.end, span, timezone);
+      other.event.external.id = `${masterId}_${occurrenceStamp(originalStart)}`;
+      account.events.delete(id);
+      account.events.set(other.event.external.id, other);
+      this.#touch(other);
+    }
   }
 
   /**

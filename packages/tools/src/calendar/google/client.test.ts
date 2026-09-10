@@ -137,6 +137,32 @@ test("events.delete sends DELETE with sendUpdates=none and accepts a 204", async
   assert.equal(sent.body, null);
 });
 
+test("events.move posts to the event's move endpoint with the destination and sendUpdates=none, no body, and returns the readback", async () => {
+  const api = fakeApi([json(200, { ...event, etag: '"etag-moved"', organizer: { email: "side@group.calendar.google.com" } })]);
+  const moved = await client(api).events.move(ACCOUNT, CALENDAR, "evt/1", "side@group.calendar.google.com");
+  assert.equal(moved.id, "evt1");
+  assert.equal(moved.etag, '"etag-moved"');
+  const [sent] = api.sent;
+  assert.equal(sent.method, "POST");
+  assert.equal(sent.url.pathname, `/calendar/v3/calendars/${encodeURIComponent(CALENDAR)}/events/${encodeURIComponent("evt/1")}/move`);
+  assert.deepEqual(params(sent.url), { destination: "side@group.calendar.google.com", sendUpdates: "none" });
+  assert.equal(sent.body, null);
+  assert.equal(sent.headers["content-type"], undefined);
+});
+
+test("events.byICalUID lists the master and its exception rows by iCalUID without expanding the rule, cancelled rows included, following page tokens", async () => {
+  const api = fakeApi([
+    json(200, { items: [{ ...event, recurrence: ["RRULE:FREQ=WEEKLY"], iCalUID: "uid1@google.com" }], nextPageToken: "p2" }),
+    json(200, { items: [{ ...event, id: "evt1_20260917T160000Z", recurringEventId: "evt1", status: "cancelled", iCalUID: "uid1@google.com" }], nextSyncToken: "ignored" }),
+  ]);
+  const rows = await client(api).events.byICalUID(ACCOUNT, CALENDAR, "uid1@google.com");
+  assert.deepEqual(rows.map((row) => [row.id, row.status ?? "confirmed"]), [["evt1", "confirmed"], ["evt1_20260917T160000Z", "cancelled"]]);
+  assert.equal(api.sent[0].method, "GET");
+  assert.equal(api.sent[0].url.pathname, `/calendar/v3/calendars/${encodeURIComponent(CALENDAR)}/events`);
+  assert.deepEqual(params(api.sent[0].url), { iCalUID: "uid1@google.com", singleEvents: "false", showDeleted: "true", maxResults: "250" }, "no timeMin and no syncToken: this is a lookup, not a sync");
+  assert.deepEqual(params(api.sent[1].url), { iCalUID: "uid1@google.com", singleEvents: "false", showDeleted: "true", maxResults: "250", pageToken: "p2" });
+});
+
 test("events.instances and events.get address the event and pass the narrowing parameters", async () => {
   const api = fakeApi([json(200, { items: [{ ...event, id: "evt1_20260910T160000Z", recurringEventId: "evt1" }] }), json(200, event)]);
   const google = client(api);

@@ -38,7 +38,8 @@ import type { Store, Tx } from "../store.ts";
 import { addDays, daysBetween, dayWindow, isInstant, isValidDate, toInstant, zonedToInstant } from "../time.ts";
 import { ProviderRejected, ProviderUnavailable, type CalendarAdapter, type ProviderEvent } from "./adapter.ts";
 import { expandEvent, expandEvents, occurrenceRef, parseOccurrenceRef, type Occurrence } from "./expand.ts";
-import type { Adapters } from "./sync.ts";
+import { NeedsReauth } from "./google/oauth.ts";
+import { markNeedsReauth, type Adapters } from "./sync.ts";
 
 // ------------------------------------------------------------------ types
 
@@ -67,9 +68,10 @@ export type EventListOptions = {
  */
 export type EventReceipt = Receipt<Event> & { warnings?: string[]; partial?: boolean };
 
-/** The issue prefixes a provider failure carries: `provider_unavailable: <message>` and `provider_rejected: <message>`. */
+/** The issue prefixes a provider failure carries: `provider_unavailable: <message>`, `provider_rejected: <message>`, and `needs_reauth: <message>` (the account was marked, reconnect it). */
 export const PROVIDER_UNAVAILABLE = "provider_unavailable";
 export const PROVIDER_REJECTED = "provider_rejected";
+export const NEEDS_REAUTH = "needs_reauth";
 
 export interface EventOps {
   add(input: EventAdd, ctx: Ctx): Promise<EventReceipt>;
@@ -87,11 +89,6 @@ export interface EventOps {
   duplicate(ref: string, ctx: Ctx, opts?: EventDuplicateOptions): Promise<EventReceipt>;
   history(id: string): Promise<LogEntry[]>;
 }
-
-/** A provider that can also move an event between calendars of one account; the Google adapter may grow this, the interface does not require it. */
-type MovingAdapter = CalendarAdapter & {
-  move?: (accountId: string, fromCalendarExternalId: string, toCalendarExternalId: string, providerId: string) => Promise<ProviderEvent>;
-};
 
 // ------------------------------------------------------------------ input schemas local to events
 
@@ -256,14 +253,37 @@ function changes(before: Patchable, patch: EventPatch): boolean {
 
 type Called<T> = { ok: true; value: T } | { ok: false; issues: string[] };
 
-/** Runs one provider call: an unreachable provider and a refusal become issues (nothing was stored); anything else is a bug and throws. */
-async function call<T>(work: () => Promise<T>): Promise<Called<T>> {
+/** What a write carries out of the mutation besides the receipt: warnings, the partial flag, and the account a dead credential was found on. */
+type Meta = { warnings: string[]; partial: boolean; reauth: string | null };
+
+/**
+ * Runs one provider call: an unreachable provider, a refusal, and a credential
+ * the provider no longer accepts become issues (nothing was stored); anything
+ * else is a bug and throws. A dead credential is also noted on `meta` so the
+ * write marks the account `needs_reauth` once the mutation has unwound.
+ */
+async function call<T>(meta: Meta, work: () => Promise<T>): Promise<Called<T>> {
   try {
     return { ok: true, value: await work() };
   } catch (error) {
     if (error instanceof ProviderUnavailable) return { ok: false, issues: [`${PROVIDER_UNAVAILABLE}: ${error.message}`] };
     if (error instanceof ProviderRejected) return { ok: false, issues: [`${PROVIDER_REJECTED}: ${error.message}`] };
+    if (error instanceof NeedsReauth) {
+      meta.reauth = error.accountId;
+      return { ok: false, issues: [`${NEEDS_REAUTH}: ${error.message}`] };
+    }
     throw error;
+  }
+}
+
+/** A delete: the provider answering that the event is already gone (410, as Google does for a cancelled or deleted event) is the outcome asked for, not a refusal. */
+async function callDelete(meta: Meta, work: () => Promise<void>): Promise<Called<void>> {
+  try {
+    await work();
+    return { ok: true, value: undefined };
+  } catch (error) {
+    if (error instanceof ProviderRejected && error.status === 410) return { ok: true, value: undefined };
+    return call(meta, () => Promise.reject(error));
   }
 }
 
@@ -349,11 +369,10 @@ function tailRule(rrule: string, slotsBehind: number): { ok: true; rrule: string
 
 // ------------------------------------------------------------------ the factory
 
-type Meta = { warnings: string[]; partial: boolean };
 type Work = (tx: Tx, ctx: Ctx, now: string, meta: Meta) => Promise<Mutation<Event>>;
 
 /** What every write needs to know about where an event lives. */
-type Context = { calendar: Calendar; account: Account; adapter: MovingAdapter };
+type Context = { calendar: Calendar; account: Account; adapter: CalendarAdapter };
 
 /** What a ref names: the row, the series it belongs to, and the occurrence when the ref addresses one. */
 type Target = {
@@ -378,7 +397,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
   const tz = (): string => clock.timezone;
 
   async function write(op: string, ctx: Ctx, work: Work): Promise<EventReceipt> {
-    const meta: Meta = { warnings: [], partial: false };
+    const meta: Meta = { warnings: [], partial: false, reauth: null };
     let receipt: Receipt<Event>;
     try {
       receipt = await mutate(store, clock, "event", op, ctx, (tx, c, now) => work(tx, c, now, meta));
@@ -386,6 +405,9 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
       if (!(error instanceof CascadeRejected)) throw error;
       receipt = rejected<Event>(error.issues);
     }
+    // The provider no longer accepts the credential: mark the account the way sync.ts does, after the event
+    // mutation has unwound, so a rejected write still stores nothing for the event but `contextOf` refuses the next one.
+    if (meta.reauth !== null) await markNeedsReauth(store, clock, meta.reauth);
     return { ...receipt, ...(meta.warnings.length ? { warnings: meta.warnings } : {}), ...(meta.partial ? { partial: true } : {}) };
   }
 
@@ -534,13 +556,65 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     }
   }
 
-  /** Move the master's live exception rows by `span`, as the provider re-keys them when the whole series shifts. */
-  async function shiftExceptions(tx: Tx, ctx: Ctx, op: string, masterId: string, span: number, timezone: string | null | undefined): Promise<void> {
+  /**
+   * Bring the master's exception rows in line with what the provider now holds
+   * for them (D59: the readback, never a local guess). `expectedId` names the
+   * provider id a live local row should now be found under, for a provider
+   * that re-keys its instances when the series moves in time. A provider row
+   * no local row matches becomes a row; a live local row the provider no
+   * longer lists goes to the trash, and the receipt warns.
+   */
+  async function reconcileExceptions(tx: Tx, ctx: Ctx, op: string, now: string, meta: Meta, master: Event, items: ProviderEvent[], expectedId: (row: Event) => string | null): Promise<void> {
     const cascade = cascadeCtx(ctx);
-    for (const row of await exceptionsOf(tx, masterId)) {
-      const next: Event = { ...row, originalStart: shifted(row.originalStart!, span, timezone), start: shifted(row.start, span, timezone), end: shifted(row.end, span, timezone) };
-      must(await applyIn(tx, clock, "event", op, cascade, async (_t, _c, at) => okMutation("updated", row, bump(next, at))), `event ${row.id}`);
+    const rows = await exceptionsOf(tx, master.id, { includeDeleted: true });
+    const byId = new Map(rows.map((row) => [row.external.id, row]));
+    const byExpected = new Map<string, Event>();
+    for (const row of rows) {
+      if (row.deletedAt !== null) continue;
+      const expected = expectedId(row);
+      if (expected !== null && !byId.has(expected) && !byExpected.has(expected)) byExpected.set(expected, row);
     }
+    const handled = new Set<string>();
+    for (const item of items) {
+      if (item.providerMasterId !== master.external.id || item.originalStart === null) continue;
+      const row = byId.get(item.external.id) ?? byExpected.get(item.external.id);
+      if (row) {
+        if (handled.has(row.id)) continue;
+        handled.add(row.id);
+        const deletedAt = item.deleted ? (row.deletedAt ?? now) : null;
+        const next = fromReadback(item, { ...baseOf(row), calendarId: master.calendarId, accountId: master.accountId, originalStart: item.originalStart, deletedAt });
+        if (Object.keys(diff(row, next)).length === 0) continue;
+        must(await applyIn(tx, clock, "event", op, cascade, async (_t, _c, at) => okMutation("updated", row, bump(next, at))), `event ${row.id}`);
+      } else if (!item.deleted) {
+        const created = fromReadback(item, {
+          id: newId("event"),
+          calendarId: master.calendarId,
+          accountId: master.accountId,
+          masterId: master.id,
+          originalStart: item.originalStart,
+          origin: originOf(ctx, now),
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+          deletedAt: null,
+        });
+        must(await applyIn(tx, clock, "event", op, cascade, async () => okMutation("created", null, created)), `event ${created.id}`);
+      }
+    }
+    for (const row of rows) {
+      if (row.deletedAt !== null || handled.has(row.id)) continue;
+      meta.warnings.push(`The provider no longer lists the changed occurrence of ${master.id} at ${whenKey(row.originalStart!)}; its row ${row.id} is in the trash`);
+      must(await applyIn(tx, clock, "event", op, cascade, async (_t, _c, at) => okMutation("updated", row, bump({ ...row, deletedAt: at }, at))), `event ${row.id}`);
+    }
+  }
+
+  /** The provider's exception rows for `master` after a change to it, or a `partial` rejection: the change stands at the provider, the readback did not. */
+  async function readExceptions(meta: Meta, context: Context, row: Event, master: Event, what: string): Promise<Called<ProviderEvent[]>> {
+    const { adapter, account, calendar } = context;
+    const read = await call(meta, () => adapter.instances(account.id, calendar.external.id, master.external.id));
+    if (read.ok) return read;
+    meta.partial = true;
+    return { ok: false, issues: [...read.issues, `partial: ${what}, but its occurrences could not be read back; run life sync`] };
   }
 
   /** Re-point the master's exception rows at a new calendar and provider series, from what the provider handed back for each. */
@@ -558,17 +632,18 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
    * `partial` marks a failure after the series itself was created.
    */
   async function recreate(
+    meta: Meta,
     context: Context,
     master: Event,
     exceptions: Event[],
   ): Promise<{ ok: true; master: ProviderEvent; exceptions: { row: Event; readback: ProviderEvent }[] } | { ok: false; issues: string[]; partial: boolean }> {
     const { adapter, account, calendar } = context;
-    const created = await call(() => adapter.create(account.id, calendar.external.id, writeOf(master), master.id));
+    const created = await call(meta, () => adapter.create(account.id, calendar.external.id, writeOf(master), master.id));
     if (!created.ok) return { ok: false, issues: created.issues, partial: false };
     const applied: { row: Event; readback: ProviderEvent }[] = [];
     for (const row of exceptions) {
       const providerId = adapter.instanceId(created.value.external.id, row.originalStart!);
-      const readback = await call(() => adapter.update(account.id, calendar.external.id, providerId, instancePatch(row), ""));
+      const readback = await call(meta, () => adapter.update(account.id, calendar.external.id, providerId, instancePatch(row), ""));
       if (!readback.ok) {
         const key = whenKey(row.originalStart!);
         return { ok: false, issues: [...readback.issues, `partial: the series was recreated at the provider as ${created.value.external.id}, but its occurrence at ${key} was not re-applied; run life sync`], partial: true };
@@ -580,40 +655,46 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
 
   // ---------------------------------------------------------------- scoped writes
 
-  /** Patch one row at the provider (a single event, a master, or an exception row) and store the readback. */
-  async function patchRow(tx: Tx, ctx: Ctx, now: string, context: Context, row: Event, input: EventUpdate, op: string): Promise<Mutation<Event>> {
+  /**
+   * Patch one row at the provider (a single event, a master, or an exception
+   * row) and store the readback. A master whose time or rule changed has its
+   * exception rows read back too: the provider decides what happens to them
+   * (Google re-keys them from the new start, drops them with the rule), and
+   * the rows hold its answer.
+   */
+  async function patchRow(tx: Tx, ctx: Ctx, now: string, meta: Meta, context: Context, row: Event, input: EventUpdate, op: string): Promise<Mutation<Event>> {
     if (input.repeat !== undefined && row.masterId !== null) return fail(["repeat: an occurrence cannot carry a rule; change the series with scope all"], { id: row.id, record: row });
     const resolved = resolveTimes(row, input);
     if (!resolved.ok) return fail(resolved.issues, { id: row.id, record: row });
     const patch = buildPatch(row, input, resolved.times);
     if (!changes(row, patch)) return okMutation("unchanged", row, row);
     const { adapter, account, calendar } = context;
-    const readback = await call(() => adapter.update(account.id, calendar.external.id, row.external.id, patch, row.external.etag));
+    const readback = await call(meta, () => adapter.update(account.id, calendar.external.id, row.external.id, patch, row.external.etag));
     if (!readback.ok) return fail(readback.issues, { id: row.id, record: row });
     const after = bump(fromReadback(readback.value, baseOf(row)), now);
-    if (row.repeat && row.masterId === null) {
-      if (!after.repeat || !sameWhenKind(row.start, after.start)) await dropExceptions(tx, ctx, op, row.id, null);
-      else if (resolved.times) {
-        const span = spanOf(row.start, after.start);
-        if (span !== 0 || (isTimedWhen(after.start) && isTimedWhen(row.start) && after.start.timezone !== row.start.timezone)) {
-          await shiftExceptions(tx, ctx, op, row.id, span, isTimedWhen(after.start) ? after.start.timezone : undefined);
-        }
-      }
+    if (row.repeat && row.masterId === null && (resolved.times !== null || input.repeat !== undefined)) {
+      const read = await readExceptions(meta, context, row, after, `the series ${row.id} was changed at the provider`);
+      if (!read.ok) return fail(read.issues, { id: row.id, record: row });
+      const span = sameWhenKind(row.start, after.start) ? spanOf(row.start, after.start) : null;
+      const timezone = isTimedWhen(after.start) ? after.start.timezone : undefined;
+      await reconcileExceptions(tx, ctx, op, now, meta, after, read.value, (exception) =>
+        span === null ? null : adapter.instanceId(after.external.id, shifted(exception.originalStart!, span, timezone)),
+      );
     }
     return okMutation("updated", row, after);
   }
 
   /** Patch one occurrence: the exception row when one exists, else the provider instance, which yields a new exception row. */
-  async function patchInstance(tx: Tx, ctx: Ctx, now: string, target: Target, occurrence: Occurrence, exception: Event | null, input: EventUpdate, op: string): Promise<Mutation<Event>> {
+  async function patchInstance(tx: Tx, ctx: Ctx, now: string, meta: Meta, target: Target, occurrence: Occurrence, exception: Event | null, input: EventUpdate, op: string): Promise<Mutation<Event>> {
     if (input.repeat !== undefined) return fail(["repeat: change the rule with scope all"], { id: target.master.id, record: target.master });
-    if (exception) return patchRow(tx, ctx, now, target, exception, input, op);
+    if (exception) return patchRow(tx, ctx, now, meta, target, exception, input, op);
     const { master, adapter, account, calendar } = target;
     const resolved = resolveTimes(occurrence, input);
     if (!resolved.ok) return fail(resolved.issues, { id: master.id, record: master });
     const patch = buildPatch({ repeat: null }, input, resolved.times);
     if (!changes(occurrence, patch)) return okMutation("unchanged", master, master);
     const providerId = adapter.instanceId(master.external.id, occurrence.originalStart);
-    const readback = await call(() => adapter.update(account.id, calendar.external.id, providerId, patch, ""));
+    const readback = await call(meta, () => adapter.update(account.id, calendar.external.id, providerId, patch, ""));
     if (!readback.ok) return fail(readback.issues, { id: master.id, record: master });
     const created = fromReadback(readback.value, {
       id: newId("event"),
@@ -631,12 +712,12 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
   }
 
   /** Patch the whole series: a time given against an occurrence shifts the master, and so every occurrence, by the same delta. */
-  async function patchSeries(tx: Tx, ctx: Ctx, now: string, target: Target, occurrence: Occurrence | null, input: EventUpdate, op: string): Promise<Mutation<Event>> {
+  async function patchSeries(tx: Tx, ctx: Ctx, now: string, meta: Meta, target: Target, occurrence: Occurrence | null, input: EventUpdate, op: string): Promise<Mutation<Event>> {
     const { master } = target;
-    if (!occurrence) return patchRow(tx, ctx, now, target, master, input, op);
+    if (!occurrence) return patchRow(tx, ctx, now, meta, target, master, input, op);
     const resolved = resolveTimes(occurrence, input);
     if (!resolved.ok) return fail(resolved.issues, { id: master.id, record: master });
-    if (!resolved.times) return patchRow(tx, ctx, now, target, master, input, op);
+    if (!resolved.times) return patchRow(tx, ctx, now, meta, target, master, input, op);
     const { start, end } = resolved.times;
     if (!sameWhenKind(start, master.start)) {
       return fail(["start: to change the series between timed and all-day, address the series itself (its id) with scope all"], { id: master.id, record: master });
@@ -645,7 +726,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     const masterStart = shifted(master.start, spanOf(occurrence.start, start), timezone);
     const masterEnd = shifted(masterStart, spanOf(start, end), timezone);
     const { duration: _duration, ...rest } = input;
-    return patchRow(tx, ctx, now, target, master, { ...rest, start: masterStart, end: masterEnd }, op);
+    return patchRow(tx, ctx, now, meta, target, master, { ...rest, start: masterStart, end: masterEnd }, op);
   }
 
   /** How many slots the rule lays out before `split`, exdates and exceptions counted: what COUNT has already spent. */
@@ -686,10 +767,10 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
       status: input.status ?? master.status,
     };
 
-    const truncated = await call(() => adapter.update(account.id, calendar.external.id, master.external.id, head, master.external.etag));
+    const truncated = await call(meta, () => adapter.update(account.id, calendar.external.id, master.external.id, head, master.external.etag));
     if (!truncated.ok) return fail(truncated.issues, { id: master.id, record: master });
     const id = newId("event");
-    const created = await call(() => adapter.create(account.id, calendar.external.id, write, id));
+    const created = await call(meta, () => adapter.create(account.id, calendar.external.id, write, id));
     if (!created.ok) {
       meta.partial = true;
       return fail([...created.issues, `partial: the original series ${master.id} was already truncated at the provider to end before ${splitKey}; run life sync, then retry from ${occurrence.occurrenceId}`], { id: master.id, record: master });
@@ -724,11 +805,11 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     const p = planned.plan;
     switch (p.kind) {
       case "single":
-        return patchRow(tx, ctx, now, target, p.row, input, op);
+        return patchRow(tx, ctx, now, meta, target, p.row, input, op);
       case "this":
-        return patchInstance(tx, ctx, now, target, p.occurrence, p.exception, input, op);
+        return patchInstance(tx, ctx, now, meta, target, p.occurrence, p.exception, input, op);
       case "all":
-        return patchSeries(tx, ctx, now, target, p.occurrence, input, op);
+        return patchSeries(tx, ctx, now, meta, target, p.occurrence, input, op);
       case "following":
         return splitSeries(tx, ctx, now, meta, target, p.occurrence, input, op);
     }
@@ -737,11 +818,11 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
   // ---------------------------------------------------------------- add and duplicate
 
   /** Create at the provider and store the readback; a row already under `id` (a retry meeting its own row) is `unchanged`. */
-  async function createEvent(tx: Tx, ctx: Ctx, now: string, context: Context, id: string, write: EventWrite): Promise<Mutation<Event>> {
+  async function createEvent(tx: Tx, ctx: Ctx, now: string, meta: Meta, context: Context, id: string, write: EventWrite): Promise<Mutation<Event>> {
     const existing = await tx.get("event", id);
     if (existing) return okMutation("unchanged", existing, existing);
     const { adapter, account, calendar } = context;
-    const readback = await call(() => adapter.create(account.id, calendar.external.id, write, id));
+    const readback = await call(meta, () => adapter.create(account.id, calendar.external.id, write, id));
     if (!readback.ok) return fail(readback.issues);
     const record = fromReadback(readback.value, {
       id,
@@ -758,7 +839,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     return okMutation("created", null, record);
   }
 
-  async function addEvent(tx: Tx, input: EventAdd, ctx: Ctx, now: string): Promise<Mutation<Event>> {
+  async function addEvent(tx: Tx, input: EventAdd, ctx: Ctx, now: string, meta: Meta): Promise<Mutation<Event>> {
     const found = input.calendar === undefined ? await defaultCalendar(tx) : await findCalendar(tx, input.calendar);
     if (!found.ok) return failed(found);
     const context = await contextOf(tx, found.record, { writable: true });
@@ -774,10 +855,10 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
       busy: input.busy ?? isTimedWhen(input.start),
       status: "confirmed",
     };
-    return createEvent(tx, ctx, now, context.record, ctx.key === undefined ? newId("event") : keyedEventId(ctx.key), write);
+    return createEvent(tx, ctx, now, meta, context.record, ctx.key === undefined ? newId("event") : keyedEventId(ctx.key), write);
   }
 
-  async function duplicateEvent(tx: Tx, ref: string, ctx: Ctx, now: string, opts: EventDuplicateOptions): Promise<Mutation<Event>> {
+  async function duplicateEvent(tx: Tx, ref: string, ctx: Ctx, now: string, meta: Meta, opts: EventDuplicateOptions): Promise<Mutation<Event>> {
     const found = await resolveTarget(tx, ref, { writable: false });
     if (!found.ok) return failed(found);
     const target = found.record;
@@ -789,7 +870,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     if (!context.ok) return failed(context);
     // An occurrence copies as a single event at its own time; a series copies with its rule.
     const source = target.occurrence ? { ...target.occurrence, repeat: null } : target.master;
-    return createEvent(tx, ctx, now, context.record, ctx.key === undefined ? newId("event") : keyedEventId(ctx.key), writeOf(source));
+    return createEvent(tx, ctx, now, meta, context.record, ctx.key === undefined ? newId("event") : keyedEventId(ctx.key), writeOf(source));
   }
 
   // ---------------------------------------------------------------- the scoped operations
@@ -816,7 +897,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     return applyScoped(tx, ctx, now, meta, target, opts.scope, { status: "cancelled" }, "event.cancel");
   }
 
-  async function respondEvent(tx: Tx, ref: string, response: EventResponse, ctx: Ctx, now: string, opts: ScopeOptions): Promise<Mutation<Event>> {
+  async function respondEvent(tx: Tx, ref: string, response: EventResponse, ctx: Ctx, now: string, meta: Meta, opts: ScopeOptions): Promise<Mutation<Event>> {
     const found = await resolveTarget(tx, ref, { writable: false });
     if (!found.ok) return failed(found);
     const target = found.record;
@@ -831,14 +912,14 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     if (p.kind === "single" || p.kind === "all") {
       const row = p.kind === "single" ? p.row : master;
       if (row.myResponse === response) return okMutation("unchanged", row, row);
-      const readback = await call(() => adapter.respond(account.id, calendar.external.id, row.external.id, response));
+      const readback = await call(meta, () => adapter.respond(account.id, calendar.external.id, row.external.id, response));
       if (!readback.ok) return fail(readback.issues, { id: row.id, record: row });
       return okMutation("updated", row, bump(fromReadback(readback.value, baseOf(row)), now));
     }
     if (p.kind !== "this") return fail(['scope: respond takes scope "this" or "all"'], { id: master.id, record: master });
     if (p.occurrence.myResponse === response) return okMutation("unchanged", master, master);
     const providerId = p.exception ? p.exception.external.id : adapter.instanceId(master.external.id, p.occurrence.originalStart);
-    const readback = await call(() => adapter.respond(account.id, calendar.external.id, providerId, response));
+    const readback = await call(meta, () => adapter.respond(account.id, calendar.external.id, providerId, response));
     if (!readback.ok) return fail(readback.issues, { id: master.id, record: master });
     if (p.exception) return okMutation("updated", p.exception, bump(fromReadback(readback.value, baseOf(p.exception)), now));
     const created = fromReadback(readback.value, {
@@ -856,7 +937,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     return okMutation("created", null, created);
   }
 
-  async function deleteEvent(tx: Tx, ref: string, ctx: Ctx, now: string, opts: ScopeOptions): Promise<Mutation<Event>> {
+  async function deleteEvent(tx: Tx, ref: string, ctx: Ctx, now: string, meta: Meta, opts: ScopeOptions): Promise<Mutation<Event>> {
     const bare = parseOccurrenceRef(ref.trim())?.eventId ?? ref.trim();
     const already = isEventId(bare) ? await tx.get("event", bare) : null;
     if (already?.deletedAt) return okMutation("unchanged", already, already);
@@ -873,7 +954,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
 
     if (p.kind === "single" || p.kind === "all") {
       const row = p.kind === "single" ? p.row : master;
-      const gone = await call(() => adapter.delete(account.id, calendar.external.id, row.external.id));
+      const gone = await callDelete(meta, () => adapter.delete(account.id, calendar.external.id, row.external.id));
       if (!gone.ok) return fail(gone.issues, { id: row.id, record: row });
       if (row.masterId === null) await dropExceptions(tx, ctx, op, row.id, null);
       return okMutation("updated", row, bump({ ...row, deletedAt: now }, now));
@@ -882,7 +963,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     if (p.kind === "following") {
       const splitKey = normalizeKey(whenKey(p.occurrence.originalStart));
       const head: EventPatch = { repeat: { rrule: headRule(master.repeat!.rrule, p.occurrence.originalStart), exdates: master.repeat!.exdates.filter((key) => normalizeKey(key) < splitKey) } };
-      const readback = await call(() => adapter.update(account.id, calendar.external.id, master.external.id, head, master.external.etag));
+      const readback = await call(meta, () => adapter.update(account.id, calendar.external.id, master.external.id, head, master.external.etag));
       if (!readback.ok) return fail(readback.issues, { id: master.id, record: master });
       await dropExceptions(tx, ctx, op, master.id, splitKey);
       return okMutation("updated", master, bump(fromReadback(readback.value, baseOf(master)), now));
@@ -891,7 +972,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     // One occurrence: the provider cancels the instance; our copy is an exception row with status cancelled.
     if (p.exception?.status === "cancelled") return okMutation("unchanged", p.exception, p.exception);
     const providerId = p.exception ? p.exception.external.id : adapter.instanceId(master.external.id, p.occurrence.originalStart);
-    const gone = await call(() => adapter.delete(account.id, calendar.external.id, providerId));
+    const gone = await callDelete(meta, () => adapter.delete(account.id, calendar.external.id, providerId));
     if (!gone.ok) return fail(gone.issues, { id: master.id, record: master });
     if (p.exception) return okMutation("updated", p.exception, bump({ ...p.exception, status: "cancelled" }, now));
     const { occurrenceId: _ref, master: _isMaster, ...fields } = p.occurrence;
@@ -924,7 +1005,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     const context = await contextOf(tx, calendar, { writable: true });
     if (!context.ok) return failed({ ...context, id: row.id });
     const exceptions = row.repeat ? (await exceptionsOf(tx, row.id, { includeDeleted: true })).filter((e) => e.deletedAt !== null) : [];
-    const result = await recreate(context.record, row, exceptions);
+    const result = await recreate(meta, context.record, row, exceptions);
     if (!result.ok) {
       meta.partial = result.partial;
       return fail(result.issues, { id: row.id, record: row });
@@ -955,31 +1036,16 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     const to = context.record.calendar;
     const op = "event.move";
 
-    if (adapter.move) {
-      const readback = await call(() => adapter.move!(account.id, calendar.external.id, to.external.id, row.external.id));
-      if (!readback.ok) return fail(readback.issues, { id: row.id, record: row });
-      const cascade = cascadeCtx(ctx);
-      for (const exception of await exceptionsOf(tx, row.id)) {
-        const next: Event = { ...exception, calendarId: to.id, accountId: to.accountId };
-        must(await applyIn(tx, clock, "event", op, cascade, async (_t, _c, at) => okMutation("updated", exception, bump(next, at))), `event ${exception.id}`);
-      }
-      return okMutation("updated", row, bump(fromReadback(readback.value, { ...baseOf(row), calendarId: to.id, accountId: to.accountId }), now));
+    // A provider move: the id, the guests, the conferencing, and the exception rows all stay with the event.
+    const readback = await call(meta, () => adapter.move(account.id, calendar.external.id, to.external.id, row.external.id));
+    if (!readback.ok) return fail(readback.issues, { id: row.id, record: row });
+    const after = bump(fromReadback(readback.value, { ...baseOf(row), calendarId: to.id, accountId: to.accountId }), now);
+    if (row.repeat) {
+      const read = await readExceptions(meta, context.record, row, after, `${row.id} was moved to "${to.name}" at the provider`);
+      if (!read.ok) return fail(read.issues, { id: row.id, record: row });
+      await reconcileExceptions(tx, ctx, op, now, meta, after, read.value, (exception) => exception.external.id);
     }
-
-    // Without a provider move, the event is created in the destination under the same Life-OS id and deleted from the source.
-    const exceptions = await exceptionsOf(tx, row.id);
-    const result = await recreate(context.record, row, exceptions);
-    if (!result.ok) {
-      meta.partial = result.partial;
-      return fail(result.issues, { id: row.id, record: row });
-    }
-    const gone = await call(() => adapter.delete(account.id, calendar.external.id, row.external.id));
-    if (!gone.ok) {
-      meta.partial = true;
-      return fail([...gone.issues, `partial: the event now also exists in "${to.name}" as ${result.master.external.id}; run life sync, then delete the copy you do not want`], { id: row.id, record: row });
-    }
-    await relinkExceptions(tx, ctx, op, to, result.exceptions);
-    return okMutation("updated", row, bump(fromReadback(result.master, { ...baseOf(row), calendarId: to.id, accountId: to.accountId }), now));
+    return okMutation("updated", row, after);
   }
 
   // ---------------------------------------------------------------- reads
@@ -1050,7 +1116,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     async add(input, ctx) {
       const parsed = eventAddSchema.safeParse(input);
       if (!parsed.success) return invalid(issuesOf(parsed.error));
-      return write("event.add", ctx, (tx, c, now) => addEvent(tx, parsed.data, c, now));
+      return write("event.add", ctx, (tx, c, now, meta) => addEvent(tx, parsed.data, c, now, meta));
     },
     get: getEvent,
     list: listEvents,
@@ -1079,7 +1145,7 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
       if (!parsed.success) return invalid(issuesOf(parsed.error).map((issue) => issue.replace(/^input:/, "response:")));
       const scope = scopeOf(opts);
       if (!scope.ok) return invalid(scope.issues);
-      return write("event.respond", ctx, (tx, c, now) => respondEvent(tx, ref, parsed.data, c, now, scope.opts));
+      return write("event.respond", ctx, (tx, c, now, meta) => respondEvent(tx, ref, parsed.data, c, now, meta, scope.opts));
     },
     cancel(ref, ctx, opts) {
       const scope = scopeOf(opts);
@@ -1089,13 +1155,13 @@ export function createEvents(store: Store, clock: Clock, adapters: Adapters): Ev
     delete(ref, ctx, opts) {
       const scope = scopeOf(opts);
       if (!scope.ok) return invalid(scope.issues);
-      return write("event.delete", ctx, (tx, c, now) => deleteEvent(tx, ref, c, now, scope.opts));
+      return write("event.delete", ctx, (tx, c, now, meta) => deleteEvent(tx, ref, c, now, meta, scope.opts));
     },
     restore: (id, ctx) => write("event.restore", ctx, (tx, c, now, meta) => restoreEvent(tx, id, c, now, meta)),
     duplicate(ref, ctx, opts) {
       const parsed = duplicateOptionsSchema.safeParse(opts ?? {});
       if (!parsed.success) return invalid(issuesOf(parsed.error));
-      return write("event.duplicate", ctx, (tx, c, now) => duplicateEvent(tx, ref, c, now, parsed.data));
+      return write("event.duplicate", ctx, (tx, c, now, meta) => duplicateEvent(tx, ref, c, now, meta, parsed.data));
     },
     history: (id) => store.read((tx) => tx.history("event", id)),
   };

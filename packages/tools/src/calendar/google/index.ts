@@ -115,6 +115,10 @@ export class GoogleAdapter implements CalendarAdapter {
     return { identity: result.identity, scopes: result.scopes, credentialId };
   }
 
+  async revokeCredential(credentialId: string): Promise<boolean> {
+    return this.#oauth.revokeCredential(credentialId);
+  }
+
   // ---------------------------------------------------------------- calendars
 
   async listCalendars(accountId: string): Promise<ProviderCalendar[]> {
@@ -176,6 +180,26 @@ export class GoogleAdapter implements CalendarAdapter {
     }
     const patched = await this.#client.events.patch(accountId, calendarExternalId, providerId, { attendees }, current.etag);
     return fromGoogleEvent(patched, this.#ctx(accountId, calendarExternalId));
+  }
+
+  async move(accountId: string, fromCalendarExternalId: string, toCalendarExternalId: string, providerId: string): Promise<ProviderEvent> {
+    const moved = await this.#client.events.move(accountId, fromCalendarExternalId, providerId, toCalendarExternalId);
+    return fromGoogleEvent(moved, this.#ctx(accountId, toCalendarExternalId));
+  }
+
+  /**
+   * Google keeps a master's exception rows as their own resources under the
+   * master's iCalUID: read the master for its UID, list everything sharing it
+   * (cancelled rows included), and keep the rows that name the master.
+   * `events.instances` would lay out every occurrence of the rule instead,
+   * unbounded for a series without an end.
+   */
+  async instances(accountId: string, calendarExternalId: string, providerMasterId: string): Promise<ProviderEvent[]> {
+    const master = await this.#client.events.get(accountId, calendarExternalId, providerMasterId);
+    if (!master.iCalUID) return [];
+    const items = await this.#client.events.byICalUID(accountId, calendarExternalId, master.iCalUID);
+    const ctx = this.#ctx(accountId, calendarExternalId);
+    return items.filter((item) => item.recurringEventId === providerMasterId).map((item) => fromGoogleEvent(item, ctx));
   }
 
   instanceId(providerMasterId: string, originalStart: When): string {

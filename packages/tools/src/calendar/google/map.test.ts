@@ -399,6 +399,34 @@ test("lifeId round trip: the insert body stamps it and the readback carries it",
   assert.equal(fromGoogleEvent({ ...standup, extendedProperties: undefined }, ctx).lifeId, null);
 });
 
+test("an instance inherits the master's private properties from Google, so its readback carries no lifeId of its own", () => {
+  // Google hands extendedProperties down to instances and exceptions; the stamp names the master's row, and an
+  // exception must not resolve to it in sync (nor claim the id): it is keyed by `<master>_<stamp>` alone.
+  const exception = fromGoogleEvent(
+    {
+      id: "dent1_20261110T160000Z",
+      etag: '"9"',
+      status: "confirmed",
+      summary: "Dentist (moved)",
+      start: { dateTime: "2026-11-10T10:00:00-08:00", timeZone: "America/Los_Angeles" },
+      end: { dateTime: "2026-11-10T11:00:00-08:00", timeZone: "America/Los_Angeles" },
+      recurringEventId: "dent1",
+      originalStartTime: { dateTime: "2026-11-10T08:00:00-08:00", timeZone: "America/Los_Angeles" },
+      extendedProperties: { private: { lifeId: "e_dentist0001" } },
+      iCalUID: "dent1@google.com",
+      updated: "2026-09-09T12:00:02.000Z",
+    },
+    ctx,
+  );
+  assert.equal(exception.providerMasterId, "dent1");
+  assert.equal(exception.lifeId, null, "the master's stamp is not the exception's id");
+  const cancelledStub = fromGoogleEvent(
+    { id: "dent1_20261210T160000Z", etag: '"10"', status: "cancelled", recurringEventId: "dent1", originalStartTime: { dateTime: "2026-12-10T08:00:00-08:00", timeZone: "America/Los_Angeles" }, extendedProperties: { private: { lifeId: "e_dentist0001" } } },
+    ctx,
+  );
+  assert.equal(cancelledStub.lifeId, null);
+});
+
 test("insert: all-day and free events, empty notes and location left out", () => {
   const body = toGoogleInsert(
     { title: "Offsite", notes: null, location: null, start: { date: "2026-09-14" }, end: { date: "2026-09-16" }, repeat: null, busy: false, status: "tentative" },

@@ -349,7 +349,9 @@ export function fromGoogleEvent(item: GoogleEvent, ctx: MapContext): ProviderEve
     },
     providerMasterId,
     deleted,
-    lifeId: textOrNull(priv[LIFE_ID_KEY]),
+    // Google hands a master's private properties down to its instances, so on an instance the stamp names the
+    // master's row, not one of its own: an exception row is keyed by provider id (`<master>_<stamp>`) alone.
+    lifeId: providerMasterId === null ? textOrNull(priv[LIFE_ID_KEY]) : null,
   };
 }
 
