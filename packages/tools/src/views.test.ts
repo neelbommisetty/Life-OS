@@ -1,9 +1,11 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import type { Ctx, Filter, Label, Project, Receipt, Section, Task, TaskAdd } from "./contract.ts";
+import type { Ctx, Filter, Label, Project, Receipt, Section, Task, TaskAdd, Title } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
 import { createSchedule, type Schedule } from "./calendar/schedule.ts";
+import { FakeCatalog } from "./media/catalog/adapter.ts";
+import { createTitles } from "./media/titles.ts";
 import { createOrganize, type Organize } from "./organize.ts";
 import { createTasks, type TaskOps } from "./tasks.ts";
 import { MAX_UPCOMING_DAYS, createViews, type Views } from "./views.ts";
@@ -285,13 +287,13 @@ test("search matches title, notes, and comments case-insensitively and includes 
 
 test("trash lists deleted records of every kind, newest deletion first", async () => {
   const initial = await views.trash();
-  assert.deepEqual(Object.keys(initial), ["tasks", "projects", "sections", "labels", "filters", "events", "calendars", "accounts"]);
+  assert.deepEqual(Object.keys(initial), ["tasks", "projects", "sections", "labels", "filters", "events", "calendars", "accounts", "titles"]);
   assert.deepEqual(ids(initial.tasks), [trashed.id]);
   assert.deepEqual(initial.projects, []);
   assert.deepEqual(initial.sections, []);
   assert.deepEqual(initial.labels, []);
   assert.deepEqual(initial.filters, []);
-  assert.deepEqual([initial.events, initial.calendars, initial.accounts], [[], [], []]);
+  assert.deepEqual([initial.events, initial.calendars, initial.accounts, initial.titles], [[], [], [], []]);
 
   // A clock that steps a minute per deletion, so "newest first" is observable.
   let tick = Date.parse("2026-09-06T13:00:00Z");
@@ -299,6 +301,8 @@ test("trash lists deleted records of every kind, newest deletion first", async (
   const step = () => (tick += 60_000);
   const orgLater = createOrganize(db.store, stepping);
   const tasksLater = createTasks(db.store, stepping, orgLater);
+  const fake = (source: "tmdb" | "openlibrary" | "igdb") => new FakeCatalog({ source });
+  const titlesLater = createTitles(db.store, stepping, { catalogs: { tmdb: fake("tmdb"), openlibrary: fake("openlibrary"), igdb: fake("igdb") } });
 
   const spare: Label = okRecord(await orgLater.label.add({ name: "spare" }, neel));
   step();
@@ -311,6 +315,13 @@ test("trash lists deleted records of every kind, newest deletion first", async (
   okRecord(await orgLater.project.delete("work", neel, { contents: "delete" }));
   step();
   okRecord(await tasksLater.delete(book.id, neel));
+  step();
+  const kept = okRecord<Title>(await titlesLater.add({ medium: "game", name: "Kept Game", lookup: false }, neel));
+  const olderTitle = okRecord<Title>(await titlesLater.add({ medium: "movie", name: "Older Deleted Movie", lookup: false }, neel));
+  okRecord(await titlesLater.delete(olderTitle.id, neel));
+  step();
+  const newerTitle = okRecord<Title>(await titlesLater.add({ medium: "book", name: "Newer Deleted Book", lookup: false }, neel));
+  okRecord(await titlesLater.delete(newerTitle.id, neel));
 
   const view = await views.trash();
   const cascaded = [report.id, sprint.id].sort();
@@ -323,7 +334,10 @@ test("trash lists deleted records of every kind, newest deletion first", async (
     view.tasks.map((t) => t.deletedAt),
     ["2026-09-06T13:05:00Z", "2026-09-06T13:04:00Z", "2026-09-06T13:04:00Z", "2026-09-06T12:00:00Z"],
   );
-  for (const list of [view.tasks, view.projects, view.sections, view.labels, view.filters]) {
+  assert.deepEqual(view.titles.map((t) => t.id), [newerTitle.id, olderTitle.id], "titles too, newest deletion first; there is no separate media trash");
+  assert.deepEqual(view.titles.map((t) => t.deletedAt), ["2026-09-06T13:07:00Z", "2026-09-06T13:06:00Z"]);
+  assert.ok(!view.titles.some((t) => t.id === kept.id), "a live title stays out");
+  for (const list of [view.tasks, view.projects, view.sections, view.labels, view.filters, view.titles]) {
     for (const record of list) assert.ok(record.deletedAt, `${record.id} is deleted`);
   }
   assert.ok(!view.projects.some((p) => p.id === health.id), "live records stay out");

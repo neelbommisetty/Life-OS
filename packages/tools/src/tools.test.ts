@@ -8,9 +8,14 @@ import { FakeAdapter, type CalendarAdapter, type ProviderCalendar } from "./cale
 import { CredentialStore } from "./calendar/credentials.ts";
 import { GoogleAdapter } from "./calendar/google/index.ts";
 import type { ScheduleEntry } from "./calendar/schedule.ts";
-import type { Account, Ctx, Event, Receipt } from "./contract.ts";
+import type { Account, Ctx, Event, Receipt, Title } from "./contract.ts";
 import { createPool, databaseUrl } from "./db/client.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
+import { FakeCatalog, readEnv } from "./media/catalog/adapter.ts";
+import { IgdbAdapter } from "./media/catalog/igdb.ts";
+import { normalizeRegion } from "./media/catalog/links.ts";
+import { OpenLibraryAdapter } from "./media/catalog/openlibrary.ts";
+import { TmdbAdapter } from "./media/catalog/tmdb.ts";
 import { PgStore } from "./store.ts";
 import { defaultTimezone } from "./time.ts";
 import { Tools, systemClock } from "./tools.ts";
@@ -103,8 +108,8 @@ test("export returns every collection, deleted rows included, and the whole log"
 
   const out = await tools.export();
   assert.equal(out.exportedAt, "2026-09-06T12:00:00Z");
-  assert.deepEqual(Object.keys(out), ["exportedAt", "projects", "sections", "labels", "filters", "tasks", "accounts", "calendars", "events", "log"]);
-  assert.deepEqual([out.accounts, out.calendars, out.events], [[], [], []], "no account yet: the calendar collections are empty, not missing");
+  assert.deepEqual(Object.keys(out), ["exportedAt", "projects", "sections", "labels", "filters", "tasks", "accounts", "calendars", "events", "titles", "log"]);
+  assert.deepEqual([out.accounts, out.calendars, out.events, out.titles], [[], [], [], []], "no account or title yet: the calendar and library collections are empty, not missing");
 
   const find = <T extends { id: string; deletedAt: string | null }>(list: T[], id: string): T => {
     const record = list.find((r) => r.id === id);
@@ -151,6 +156,12 @@ test("the default clock is the wall clock in the default timezone, the default a
   assert.equal(plain.adapters.google?.provider, "google");
   assert.ok(plain.credentials instanceof CredentialStore);
   assert.match(plain.credentials.dir, /\.local[\\/]google[\\/]?$/);
+  assert.ok(plain.catalogs.tmdb instanceof TmdbAdapter, "the real catalogs are wired by default (each reads its key on first use, not here)");
+  assert.ok(plain.catalogs.openlibrary instanceof OpenLibraryAdapter);
+  assert.ok(plain.catalogs.igdb instanceof IgdbAdapter);
+  assert.equal(plain.region, normalizeRegion(readEnv(process.env, "LIFE_REGION")), "LIFE_REGION when set, else US");
+  assert.match(plain.region, /^[A-Z]{2}$/);
+  assert.equal(new Tools(db.store, clock, { region: "gb" }).region, "GB", "a given region is normalized");
 });
 
 test("open connects to the given url, skips migration when told, works, and closes once", async () => {
@@ -253,7 +264,7 @@ test("the facade wires accounts, calendars, events, and the schedule over the ad
 
     okRecord(await cal.event.delete(event.id, neel), "event.delete");
     const trash = await cal.views.trash();
-    assert.deepEqual(Object.keys(trash), ["tasks", "projects", "sections", "labels", "filters", "events", "calendars", "accounts"]);
+    assert.deepEqual(Object.keys(trash), ["tasks", "projects", "sections", "labels", "filters", "events", "calendars", "accounts", "titles"]);
     assert.deepEqual(trash.events.map((e) => e.id), [event.id]);
     assert.deepEqual(trash.calendars, []);
     assert.deepEqual(trash.accounts, []);
@@ -268,4 +279,65 @@ test("the facade wires accounts, calendars, events, and the schedule over the ad
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("the facade wires the title operations and the library views over the catalogs it was opened with; export and trash carry titles", async () => {
+  const tmdb = new FakeCatalog({ source: "tmdb" });
+  const openlibrary = new FakeCatalog({ source: "openlibrary" });
+  const igdb = new FakeCatalog({ source: "igdb" });
+  tmdb.seed("movie", [
+    {
+      externalId: "27205",
+      name: "Inception",
+      year: 2010,
+      creators: ["Christopher Nolan"],
+      availability: [
+        { kind: "stream", name: "Netflix", url: "https://netflix.example/27205", region: "US", price: null, constructed: false },
+        { kind: "rent", name: "Apple TV", url: "https://tv.apple.example/27205", region: "US", price: { amount: 3.99, currency: "USD" }, constructed: false },
+        { kind: "rent", name: "Amazon", url: "https://amazon.example/27205", region: "GB", price: { amount: 2.49, currency: "GBP" }, constructed: false },
+      ],
+    },
+  ]);
+  const lib = new Tools(db.store, clock, { catalogs: { tmdb, openlibrary, igdb }, region: "US" });
+  assert.equal(lib.catalogs.tmdb, tmdb);
+  assert.equal(lib.region, "US");
+
+  const added = await lib.title.add({ medium: "movie", name: "inception", want: true, priority: "now" }, neel);
+  const inception = okRecord<Title>(added, "title.add");
+  assert.equal(inception.name, "Inception", "the catalog name is adopted");
+  assert.deepEqual(inception.aliases, [], "a spelling that differs only by case is not an alias");
+  assert.equal(inception.catalog?.externalId, "27205");
+  assert.equal(inception.status, "backlog");
+  assert.deepEqual(tmdb.callsTo("availability").map((call) => call.region), ["US"], "availability was asked for the facade's region");
+  assert.deepEqual(inception.facts?.availability.map((row) => row.name), ["Netflix", "Apple TV"], "the GB row was never pulled");
+
+  const movies = lib.title.scoped("movie");
+  okRecord<Title>(await movies.start("Inception", {}, neel), "start by name");
+  assert.deepEqual((await lib.media.now("movie")).map((row) => row.id), [inception.id]);
+  assert.deepEqual((await lib.media.backlog()).map((row) => row.id), [], "started: no longer backlog");
+  const buy = await lib.media.buy("movie");
+  assert.deepEqual(buy, [], "active titles are not to buy");
+  assert.deepEqual((await lib.media.search("nolan")).map((row) => row.id), [inception.id], "creators from the pull are searchable");
+  assert.deepEqual((await lib.media.time({ medium: "movie" })).total.minutes, {});
+  assert.deepEqual(await lib.title.where("Inception"), inception.facts?.availability);
+  assert.equal(await lib.media.series(inception.id), null);
+
+  const book = okRecord<Title>(await lib.title.add({ medium: "book", name: "Scrap Book", lookup: false }, neel), "book add");
+  okRecord<Title>(await lib.title.delete(book.id, neel), "delete book");
+  const trash = await lib.views.trash();
+  assert.deepEqual(Object.keys(trash), ["tasks", "projects", "sections", "labels", "filters", "events", "calendars", "accounts", "titles"]);
+  assert.deepEqual(trash.titles.map((t) => t.id), [book.id]);
+  assert.ok(trash.titles[0]!.deletedAt);
+
+  const out = await lib.export();
+  assert.deepEqual(out.titles.map((t) => t.id).sort(), [inception.id, book.id].sort(), "live and deleted titles alike");
+  assert.ok(out.titles.find((t) => t.id === book.id)?.deletedAt, "a deleted title keeps its deletedAt");
+  assert.ok(out.log.some((entry) => entry.op === "title.add" && entry.recordId === inception.id), "title writes are in the shared log");
+  assert.ok(out.log.some((entry) => entry.op === "title.start" && entry.recordId === inception.id));
+  const stored = await db.store.read((tx) => tx.all("title", { includeDeleted: true }));
+  assert.equal(out.titles.length, stored.length);
+
+  // A Tools over the same store without catalogs still reads what this one wrote; the library views are on every facade.
+  assert.deepEqual((await tools.media.now()).map((row) => row.id), [inception.id]);
+  assert.equal((await tools.title.get(inception.id))?.name, "Inception");
 });

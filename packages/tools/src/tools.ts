@@ -1,11 +1,14 @@
 // The Tools facade: one object that holds the store and the clock and wires
-// the task, project, section, label, filter, account, calendar, and event
-// operations and the views over them. `Tools.open()` connects to the database
-// (and migrates it unless told not to); the constructor takes any Store, which
-// is what tests and embedders use. The calendar talks to its providers through
-// the adapters the facade was opened with, the Google adapter by default;
-// tests pass a FakeAdapter. `export()` dumps everything, deleted rows and the
-// log included; credentials live in files and are never part of it.
+// the task, project, section, label, filter, account, calendar, event, and
+// title operations and the views over them. `Tools.open()` connects to the
+// database (and migrates it unless told not to); the constructor takes any
+// Store, which is what tests and embedders use. The calendar talks to its
+// providers through the adapters the facade was opened with, the Google
+// adapter by default; the library looks works up through the catalogs it was
+// opened with, one real adapter per source by default, each reading its key
+// lazily; tests pass a FakeAdapter and FakeCatalogs. `export()` dumps
+// everything, deleted rows and the log included; credentials live in files and
+// are never part of it.
 
 import { createAccounts, type AccountOps, type CalendarOps } from "./calendar/accounts.ts";
 import { CredentialStore } from "./calendar/credentials.ts";
@@ -13,22 +16,31 @@ import { createEvents, type EventOps } from "./calendar/events.ts";
 import { GoogleAdapter } from "./calendar/google/index.ts";
 import { createSchedule } from "./calendar/schedule.ts";
 import type { Adapters } from "./calendar/sync.ts";
-import type { Account, Calendar, Event, Filter, Label, LogEntry, Project, Section, Task } from "./contract.ts";
+import type { Account, Calendar, Event, Filter, Label, LogEntry, Project, Section, Task, Title } from "./contract.ts";
 import { nowIso, type Clock } from "./core.ts";
 import { createDb, createPool } from "./db/client.ts";
 import { migrate } from "./db/migrate.ts";
+import { readEnv } from "./media/catalog/adapter.ts";
+import { defaultCatalogs, type Catalogs } from "./media/catalog/index.ts";
+import { normalizeRegion } from "./media/catalog/links.ts";
+import { createTitles, type TitleOps } from "./media/titles.ts";
+import { createMediaViews, type MediaViews } from "./media/views.ts";
 import { createOrganize, type FilterOps, type LabelOps, type ProjectOps, type SectionOps } from "./organize.ts";
 import { PgStore, type Store } from "./store.ts";
 import { createTasks, type TaskOps } from "./tasks.ts";
 import { defaultTimezone } from "./time.ts";
 import { createViews, type Views } from "./views.ts";
 
-/** What the calendar needs from outside the database: the provider adapters and where refresh tokens live. */
+/** What the calendar and the library need from outside the database: the provider adapters, where refresh tokens live, the catalogs, and the region. */
 export type ToolsDeps = {
   /** By provider; default `{ google: new GoogleAdapter(...) }` over `credentials`. Tests pass a FakeAdapter. */
   adapters?: Adapters;
   /** The credential files; default `.local/google/` at the repository root. */
   credentials?: CredentialStore;
+  /** By source; default `defaultCatalogs()`, one real adapter each, reading its variables on first use. Tests pass FakeCatalogs. */
+  catalogs?: Catalogs;
+  /** Neel's region for availability; default LIFE_REGION from the environment (the root .env loaded when unset), else `US`. */
+  region?: string;
 };
 
 export type ToolsOptions = ToolsDeps & {
@@ -51,6 +63,7 @@ export type ExportResult = {
   accounts: Account[];
   calendars: Calendar[];
   events: Event[];
+  titles: Title[];
   log: LogEntry[];
 };
 
@@ -67,6 +80,9 @@ export class Tools {
   readonly clock: Clock;
   readonly adapters: Adapters;
   readonly credentials: CredentialStore;
+  readonly catalogs: Catalogs;
+  /** The normalized region availability is asked for. */
+  readonly region: string;
   readonly task: TaskOps;
   readonly project: ProjectOps;
   readonly section: SectionOps;
@@ -75,7 +91,9 @@ export class Tools {
   readonly account: AccountOps;
   readonly calendar: CalendarOps;
   readonly event: EventOps;
+  readonly title: TitleOps;
   readonly views: Views;
+  readonly media: MediaViews;
   #closed = false;
 
   /** Connect to the database at `url` (default LIFE_DATABASE_URL), migrate it unless `migrate` is false, and wire the operations. */
@@ -89,7 +107,7 @@ export class Tools {
         throw error;
       }
     }
-    return new Tools(new PgStore(pool), options.clock, { adapters: options.adapters, credentials: options.credentials });
+    return new Tools(new PgStore(pool), options.clock, { adapters: options.adapters, credentials: options.credentials, catalogs: options.catalogs, region: options.region });
   }
 
   constructor(store: Store, clock: Clock = systemClock(), deps: ToolsDeps = {}) {
@@ -110,6 +128,11 @@ export class Tools {
     this.event = createEvents(store, clock, this.adapters);
     const schedule = createSchedule(store, clock, { tasks: this.task, adapters: this.adapters });
     this.views = createViews(store, clock, this.task, organize, schedule);
+    // The real catalogs read their keys on first use, never at construction; the region is read once, here.
+    this.catalogs = deps.catalogs ?? defaultCatalogs({ clock });
+    this.region = normalizeRegion(deps.region ?? readEnv(process.env, "LIFE_REGION"));
+    this.title = createTitles(store, clock, { catalogs: this.catalogs, region: this.region });
+    this.media = createMediaViews(store, clock, this.title);
   }
 
   /** Release the database connections. Safe to call more than once. */
@@ -132,6 +155,7 @@ export class Tools {
       accounts: byCreation(await tx.all("account", { includeDeleted: true })),
       calendars: byCreation(await tx.all("calendar", { includeDeleted: true })),
       events: byCreation(await tx.all("event", { includeDeleted: true })),
+      titles: byCreation(await tx.all("title", { includeDeleted: true })),
       log: await tx.allLog(),
     }));
   }

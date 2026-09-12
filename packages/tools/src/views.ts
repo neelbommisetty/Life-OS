@@ -4,12 +4,12 @@
 // (the schedule's refresh makes sync entries, nothing else); `today` and
 // `upcoming` read one snapshot each and partition it, `label` and `search`
 // are `task.list` with one criterion, `filter` is `filter.run`, and `trash`
-// is every deleted record. `today` merges the schedule half from
-// src/calendar/schedule.ts into the todo view; `week` and `slots` are that
-// module's. Bad input throws (an invalid date, an unknown label, an empty
+// is every deleted record, the library's titles included (there is no separate
+// media trash). `today` merges the schedule half from src/calendar/schedule.ts
+// into the todo view; `week` and `slots` are that module's. Bad input throws (an invalid date, an unknown label, an empty
 // search): a view never returns an empty result for a failed read.
 
-import type { Account, Calendar, Event, Filter, Label, Project, Section, Task } from "./contract.ts";
+import type { Account, Calendar, Event, Filter, Label, Project, Section, Task, Title } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import type { Schedule, SlotsOptions, SlotsView, TodayOptions, TodaySchedule, WeekOptions, WeekView } from "./calendar/schedule.ts";
 import { sortTasks, type Organize } from "./organize.ts";
@@ -35,7 +35,7 @@ export type TodayView = {
 export type UpcomingDay = { date: string; tasks: Task[] };
 export type UpcomingView = { from: string; to: string; days: UpcomingDay[] };
 
-export type TrashView = { tasks: Task[]; projects: Project[]; sections: Section[]; labels: Label[]; filters: Filter[]; events: Event[]; calendars: Calendar[]; accounts: Account[] };
+export type TrashView = { tasks: Task[]; projects: Project[]; sections: Section[]; labels: Label[]; filters: Filter[]; events: Event[]; calendars: Calendar[]; accounts: Account[]; titles: Title[] };
 
 export interface Views {
   /**
@@ -63,7 +63,7 @@ export interface Views {
   filter(refOrQuery: string): Promise<Task[]>;
   /** Non-deleted tasks of any status whose title, notes, or a comment contains `text`, case-insensitively. */
   search(text: string): Promise<Task[]>;
-  /** Deleted records only, newest deletion first. */
+  /** Deleted records of every kind, the library's titles included, newest deletion first. */
   trash(): Promise<TrashView>;
 }
 
@@ -167,6 +167,7 @@ export function createViews(store: Store, clock: Clock, tasks: TaskOps, organize
         events: byDeletion(await tx.all("event", { includeDeleted: true })),
         calendars: byDeletion(await tx.all("calendar", { includeDeleted: true })),
         accounts: byDeletion(await tx.all("account", { includeDeleted: true })),
+        titles: byDeletion(await tx.all("title", { includeDeleted: true })),
       })),
   };
 }

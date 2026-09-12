@@ -892,7 +892,7 @@ test("export writes a file, or JSON to stdout", async () => {
   const summary = result<{ file: string; exportedAt: string; tasks: number; projects: number; log: number }>(run);
   assert.equal(summary.file, file);
   const dump = JSON.parse(await readFile(file, "utf8")) as { exportedAt: string; projects: unknown[]; sections: unknown[]; labels: unknown[]; filters: unknown[]; tasks: AnyTask[]; log: unknown[] };
-  assert.deepEqual(Object.keys(dump), ["exportedAt", "projects", "sections", "labels", "filters", "tasks", "accounts", "calendars", "events", "log"]);
+  assert.deepEqual(Object.keys(dump), ["exportedAt", "projects", "sections", "labels", "filters", "tasks", "accounts", "calendars", "events", "titles", "log"]);
   assert.equal(dump.exportedAt, summary.exportedAt);
   assert.equal(dump.tasks.length, summary.tasks);
   assert.ok(dump.tasks.some((t) => t.id === dentist.id));
