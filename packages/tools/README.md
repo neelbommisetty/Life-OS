@@ -450,3 +450,319 @@ Human output for `today` and `week`: the day's all-day line, then one line per t
 - `accounts.test.ts`: first account becomes primary, duplicate identity rejected, `primary` swaps in one transaction, `remove` guards the primary and deletes the credential.
 - `schedule.test.ts`: merge order, multi-day events on each day, declined dropped, cancelled kept, hidden excluded, timed tasks placed, todo-only behaviour unchanged with no accounts, `slots` clipping, hours, weekdays, busy versus free, `from` in the past clipped to now, freshness and warnings on a failed refresh.
 - `cli.test.ts` (extended): every new command reachable from help alone, the envelope on `provider_unavailable`, occurrence refs round-tripping, `doctor` with and without accounts. All against `FakeAdapter`; a separate manually run script `scripts/google-smoke.ts` exercises the real adapter against a throwaway calendar and is not part of `bun run test`.
+
+## The library
+
+The library spec is `docs/vision/LEISURE.md` (D67 to D101); read it first. This part of the brief fixes how it lands in this package. Everything above still applies: `core.mutate` for every write, the store's lock and snapshot rules, the receipt and log shapes, the CLI envelope and ergonomics. The library adds one record kind, one catalog adapter per medium, and a handful of views. No todo or calendar operation changes; `contract`, `core`, `store`, `tools`, and `cli` are extended as the module map says.
+
+First cut (D101): titles and entries, derivation, catalog lookup for all four media (TMDB, Open Library, IGDB), `year` and `time` views, `merge`, entry corrections, the four medium groups and `life media`, the skill. Second cut: `worth-getting`, `import`, named lists, the Google Books description fallback.
+
+### Conventions that change or extend
+
+- **Environment.** New optional settings in the root `.env`: `LIFE_TMDB_KEY` (a TMDB v4 read access token, sent as a bearer), `LIFE_IGDB_CLIENT_ID` and `LIFE_IGDB_CLIENT_SECRET` (a Twitch developer app), `LIFE_REGION` (default `US`). A missing key disables that source: lookups for its media throw `CatalogUnconfigured`, which `add` turns into a warning naming the variable and `lookup` into a rejection. Nothing fails for lack of a key.
+- **Credentials.** The IGDB app token lives in `.local/igdb/token.json` (`{ accessToken, expiresAt }`), resolved from the repository root like `.local/google`. Never in a record, the log, a receipt, or stderr.
+- **Network.** Only `src/media/catalog/*` talks to the sources, through the global `fetch`. `src/media/catalog/net.ts` holds its own copy of the 20 second per-request timeout and JSON reading (the calendar's helpers stay where they are), plus one retry on 429 after `Retry-After`. A whole `resolve` (search, detail, editions, availability) shares one 20 second budget through a single `AbortSignal`; when it runs out the title is created without a catalog and the warning says so. Lookups run before the write transaction, never inside it. Tests never touch the network: they use `FakeCatalog`.
+- **Dates with precision.** Every date flag in the library (`--on`, `--started-on`, `--finished-on`, `--since`, `--until`) takes the precision inside the value: `2026-09-07` (day), `2026-09-07~w` (the ISO week containing that day), `2026-09` (month), `2026` (year), `?` (unknown). There is no `--approx` or `--undated`. The parser lives in `src/media/on.ts` and is reused by every command.
+- **Refs by name.** Wherever a library command takes `<ref>`, it is a title id or a name. A name resolves by `normalizeTitle` among non-deleted titles of the group's medium (any medium under `life media`), then among `aliases`, then as a case-insensitive substring of `name`; exactly one hit resolves; several → `rejected` with `needs: { field: "ref", options: [ids] }` and title candidates; none → `not_found`, and when the name exists in another medium the hint names it (`found as book m_x; use life book`). Codex never has to `list` just to find an id.
+- **Compact output.** `list` and every view return `TitleSummary = { id, medium, name, year, status, ownership, priority, rating, liked, timeFit, moodFit, lastEntry: { type, on, text } | null }` unless `--full`; `get` always returns the full record with `entries` and `facts`. A backlog is readable by an agent in a few hundred tokens.
+- **Actors.** `import:vault` for the second-cut backfill. Everything else is `neel`, `codex`, or `agent:<name>` as usual.
+- **Ids.** `ID_PREFIXES` gains `title: "m"`; `recordId`'s prefix class gains `m`. Entries carry `n_` plus ten characters from `randomSuffix()` exported by `core.ts` (one alphabet, one rejection loop), checked by a separate `entryId` regex in `contract.ts`; entries are not a store kind. `ml_` is reserved for lists.
+- **Dependencies added.** None.
+
+### Module map additions
+
+| Module | Owns | Depends on |
+|---|---|---|
+| `src/contract.ts` (extended) | title, entry, facts, availability schemas and inputs; `CatalogSource`; `ID_PREFIXES.title`; `entryId`; `export type Origin` (today only the schema is exported) | |
+| `src/db/schema.ts` (extended), `drizzle/0002_library.sql` (`npx drizzle-kit generate --name library`; the snapshot is generated, not written) | `titles` table with `recordColumns()` and indexes on `(json->>'medium')`, `(json->>'status')`, `(json->>'ownership')`, `(lower(json->>'name'))`, `((json->'catalog'->>'externalId'))` | |
+| `src/store.ts` (extended) | `Kind`, `RecordOf`, `TABLES` gain `title` | db |
+| `src/core.ts` (extended) | `SCHEMAS.title`; `randomSuffix()` exported | |
+| `src/media/on.ts` | pure: the date-with-precision parser and formatter | |
+| `src/media/derive.ts` | pure: entry ordering, progress and ownership derivation, current take, cycles, `allowed`, `finalize` | contract |
+| `src/media/catalog/adapter.ts` | `CatalogAdapter`, `Candidate`, `Detail`, errors, `FakeCatalog` | contract |
+| `src/media/catalog/net.ts` | timeout, JSON, 429 retry, shared budget | |
+| `src/media/catalog/tmdb.ts`, `openlibrary.ts`, `igdb.ts` | one adapter each; `igdb.ts` owns the Twitch token | net |
+| `src/media/catalog/links.ts` | pure: constructed search links (Audible, Libby, Kindle, store templates by source uid) and image URL rewriting | |
+| `src/media/lookup.ts` | normalization, confidence rule, `resolve`, refresh with `edited`, ref resolution by name | adapters |
+| `src/media/titles.ts` | `TitleOps` and `TitleReceipt` | core, derive, lookup |
+| `src/media/views.ts` | `MediaViews` | titles, derive |
+| `src/tools.ts` (extended) | `title` and `media` on the facade; `Tools.open({ catalogs })`; `export()` gains `titles`; `views.trash()` gains `titles` | |
+| `src/cli.ts` (extended) | `movie`, `show`, `game`, `book`, `media` groups (`GroupName`, `GROUP_INFO`, `RefKind`, `POS.titleId`, `AnyReceipt`, `describe()`); `EnvelopeError.candidates` widened; `ask()` renders candidate tables; `doctor` gains catalog rows and `--online`; group help gains a notes hook; `ErrorCode` gains `catalog_unavailable`; `EXIT_MEANING[3]` reworded | tools |
+| `../../skills/leisure/SKILL.md` | guidance for Codex and agents | the CLI |
+
+Each module has a matching `*.test.ts`. `derive.ts`, `links.ts`, and each adapter's mapping functions are pure and get the densest tests.
+
+`Tools.open({ catalogs })` defaults to one adapter per source, each reading its variables lazily and throwing `CatalogUnconfigured` on first use; tests pass `FakeCatalog` through the same option, and the CLI through a new `CliIo.catalogs`.
+
+### Records
+
+```ts
+type Medium = "movie" | "show" | "game" | "book";
+type Progress = "curious" | "backlog" | "active" | "paused" | "done" | "dropped";
+type Ownership = "none" | "owned" | "service" | "borrowed";
+type Precision = "day" | "week" | "month" | "year" | "unknown";
+type On = { date: string | null; precision: Precision };     // YYYY-MM-DD, YYYY-MM, or YYYY by precision; null only with "unknown"; weeks are ISO weeks (Monday), the week containing the date
+type Rating = 0.5 | 1 | 1.5 | 2 | 2.5 | 3 | 3.5 | 4 | 4.5 | 5;
+type BookFormat = "audiobook" | "physical" | "kindle";
+type CatalogSource = "tmdb" | "openlibrary" | "igdb";
+type Money = { amount: number; currency: string };
+
+type EntryType =
+  | "want" | "start" | "progress" | "finish" | "pause" | "resume" | "drop" | "again" | "note"   // progress facet
+  | "buy" | "borrow" | "return" | "service";                                                   // ownership facet
+
+type Entry = {
+  id: string;                         // n_ + 10
+  type: EntryType;
+  on: On;
+  at: string;                         // recorded, ISO UTC
+  actor: string;
+  text: string | null;                // note text; on finish the review; on drop the reason, which doubles as the review
+  progress: string | null;            // free text, D84
+  format: BookFormat | null;          // books: on start, again, finish
+  rating: Rating | null;              // finish and drop only, D80
+  minutes: number | null;             // progress-facet entries, D100
+  spend: Money & { kind: "purchase" | "iap" | "rental" } | null;   // ownership-facet entries
+  where: string | null;               // buy, borrow, service
+  evidence: string[];
+};
+
+type Availability = { kind: "stream" | "rent" | "buy" | "play" | "borrow" | "listen"; name: string; url: string; region: string; price: Money | null; constructed: boolean };
+
+type Facts = {
+  synopsis: string | null; genres: string[];
+  people: { role: string; name: string }[];
+  released: string | null;
+  runtime: number | null; pages: number | null; episodes: { seasons: number; episodes: number } | null; playtime: number | null;  // minutes, pages, counts, hours
+  series: { name: string; position: number | null; entries: { externalId: string; name: string; position: number | null; released: string | null }[] } | null;
+  platforms: string[]; formats: string[]; language: string | null;
+  links: { label: string; url: string }[];
+  availability: Availability[];
+  sourceRating: { value: number; scale: number; count: number | null } | null;
+};
+
+type Title = {
+  id: string; medium: Medium;
+  name: string; aliases: string[]; year: number | null; creators: string[]; cover: string | null;   // aliases: the names Neel used that differ from the catalog name; searched by ref resolution and list --text
+  length: { minutes?: number; pages?: number; hours?: number; seasons?: number; episodes?: number } | null;
+  facts: Facts | null;
+  catalog: { source: CatalogSource; externalId: string; pulledAt: string } | null;
+  edited: string[];                   // factual fields Neel changed by hand, kept whether or not a catalog is linked (D93)
+  series: { name: string; position: number | null } | null;   // hand-set wins over facts.series
+  status: Progress; ownership: Ownership;                      // derived, stored for indexing
+  ownershipDetail: { where: string | null; since: On | null; price: Money | null } | null;   // derived
+  priority: "now" | "soon" | "later" | null;
+  moodFit: ("comfort" | "immersive" | "social" | "learning" | "low-energy")[];
+  timeFit: "short" | "medium" | "long" | null;
+  notes: string | null;
+  detail: { format: BookFormat | null; platform: string | null; where: string | null };
+  rating: Rating | null; review: string | null;   // derived
+  liked: boolean;                                 // a plain title field, set by like, unlike, and --liked (D80)
+  entries: Entry[];
+  origin: Origin;
+  version: number; createdAt: string; updatedAt: string; deletedAt: string | null;
+};
+```
+
+Storage: one row per title in `titles`; entries live inside the row like comments on a task. `status`, `ownership`, `ownershipDetail`, `rating`, `review` are derived. Every `TitleOps` write returns its record through `finalize(before, after)` in `derive.ts`, which recomputes them, and `titleSchema.superRefine` rejects a record whose stored derived fields differ from `derive(entries)`, so `mutate` catches a forgotten recompute. `medium`-specific `detail` fields that do not apply are always `null`.
+
+### Derivation (D91)
+
+```ts
+export function orderEntries(entries: Entry[]): Entry[];
+export function deriveProgress(entries: Entry[]): Progress;
+export function deriveOwnership(entries: Entry[]): { ownership: Ownership; detail: Title["ownershipDetail"] };
+export function deriveTake(entries: Entry[]): { rating: Rating | null; review: string | null };
+export function cycles(entries: Entry[]): { opened: Entry | null; closed: Entry | null; entries: Entry[] }[];
+export function allowed(type: EntryType, progress: Progress, ownership: Ownership): { ok: true } | { ok: false; issue: string; hint: string };
+export function finalize(title: Title): Title;
+```
+
+Order: `on` (unknown first; then date; coarser precision first on an equal date), then `at`, then type rank, then `id`. Type rank: `note` = `progress` = 0, then `want` < `start` < `again` < `resume` < `pause` < `drop` < `finish`, then the ownership types `buy` < `borrow` < `service` < `return`.
+
+Progress is the target of the last progress transition: `want` → backlog, `start`/`again`/`resume` → active, `pause` → paused, `drop` → dropped, `finish` → done; none → curious. Ownership is the target of the last ownership entry: `buy` → owned, `borrow` → borrowed, `service` → service, `return` → none; none → none. `ownershipDetail` comes from that same entry: `where`, `since: on`, `price` from `spend` when its kind is `purchase`; `null` when ownership is `none`. `rating` is the latest closing entry (`finish` or `drop`, in order) whose `rating` is non-null; `review` is the latest closing entry whose `text` is non-null, independently.
+
+`allowed` is judged against the title's current derived state, since that is what Neel is talking about, and applied when an entry is appended:
+
+| Type | Allowed from | Refused with hint |
+|---|---|---|
+| `want` | curious | "already wanted; use start" |
+| `start` | curious, backlog, paused, dropped | "already active" / "already done; use again" |
+| `again` | done | "not finished; use start" |
+| `resume` | paused | "not paused; use start" |
+| `pause` | active | "not active" |
+| `finish` | curious, backlog, active, paused, dropped | "already done; use again" |
+| `drop` | backlog, active, paused | "already dropped" / "never wanted; use delete to dismiss" / "already done" |
+| `progress`, `note` | any | |
+| `buy`, `borrow`, `service` | any | |
+| `return` | owned, borrowed, service | "nothing to return" |
+
+When the appended entry is not last in `orderEntries` (a backdated entry), the receipt carries a warning naming the derived status and the later entry that decides it. `amend` and `unlog` skip `allowed` and re-derive; any sequence is legal after a correction.
+
+`cycles`: an opener (`start`, `again`) opens a cycle; the next closer (`finish`, `drop`) closes it; an opener while a cycle is open closes the previous with `closed: null`; a closer with no open cycle is a cycle of one. A cycle's format is its opener's `format`, else its closer's.
+
+### The catalog adapter
+
+```ts
+export type Candidate = { source: CatalogSource; externalId: string; name: string; year: number | null; creators: string[]; category: string | null; cover: string | null; editionCount: number | null; sourceRating: number | null; inLibrary: string | null };   // inLibrary: the title id already linked to this externalId, filled by lookup.ts
+export type Detail = { name: string; year: number | null; creators: string[]; cover: string | null; length: Title["length"]; facts: Omit<Facts, "availability"> };
+export class CatalogUnavailable extends Error { constructor(message: string, readonly status?: number) }
+export class CatalogUnconfigured extends Error { constructor(readonly variable: string) }
+
+export interface CatalogAdapter {
+  readonly source: CatalogSource;
+  readonly media: Medium[];
+  search(medium: Medium, text: string, opts?: { year?: number; signal?: AbortSignal }): Promise<Candidate[]>;   // at most 10, source order
+  detail(medium: Medium, externalId: string, opts?: { signal?: AbortSignal }): Promise<Detail>;
+  availability(medium: Medium, externalId: string, region: string, opts?: { signal?: AbortSignal }): Promise<Availability[]>;
+}
+```
+
+`lookup.ts`: two normalizations, named once. `normalizeTitle` from `tasks.ts` (lowercase, collapse spaces, no article stripping) is the duplicate check's; `normalizeLookup` (additionally strips punctuation and leading articles) is the confidence rule's. Confidence (D94): auto-link when exactly one candidate's `normalizeLookup(name)` equals the input's, its year matches when the caller gave one, and its `category` is a main work; otherwise the candidates come back, and `needs.message` names the test that failed (`several exact matches`, `no exact name match`, `year differs`) so an agent can retry with `--year` instead of asking. `resolve(medium, text, opts)` = search, confidence, `detail`, `availability`, then `links.ts` adds constructed entries (`constructed: true`). `refresh` re-pulls `detail` and `availability`, writes every factual field not in `edited` and not the hand-set `series`, and compares the result excluding `catalog.pulledAt`: when nothing differs the outcome is `unchanged` and `pulledAt` is updated with `tx.put` without a log entry or version bump, as the calendar's quiet bookkeeping does.
+
+Source specifics, kept inside each adapter:
+
+- **TMDB** (`movie`, `show`): `search/movie?query&year&include_adult=false&language=en-US` or `search/tv?query&first_air_date_year`; `movie/{id}` or `tv/{id}` with `append_to_response=credits,watch/providers` (valid for both); movies with `belongs_to_collection` fetch `collection/{id}` and order `parts` by `release_date` for series entries; shows have no series. Image URLs come from `configuration`, fetched once per process. Providers for `LIFE_REGION`: `flatrate`, `free`, `ads` → `stream` with `price: null`; `rent`; `buy`; every row carries the region's single JustWatch `link`. Runtime from `runtime`, or the first `episode_run_time`, else `last_episode_to_air.runtime`; shows fill `episodes` from `number_of_seasons` and `number_of_episodes`. Category is `null` for movies; a show's `type` is informational and never blocks auto-link.
+- **Open Library** (`book`): `search.json?q=…&fields=key,title,author_name,first_publish_year,cover_i,edition_count,number_of_pages_median` with a descriptive `User-Agent`; `detail` fetches `works/{id}.json` (description is a string or `{ type, value }`), up to five `authors/{key}.json` for `creators`, `year` from `first_publish_date` else the earliest edition `publish_date`, and `works/{id}/editions.json?limit=50` for ISBNs and `physical_format` mapped to `formats` (`audiobook` when the text mentions audio, `kindle` for Kindle or ebook, else `physical`). Series is `null` from this source; `series.set` fills it. Duplicate works are the norm, so auto-link additionally requires the top candidate to have at least three times the `edition_count` of the second.
+- **IGDB** (`game`): Twitch client-credentials token from `id.twitch.tv/oauth2/token`, cached in `.local/igdb/token.json`, refreshed within a day of expiry or on 401; every request carries `Client-ID` and the bearer. POST `games` with an Apicalypse body requesting `name, first_release_date, cover.url, summary, genres.name, themes.name, involved_companies.company.name, involved_companies.developer, involved_companies.publisher, platforms.name, collections.name, collections.games.name, collections.games.id, collections.games.first_release_date, websites.url, websites.type, websites.category, external_games.uid, external_games.external_game_source, external_games.category, game_type, category, aggregated_rating, aggregated_rating_count` (both the current and deprecated type fields; the build pins whichever the API returns); `game_time_to_beats` by `game_id`, `playtime = round(normally / 3600, 1)` since values are seconds. `game_type` maps to `main`, `dlc`, `expansion`, `remake`, `remaster`, `port`, or `other`; only `main`, `remaster`, and `port` auto-link. Series entries are the collection's games ordered by `first_release_date`, `position` null. Cover URLs are rewritten from `//images…/t_thumb/` to `https://…/t_cover_big/`. Store links are built by `links.ts` from `external_games` uids through a per-source URL template (Steam, GOG, Epic, PlayStation Store, Xbox; eShop when IGDB supplies it), falling back to `websites` when no template applies. Rate limit 4 per second: the adapter serializes its own calls with a 250 ms floor.
+
+`FakeCatalog` holds candidates and details in memory per medium, records every call, and can be told to throw `CatalogUnavailable` or `CatalogUnconfigured` or return several candidates for a text.
+
+### Operations
+
+```ts
+export type TitleReceipt = Receipt<Title> & {
+  warnings?: string[];
+  candidates?: Candidate[];                       // on a catalog needs rejection
+  candidateKind?: "title" | "catalog";           // on duplicate and catalog rejections
+  next?: { externalId: string; name: string; position: number | null; titleId: string | null };   // on finish, when the title is in a series
+};
+```
+
+The CLI lifts `TitleReceipt.warnings` into the envelope's `warnings` and nowhere else; `result` carries the receipt without them.
+
+`TitleOps` (return `Promise<TitleReceipt>` unless noted; every entry op takes `EntryInput = { on?: On; text?; progress?; format?; rating?; liked?; minutes?; spend?; where?; evidence? }`, `on` defaulting to today at day precision; `liked` on an entry input sets the title's `liked`, not an entry field):
+
+| Method | Behavior |
+|---|---|
+| `add(input: TitleAdd, ctx)` | `TitleAdd = { medium, name, year?, catalog?: externalId, lookup?: boolean (default true), want?, started?: EntryInput \| true, finished?: EntryInput \| true, seenBefore?: On \| true, liked?, priority?, moodFit?, timeFit?, notes?, detail?, allowDuplicate? }`. `seenBefore` writes a `finish` dated as given (default `?`) before the other entries, so "rewatched Arrival, still a 5" on a title not yet in the library is one call. Order: (1) in a read, the name duplicate check over every non-deleted title of the medium by `normalizeTitle`; `duplicate` with `candidateKind: "title"` unless `allowDuplicate`. (2) Outside any transaction, lookup unless `lookup: false` or `catalog` given: an auto-link or a given id yields the `Detail`; several candidates → `rejected` with `needs: { field: "catalog", options: [externalIds], message }`, `candidates`, `candidateKind: "catalog"`, nothing written; none, `CatalogUnavailable`, `CatalogUnconfigured`, or budget exhausted → no catalog and a warning. (3) In the write transaction: the externalId duplicate check (same `catalog.externalId`, any non-deleted title), then create the title (`curious`) with the detail's fields (`name` replaced by the catalog name when every token of the input appears in it, and the input kept in `aliases` when it differs), append `want` if `want`, `start` if `started`, `finish` if `finished` (a `finished` alone is a cycle of one), set `liked`, `finalize`, persist. `detail.format` on a book also becomes the `format` of the `start` or `finish` entry created here. |
+| `get(ref): Promise<Title \| null>` | Deleted included. Full record. |
+| `list(filter?: TitleList): Promise<TitleSummary[] \| Title[]>` | `{ medium?, status?: Progress[], ownership?: Ownership[], priority?, moodFit?, timeFit?, format?, text?, includeDeleted?, full? }`. `text` is a case-insensitive substring over `name`, `aliases`, and `creators` only; `search` is the wide one. `medium` optional, so `life media list` exists. Default excludes deleted and `dropped`, and the help text for `--status` says so. Sort: status order (active, paused, backlog, curious, done, dropped), then priority (now, soon, later, none), then name. |
+| `update(id, input: TitleUpdate, ctx)` | `name, year, creators, cover, length, series, priority, moodFit, timeFit, notes, detail`; `null` clears. A change to `name`, `year`, `creators`, `cover`, or `length` adds that field to `edited`, linked or not. |
+| `want`, `start`, `resume`, `pause`, `progress`, `note`, `buy`, `borrow`, `return`, `service` `(ref, input: EntryInput, ctx)` | Append one entry of that type after `allowed`; `progress` requires `progress`; `note` requires `text`; `start` and `resume` accept `progress` too, so "started it, two hours in" is one entry; `text` on any of them is the entry's note text; `buy` accepts `spend` and `where`; `minutes` is time spent in that sitting, never cumulative. `progress` or `note` on a title that is not `active` succeeds with a warning `title is <status>; use start if he is on it`. `finalize`, persist. |
+| `again(ref, input, ctx, opts?: { finished?: boolean })` | Opens a new cycle; with `finished` also closes it in the same transaction with the input's `rating`, `text`, `minutes`, so a one-sitting rewatch is one call. |
+| `finish(ref, input, ctx, opts?: { queueNext?: boolean })` | As above; accepts `rating`, `text` as the review, `format`, `minutes`, `liked`. When the title is in a series, the receipt carries `next` and a warning naming it; `queueNext` creates the next entry as a `backlog` title (with `want`) through `applyIn` under `itemCtx(ctx, 1)` in the same transaction, evidence `series:<titleId>`. |
+| `drop(ref, input, ctx)` | Requires `text` (the reason, which is also the review, so the skill says to quote Neel fully); accepts `rating`, `liked`. |
+| `amend(ref, entryId, patch, ctx)`, `unlog(ref, entryId, ctx)`, `relog(ref, entryId, into, ctx)` | `amend` changes any field including `type` and `on`; `unlog` removes the entry and returns it as `removed` on the receipt; `relog` moves the entry to another title of the same medium in one transaction, re-deriving both. No `allowed` check. |
+| `rate(id, rating, ctx, opts?: { entry? })`, `unrate`, `review(id, text, ctx, opts?: { entry? })` | Sets the field on the named entry, else the last closing entry; `rejected` with hint `finish or drop first` when there is none. |
+| `like(id, ctx)`, `unlike(id, ctx)` | Sets `liked` on the title. |
+| `catalog.search(medium, text, opts?: { year?, availability?: boolean }): Promise<Candidate[]>` | No write. With `availability`, the auto-link match (or each candidate, at most three) carries its `availability` list, so "where can I watch X" needs no title. Throws `CatalogUnavailable` and `CatalogUnconfigured`. |
+| `catalog.link(id, externalId, ctx)`, `catalog.unlink(id, ctx)` | Link pulls `detail` and `availability` and fills every factual field not in `edited`; unlink clears `catalog` and `facts`, keeps the top-level fields. |
+| `catalog.refresh(ref, ctx)`, `catalog.availability(ref \| { status: "backlog" }, ctx)` | As in `lookup.ts`; on a title with no `catalog`, `refresh` runs the full `resolve` with the same `needs` path, so recovery after a missing key is one call. A source failure is `rejected` with an issue prefixed `catalog_unavailable:` (the events pattern), which the CLI maps to exit 3. Availability over the backlog runs one title per transaction so a failure stops nothing else and returns `{ refreshed, failed }`. |
+| `where(ref \| { catalog: externalId, medium }): Promise<Availability[]>` | A read of `facts.availability`, or for a catalog id a live `availability` call. |
+| `next(id): Promise<{ seriesEntry, title: Title \| null } \| null>`, `series(id): Promise<{ name, entries: { position, name, externalId, title: Title \| null }[] }>` | Reads. `next` is the entry after this title's position, or after its `released` when positions are null, by `series` then `facts.series`. |
+| `merge(id, into, ctx)` | Moves `id`'s entries onto `into` (ids kept), unions `moodFit`, keeps `into`'s other facets, soft-deletes `id` with `notes` gaining `merged into <into>`. Both same medium. |
+| `delete(id, ctx)`, `restore(id, ctx)`, `history(id)` | As for tasks. |
+
+"Wanted again" is a done title with a `priority`; `want` is not allowed from `done`. The skill says "wants to replay X" is `update --priority`.
+
+`MediaOps` (cross-media): `import(items, ctx, { dryRun })` is second cut (items are `TitleAdd` plus `entries: (EntryInput & { type })[]`; actor must be `import:vault`; report shape `ImportResult`). `export` is on `Tools.export()`.
+
+### Views
+
+`MediaViews` (all `Promise`, medium optional on each):
+
+- `now(medium?)` → active and paused titles, active first, then by last entry `at` descending.
+- `curious(medium?)` → curious titles, newest first.
+- `backlog(medium?, opts?: { mood?, fit?, format?, service?, wantedAgain? })` → backlog titles with ownership not `none`, plus done titles with a `priority` when `wantedAgain`; `service` filters on `facts.availability` names; sorted priority then name.
+- `buy(medium?)` → backlog titles with ownership `none`, each with `availability` filtered to `buy`, `rent`, `play`, `listen`, `borrow` and the lowest price when any.
+- `shelf(medium?)` → owned titles grouped `{ done, inProgress (active, paused), untouched (backlog, curious), dropped }`.
+- `diary(opts?: { medium?, since?, until?, limit? })` → `{ entries: (Entry & { titleId, titleName, medium })[] }` newest first by `on` then `at`; unknown-precision entries excluded.
+- `series(id)` → as `TitleOps.series`.
+- `time(opts?: { medium?, since?: On, until?: On, weeks? = 8 })` → `{ from, to, total: Bucket, weeks: (Bucket & { from, to })[], unplaced: number }` where `Bucket = { minutes: { [medium]: number }, spend: { [currency]: { purchase, iap, rental } }, titles: { id, name, minutes }[] }`, over ISO weeks; `since` and `until` clip the range so "this month" is answerable, and `total` sums the clipped range. Entries are placed by `on` at day and week precision; month, year, unknown count in `unplaced`.
+- `year(year, medium?)` → `{ finished: { title, entry }[], dropped: { title, entry }[], again: number, byMedium: { medium: { count, avgRating } } }`; a finish placed by its `on` year at any precision but unknown.
+- `search(text)` → non-deleted titles where name, creators, notes, review, or any entry text contains the text.
+
+The existing `Views.trash()` gains `titles`; there is no separate media trash.
+
+### CLI additions
+
+Four groups sharing one command table, generated per medium with the flags that do not apply to that medium left out (so `--platform` on `book` is a usage error): `life movie`, `life show`, `life game`, `life book`. `GroupName` gains the four and `media`; `GROUP_INFO` describes each; `RefKind` gains `title`.
+
+```text
+life <medium> add <name> [--year n] [--catalog id] [--no-lookup] [--want] [--started] [--finished] [--started-on d] [--finished-on d] [--on d] [--seen-before [d]] [--rating r] [--liked] [--review s] [--progress s] [--minutes n] [--priority now|soon|later] [--mood m]... [--fit short|medium|long] [--format audiobook|physical|kindle] [--platform s] [--watched-on s] [--notes s] [--allow-duplicate]
+life <medium> get <ref>
+life <medium> list [--status a,b] [--ownership a,b] [--priority p] [--mood m] [--fit f] [--format f] [--text s] [--deleted] [--full]
+life <medium> update <ref> [--name] [--alias s]...|--no-alias [--year|--no-year] [--creators a,b] [--cover url|--no-cover] [--series "Name" [--position n]|--no-series] [--priority p|--no-priority] [--mood m]...|--no-mood [--fit f|--no-fit] [--format f|--no-format] [--platform s|--no-platform] [--watched-on s|--no-watched-on] [--notes s|--no-notes]
+life <medium> want|pause <ref> [--on d] [--text s]
+life <medium> start|resume <ref> [--on d] [--progress s] [--minutes n] [--format f] [--text s]
+life <medium> again <ref> [--on d] [--finished] [--rating r] [--liked] [--review s] [--minutes n] [--format f] [--text s]
+life <medium> progress <ref> <text> [--on d] [--minutes n]
+life <medium> note <ref> <text> [--on d]
+life <medium> finish <ref> [--on d] [--rating r] [--liked] [--review s] [--format f] [--minutes n] [--queue-next]
+life <medium> drop <ref> <text> [--on d] [--rating r] [--liked]
+life <medium> buy <ref> [--where s] [--price n] [--currency USD] [--kind purchase|iap|rental] [--on d]
+life <medium> borrow <ref> --where s [--on d]
+life <medium> return <ref> [--on d]
+life <medium> service <ref> --where s [--on d]
+life <medium> rate <ref> <rating> [--entry n_id]
+life <medium> unrate <ref> [--entry n_id]
+life <medium> review <ref> <text> [--entry n_id]
+life <medium> like|unlike <ref>
+life <medium> where <ref> | --catalog <externalId>
+life <medium> next <ref> [--queue]
+life <medium> series <ref>
+life <medium> lookup <text> [--year n] [--where]
+life <medium> link <ref> <externalId>
+life <medium> unlink|refresh <ref>
+life <medium> merge <ref> <into>
+life <medium> amend <ref> <entryId> [--type t] [--on d] [--text s] [--progress s] [--rating r|--no-rating] [--minutes n] [--format f] [--where s]
+life <medium> unlog <ref> <entryId>
+life <medium> relog <ref> <entryId> --to <ref>
+life <medium> curious
+life <medium> backlog [--mood m] [--fit f] [--format f] [--service s] [--wanted-again]
+life <medium> buy-list
+life <medium> shelf
+life <medium> delete|restore|history <ref>
+life media list [--medium m] [--status a,b] [--ownership a,b] [--priority p] [--text s] [--full]
+life media get <ref>
+life media now | curious | backlog | buy-list | shelf   [--medium m] [...]
+life media diary [--since d] [--until d] [--medium m] [--limit n]
+life media time [--since d] [--until d] [--weeks n] [--medium m]
+life media year <yyyy> [--medium m]
+life media search <text>
+life media availability [--backlog | <ref>]
+```
+
+Conventions: every date flag takes the precision inside the value (`2026-09-07`, `2026-09-07~w`, `2026-09`, `2026`, `?`); `--on` defaults to today, and on `add` it is the default for whichever of `--started-on` and `--finished-on` is absent, each of which carries its own precision. `--rating` and `--review` on `add` require `--finished` or `--again`; `--liked` is allowed anywhere since it sets the title. `--progress` and `--minutes` on `add` go on the `start` entry and require `--started`. `--currency` defaults to `USD` (from `LIFE_REGION`) and `--kind` to `purchase`. `<rating>` and `--rating` accept `4.5` or `4½`. `--format` on `add` sets the wanted format and the created entry's format. `--watched-on` is the movie and show detail field; `--where` on `buy`, `borrow`, and `service` is the store, lender, or service. `like` and `unlike` are separate command definitions. `<ref>` accepts an id or a name everywhere. `--json` on a TTY never asks: a `needs` is a rejection like anywhere else.
+
+A `needs` on `catalog` carries `candidates`; `ask()` renders them as a numbered table (`#  id  name (year)  creators  category`) and accepts either the id or the 1-based number, mapping it to `options[i-1]`; without a TTY the rejection names `--catalog <id>`. The answer re-runs `add` from scratch with `--catalog`, so the externalId duplicate check then applies. `EnvelopeError.candidates` becomes `Task[] | Title[] | Candidate[]` with `candidateKind: "task" | "title" | "catalog"`; `receiptError` and `receiptText` branch on the kind: title duplicates print id, name, year, status and name `--allow-duplicate`; catalog candidates print the table. `CatalogUnavailable` thrown by `lookup` exits 3 with error code `catalog_unavailable`; `refresh` and `availability` rejections prefixed `catalog_unavailable:` map to the same through `providerCode()`; `CatalogUnconfigured` on `lookup` exits 1 naming the variable; on `add` both are warnings. `EXIT_MEANING[3]` becomes "database, calendar provider, or catalog unavailable". `life doctor` adds: each catalog variable present or not, the IGDB token file present and not expired, `LIFE_REGION`, and with the new `--online` flag one live `search` per configured source. `life --help` lists the new groups and documents `error.candidates` as `Task[] | Title[] | Candidate[]` with `candidateKind`; `life help <medium>` for all four prints the date forms, the rating scale, the ref rule, the entry types with their allowed states, that `minutes` is per sitting, that `list` hides `dropped` by default, and where entry ids come from (`get` and `history`), through the group-help notes hook; `life help book` adds that audiobooks are books with a format.
+
+Human output for a title: name, year, medium, status and ownership on one line, then rating, liked, priority, fits, then the diary newest first, one line per entry with date and precision marker (`~w`, `~m`, `~y`, `?`), type, and text. `where` prints one line per availability with kind, name, price, and a `*` on constructed links.
+
+### Skill
+
+`skills/leisure/SKILL.md` follows the todo and calendar skills: when to reach for it, how to run it, how to read the envelope, then the required behaviors. The behaviors:
+
+- Always `--json --actor codex`. Use the name as the ref (`life book finish "Skyward"`); `list --text` only when the name is ambiguous or a `needs` on `ref` comes back. Never `list` just to find an id.
+- Attach `--evidence "chat:2026-09-12 \"<his words>\""` on every write, as the todo skill requires; `--reason` on corrections, `unlog`, `relog`, and `delete`.
+- On his word only: `want`, `start`, `again`, `pause`, `resume`, `finish`, `drop`, `buy`, `borrow`, `return`, `service`. Freely from what he says: `progress`, `note`, `like`. "Going into X", "started X", "on S2E4 of X" are `start` (then `progress`); "on Audible" or "on Game Pass" is `service --where` only when he says he has it, otherwise nothing; "will buy on the eShop" goes in `--notes` until `buy`.
+- A mention with interest is `add` without `--want` (`curious`); a want is `--want`; a title Codex itself suggested is never added until he reacts (D99). Dismissing a `curious` title is `delete`; a wanted or active title he rejects is `drop` with his words, and the drop text becomes the title's review, so quote him fully. Check the status in the receipt or with `get` before choosing.
+- Dates are when it happened: `?` for any past with no nameable month ("a while ago", "years ago"); `2026-09` or `2026` when he names one; `~w` for a weekly review; ask only when he is clearly describing a recent specific day he did not name.
+- A rating only when he gives a number; "loved it" is `--liked`; "loving it so far" on an unfinished title is `like`; a mild positive ("comfy listen") is `--review` with his words, not a rating. `minutes` is one sitting's time, never cumulative: "10 hours in" is `progress` text without `--minutes`.
+- A dated reflection about a title is a `note` with its full text; it does not go to the vault (D98). "Wants to replay X" is `update --priority`. A rewatch is `again --finished` in one call, or `add --seen-before --finished` when the title is new.
+- Group choice: an audiobook is `book --format audiobook`; a mobile game is `game --platform`; movies are never `--started`, but a rewatch is `again`; ask when show versus movie is unclear.
+- A catalog `needs` (`error.candidates`, `candidateKind: "catalog"`): pick without asking when exactly one candidate fits what he said (his year, the sequel number, the author); otherwise ask him with the candidates' names and years, then re-run with `--catalog <id>`. Retry with `--year` first when `needs.message` says `year differs` or `several exact matches`. A candidate with `inLibrary` set means the title exists: use it.
+- "Where can I watch X" with no title is `lookup "X" --where`; do not `add` just to answer. After an `add`, the receipt already carries availability, so no `where` call.
+- Fix a wrong title with `relog`, a wrong field with `amend`, never by re-adding. When an `add` warned `created without a catalog`, tell him which variable is missing and that `refresh` links it once the key exists.
+- When a `finish` receipt carries `next`, mention it once and add it only if he says so. Report the receipt: outcome, id, status.
+
+### Tests that must exist
+
+- `derive.test.ts`: every sequence in the LEISURE lifecycle section; `add --finished` alone; `again` on done; `finish` after `finish` refused; `drop` from curious refused; `return` from owned; `unlog` of the only `start` leaving `progress` entries; precision ordering (unknown first, week before day on the same date); same-day start and finish; equal `at` broken by rank then id; a backdated entry warning; ownership independence and `ownershipDetail`; per-cycle rating with the title showing the latest non-null; cycle format from opener else closer; `cycles` on corrected sequences; `superRefine` rejects a stale derived field.
+- `lookup.test.ts`: auto-link on a single exact match; year mismatch → candidates; DLC or edition never auto-links; Open Library edition-count rule; `CatalogUnconfigured` and `CatalogUnavailable` and budget exhaustion → created with warning on add; `edited` honored on refresh and on link; hand-set series wins; `unchanged` refresh writes only `pulledAt` without a log entry.
+- Adapter mapping tests per source against recorded fixtures (JSON under `src/media/catalog/fixtures/`, no network): TMDB movie and show detail, providers by region including `free` and `ads`, collection entries ordered by release; Open Library search, work with string and object descriptions, authors, editions to formats; IGDB game with collection, external stores through templates, type mapping including `other`, cover rewrite, seconds to hours, token refresh on 401 and `Client-ID` on every request; `links.ts` for every constructed link.
+- `on.test.ts`: every date form parses and formats back; ISO week containing a date; rejections for `2026-9`, `2026-09-31`, `~m`.
+- `titles.test.ts`: ref by id, exact name, alias, substring, ambiguous name → `needs` on `ref`, other-medium hint; `again --finished` in one transaction; `seenBefore`; `relog` re-derives both titles; `unlog` returns `removed`; name replacement and alias on link; `progress` on a curious title warns; duplicate by name (read, before lookup) and by external id (in the transaction); `add` with `want`, `started`, `finished`, `liked`; `queueNext` under `itemCtx`; `merge` moves entries and deletes; `rate` with and without a closing entry; `catalog.link` fills only fields not in `edited` and `unlink` keeps top-level fields; `amend` changing `type` and `on`; `catalog.availability` over the backlog isolates failures; every mutation logs once and `unchanged` logs nothing.
+- `views.test.ts`: summaries by default and `--full`; `time` with `since`/`until` and spend by kind; `list --text` over aliases; `now` ordering; `backlog` excludes ownership none and curious, includes wanted-again; `buy` lowest price; `shelf` four buckets; `diary` excludes unknown; `time` ISO-week placement with `unplaced`; `year` by any known precision; `search` over entry text; `trash` includes titles.
+- `cli.test.ts` (extended): every new command reachable from help alone for each of the four groups and `media`; inapplicable flags are usage errors per medium; the catalog `needs` envelope, the numbered answer on a TTY, and the `--catalog` retry; a title duplicate at exit 2 with title candidates rendered; exit 3 on `lookup` when the source is down and exit 1 when unconfigured; every date form including `?` and `~w`; `4½`; `lookup --where`; `where --catalog`; `doctor` with and without keys and with `--online` against `FakeCatalog`. A manually run `scripts/catalog-smoke.ts` exercises the real sources with the keys in `.env` and is not part of `bun run test`.

@@ -10,4 +10,6 @@ Start with [Current Vision](VISION.md), adopted September 5, 2026. It captures t
 
 [Hands: the todo list and calendar core](HANDS.md) is a September 6 working design for a Life-OS-owned, agent-agnostic todo list and calendar with one contract used by a CLI, the app, and skills. It is orthogonal to the Health work and awaits Neel's review before it becomes an authorized milestone.
 
+[Leisure: the library and the diary](LEISURE.md) is a September 12 first-altitude working design for a Letterboxd/Goodreads-like library and diary over movies, TV shows, games, and books, owned by Life-OS and reachable through the `life` CLI. It awaits Neel's review; the Health slice app is set aside until later.
+
 The [August 28 legacy planning set](legacy/2026-08-28/README.md) is preserved for historical reference. Its PRD, architecture, and implementation choices do not govern the current direction. There is no replacement detailed PRD or finalized technical specification yet.
