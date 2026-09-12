@@ -1,0 +1,33 @@
+{
+  "id": 1396,
+  "name": "Breaking Bad",
+  "first_air_date": "2008-01-20",
+  "episode_run_time": [45, 47],
+  "last_episode_to_air": { "runtime": 55 },
+  "number_of_seasons": 5,
+  "number_of_episodes": 62,
+  "overview": "A chemistry teacher diagnosed with cancer teams with a former student to cook and sell crystal meth.",
+  "genres": [{ "id": 18, "name": "Drama" }, { "id": 80, "name": "Crime" }],
+  "poster_path": "/ggFHVNu6YYI5L9pCfOacjizRGt.jpg",
+  "type": "Scripted",
+  "original_language": "en",
+  "spoken_languages": [{ "english_name": "English" }],
+  "vote_average": 8.9,
+  "vote_count": 13000,
+  "created_by": [{ "name": "Vince Gilligan" }],
+  "credits": {
+    "cast": [
+      { "name": "Bryan Cranston", "character": "Walter White", "order": 0 },
+      { "name": "Aaron Paul", "character": "Jesse Pinkman", "order": 1 }
+    ],
+    "crew": [{ "name": "Vince Gilligan", "job": "Executive Producer", "department": "Production" }]
+  },
+  "watch/providers": {
+    "results": {
+      "US": {
+        "link": "https://www.themoviedb.org/tv/1396-breaking-bad/watch?locale=US",
+        "flatrate": [{ "provider_name": "Netflix", "logo_path": "/nf.jpg", "provider_id": 8 }]
+      }
+    }
+  }
+}

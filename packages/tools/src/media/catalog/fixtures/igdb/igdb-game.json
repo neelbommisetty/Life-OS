@@ -1,0 +1,39 @@
+[
+  {
+    "id": 1942,
+    "name": "Half-Life 2",
+    "first_release_date": 1131408000,
+    "cover": { "url": "//images.igdb.com/igdb/image/upload/t_thumb/co1r7f.jpg" },
+    "summary": "Return to City 17 in this critically acclaimed sequel.",
+    "genres": [{ "name": "Shooter" }, { "name": "Adventure" }],
+    "themes": [{ "name": "Action" }, { "name": "Sci-fi" }],
+    "involved_companies": [
+      { "company": { "name": "Valve" }, "developer": true, "publisher": false },
+      { "company": { "name": "Sierra Entertainment" }, "developer": false, "publisher": true }
+    ],
+    "platforms": [{ "name": "PC (Microsoft Windows)" }, { "name": "Xbox 360" }],
+    "collections": [
+      {
+        "name": "Half-Life Collection",
+        "games": [
+          { "id": 1020, "name": "Half-Life", "first_release_date": 906249600 },
+          { "id": 1942, "name": "Half-Life 2", "first_release_date": 1131408000 },
+          { "id": 9052, "name": "Half-Life 2: Episode One", "first_release_date": 1160956800 }
+        ]
+      }
+    ],
+    "websites": [
+      { "url": "https://store.steampowered.com/app/220", "type": 13 },
+      { "url": "https://play.google.com/store/apps/details?id=com.valve.hl2", "type": 12 }
+    ],
+    "external_games": [
+      { "uid": "220", "external_game_source": 1, "category": 1 },
+      { "uid": "half_life_2", "external_game_source": 5, "category": 5 },
+      { "uid": "half-life-2", "external_game_source": 26, "category": 26 }
+    ],
+    "game_type": 0,
+    "category": 0,
+    "aggregated_rating": 89.6667,
+    "aggregated_rating_count": 12
+  }
+]

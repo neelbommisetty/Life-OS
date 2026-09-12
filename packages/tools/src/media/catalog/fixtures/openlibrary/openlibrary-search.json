@@ -1,0 +1,32 @@
+{
+  "numFound": 3,
+  "start": 0,
+  "docs": [
+    {
+      "key": "/works/OL27258W",
+      "title": "The Hobbit",
+      "author_name": ["J. R. R. Tolkien"],
+      "first_publish_year": 1937,
+      "cover_i": 6979861,
+      "edition_count": 120,
+      "number_of_pages_median": 310
+    },
+    {
+      "key": "/works/OL262758W",
+      "title": "The Hobbit",
+      "author_name": ["J. R. R. Tolkien"],
+      "first_publish_year": 1937,
+      "cover_i": 6979862,
+      "edition_count": 3,
+      "number_of_pages_median": 300
+    },
+    {
+      "key": "/works/OL15168016W",
+      "title": "The Hobbit: A Study Guide",
+      "author_name": ["SparkNotes"],
+      "first_publish_year": 2002,
+      "edition_count": 2,
+      "number_of_pages_median": 60
+    }
+  ]
+}

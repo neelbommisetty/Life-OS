@@ -482,7 +482,8 @@ First cut (D101): titles and entries, derivation, catalog lookup for all four me
 | `src/media/catalog/adapter.ts` | `CatalogAdapter`, `Candidate`, `Detail`, errors, `FakeCatalog` | contract |
 | `src/media/catalog/net.ts` | timeout, JSON, 429 retry, shared budget | |
 | `src/media/catalog/tmdb.ts`, `openlibrary.ts`, `igdb.ts` | one adapter each; `igdb.ts` owns the Twitch token | net |
-| `src/media/catalog/links.ts` | pure: constructed search links (Audible, Libby, Kindle, store templates by source uid) and image URL rewriting | |
+| `src/media/catalog/links.ts` | pure: constructed search links (Audible, Libby, Kindle, store templates by source uid) and image URL rewriting; `SOURCE_NAMES`, `normalizeRegion` | |
+| `src/media/catalog/index.ts` | `defaultCatalogs(options)`: one real adapter per source, each reading its variables lazily; `Catalogs`, `catalogFor`; re-exports the catalog modules for the facade | adapters |
 | `src/media/lookup.ts` | normalization, confidence rule, `resolve`, refresh with `edited`, ref resolution by name | adapters |
 | `src/media/titles.ts` | `TitleOps` and `TitleReceipt` | core, derive, lookup |
 | `src/media/views.ts` | `MediaViews` | titles, derive |

@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1942,
+    "name": "Half-Life 2",
+    "first_release_date": 1131408000,
+    "cover": { "url": "//images.igdb.com/igdb/image/upload/t_thumb/co1r7f.jpg" },
+    "involved_companies": [{ "company": { "name": "Valve" }, "developer": true, "publisher": false }],
+    "game_type": 0,
+    "category": 0,
+    "aggregated_rating": 89.6667,
+    "aggregated_rating_count": 12
+  },
+  {
+    "id": 9999,
+    "name": "Half-Life 2: Deathmatch Extras Mod",
+    "first_release_date": 1136073600,
+    "game_type": 5,
+    "category": 5,
+    "aggregated_rating": null,
+    "aggregated_rating_count": null
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "key": "/works/OL27258W",
+  "title": "The Hobbit",
+  "description": "Bilbo Baggins is a hobbit who enjoys a comfortable, unambitious life, rarely traveling further than the pantry of his hobbit-hole. But his contentment is disturbed when the wizard Gandalf and a company of dwarves arrive on his doorstep.",
+  "covers": [6979861, 6979862],
+  "authors": [{ "author": { "key": "/authors/OL26320A" }, "type": { "key": "/type/author_role" } }],
+  "first_publish_date": "1937",
+  "subjects": ["Fantasy fiction", "Middle-earth (Imaginary place)"]
+}

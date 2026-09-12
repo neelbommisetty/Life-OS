@@ -1,0 +1,20 @@
+{
+  "links": { "self": "/works/OL262758W/editions.json" },
+  "size": 2,
+  "entries": [
+    {
+      "key": "/books/OL40000001M",
+      "isbn_13": ["9780007458999"],
+      "physical_format": "Study Guide",
+      "publish_date": "2002",
+      "number_of_pages": 60
+    },
+    {
+      "key": "/books/OL40000002M",
+      "isbn_10": ["0007458991"],
+      "physical_format": "Ebook",
+      "publish_date": "2012",
+      "number_of_pages": 58
+    }
+  ]
+}

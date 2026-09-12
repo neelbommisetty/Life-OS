@@ -1,0 +1,7 @@
+{
+  "key": "/works/OL262758W",
+  "title": "The Hobbit",
+  "description": { "type": "/type/text", "value": "A tale of Bilbo Baggins' adventure with a company of dwarves, told as a study companion edition." },
+  "covers": [6979862],
+  "authors": [{ "author": { "key": "/authors/OL26320A" } }]
+}

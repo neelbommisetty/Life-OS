@@ -1,0 +1,33 @@
+{
+  "links": { "self": "/works/OL27258W/editions.json" },
+  "size": 4,
+  "entries": [
+    {
+      "key": "/books/OL7292800M",
+      "isbn_13": ["9780618260300"],
+      "isbn_10": ["0618260307"],
+      "physical_format": "Paperback",
+      "publish_date": "2002",
+      "number_of_pages": 320
+    },
+    {
+      "key": "/books/OL27913466M",
+      "isbn_13": ["9780007458424"],
+      "physical_format": "Audio CD",
+      "publish_date": "2006"
+    },
+    {
+      "key": "/books/OL33121169M",
+      "isbn_13": ["9780261103283"],
+      "physical_format": "Kindle Edition",
+      "publish_date": "2012"
+    },
+    {
+      "key": "/books/OL7292801M",
+      "isbn_10": ["0618968634"],
+      "physical_format": "Hardcover",
+      "publish_date": "1937",
+      "number_of_pages": 310
+    }
+  ]
+}

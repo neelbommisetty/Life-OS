@@ -1,0 +1,51 @@
+{
+  "id": 693134,
+  "title": "Dune: Part Two",
+  "release_date": "2024-02-27",
+  "runtime": 166,
+  "overview": "Follow the mythic journey of Paul Atreides as he unites with Chani and the Fremen.",
+  "genres": [{ "id": 878, "name": "Science Fiction" }, { "id": 12, "name": "Adventure" }],
+  "poster_path": "/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
+  "belongs_to_collection": { "id": 726871, "name": "Dune Collection", "poster_path": "/zbtxx.jpg", "backdrop_path": "/abc.jpg" },
+  "original_language": "en",
+  "spoken_languages": [{ "english_name": "English" }],
+  "vote_average": 8.2,
+  "vote_count": 6543,
+  "credits": {
+    "cast": [
+      { "name": "Timothée Chalamet", "character": "Paul Atreides", "order": 0 },
+      { "name": "Zendaya", "character": "Chani", "order": 1 },
+      { "name": "Rebecca Ferguson", "character": "Lady Jessica", "order": 2 },
+      { "name": "Josh Brolin", "character": "Gurney Halleck", "order": 3 },
+      { "name": "Austin Butler", "character": "Feyd-Rautha Harkonnen", "order": 4 },
+      { "name": "Florence Pugh", "character": "Princess Irulan", "order": 5 },
+      { "name": "Dave Bautista", "character": "Glossu Rabban", "order": 6 },
+      { "name": "Christopher Walken", "character": "Emperor Shaddam IV", "order": 7 },
+      { "name": "Léa Seydoux", "character": "Lady Margot Fenring", "order": 8 },
+      { "name": "Stellan Skarsgård", "character": "Baron Harkonnen", "order": 9 },
+      { "name": "Charlotte Rampling", "character": "Reverend Mother Mohiam", "order": 10 },
+      { "name": "Javier Bardem", "character": "Stilgar", "order": 11 }
+    ],
+    "crew": [
+      { "name": "Denis Villeneuve", "job": "Director", "department": "Directing" },
+      { "name": "Jon Spaihts", "job": "Writer", "department": "Writing" },
+      { "name": "Denis Villeneuve", "job": "Screenplay", "department": "Writing" }
+    ]
+  },
+  "watch/providers": {
+    "results": {
+      "US": {
+        "link": "https://www.themoviedb.org/movie/693134-dune-part-two/watch?locale=US",
+        "flatrate": [{ "provider_name": "Max", "logo_path": "/x.jpg", "provider_id": 1899 }],
+        "free": [{ "provider_name": "Tubi", "logo_path": "/y.jpg", "provider_id": 73 }],
+        "ads": [{ "provider_name": "Freevee", "logo_path": "/z.jpg", "provider_id": 613 }],
+        "rent": [{ "provider_name": "Apple TV", "logo_path": "/a.jpg", "provider_id": 2 }],
+        "buy": [{ "provider_name": "Apple TV", "logo_path": "/a.jpg", "provider_id": 2 }]
+      },
+      "GB": {
+        "link": "https://www.themoviedb.org/movie/693134-dune-part-two/watch?locale=GB",
+        "flatrate": [{ "provider_name": "NOW", "logo_path": "/n.jpg", "provider_id": 39 }]
+      }
+    }
+  }
+}

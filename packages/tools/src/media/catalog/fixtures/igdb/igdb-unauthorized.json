@@ -1,0 +1,7 @@
+[
+  {
+    "title": "Authorization Failure",
+    "status": 401,
+    "cause": "Invalid Token"
+  }
+]
