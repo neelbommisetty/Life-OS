@@ -38,6 +38,14 @@ export const events = pgTable("events", recordColumns(), (t) => [
   index("events_external_id_idx").on(sql`(${t.json}->'external'->>'id')`),
 ]);
 
+export const titles = pgTable("titles", recordColumns(), (t) => [
+  index("titles_medium_idx").on(sql`(${t.json}->>'medium')`),
+  index("titles_status_idx").on(sql`(${t.json}->>'status')`),
+  index("titles_ownership_idx").on(sql`(${t.json}->>'ownership')`),
+  index("titles_name_idx").on(sql`(lower(${t.json}->>'name'))`),
+  index("titles_external_id_idx").on(sql`(${t.json}->'catalog'->>'externalId')`),
+]);
+
 export const log = pgTable(
   "log",
   {

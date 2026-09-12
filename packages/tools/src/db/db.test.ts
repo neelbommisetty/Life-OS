@@ -5,7 +5,7 @@ import { createDb, createPool, databaseUrl } from "./client.ts";
 import { migrate } from "./migrate.ts";
 import { createTestDb, fixedClock, type TestDb } from "./testing.ts";
 
-const EXPECTED_TABLES = ["__drizzle_migrations", "accounts", "calendars", "events", "filters", "labels", "log", "projects", "receipts", "sections", "tasks"];
+const EXPECTED_TABLES = ["__drizzle_migrations", "accounts", "calendars", "events", "filters", "labels", "log", "projects", "receipts", "sections", "tasks", "titles"];
 const EXPECTED_INDEXES = [
   "events_calendar_idx",
   "events_external_id_idx",
@@ -16,6 +16,11 @@ const EXPECTED_INDEXES = [
   "tasks_due_date_idx",
   "tasks_project_idx",
   "tasks_status_idx",
+  "titles_external_id_idx",
+  "titles_medium_idx",
+  "titles_name_idx",
+  "titles_ownership_idx",
+  "titles_status_idx",
 ];
 
 const tablesIn = async (pool: pg.Pool | pg.Client, schema: string) =>
@@ -45,6 +50,22 @@ test("the migration creates every table and index in the throwaway schema, and n
   assert.deepEqual(await tablesIn(db.pool, "public"), publicTablesBefore);
 });
 
+test("the library migration adds the titles table with its five expression indexes", async () => {
+  const columns = await db.pool.query<{ column_name: string }>(
+    "select column_name from information_schema.columns where table_schema = $1 and table_name = 'titles' order by ordinal_position",
+    [db.schema],
+  );
+  assert.deepEqual(columns.rows.map((row) => row.column_name), ["id", "version", "json", "updated_at", "deleted_at"]);
+  const defs = await db.pool.query<{ indexname: string; indexdef: string }>("select indexname, indexdef from pg_indexes where schemaname = $1 and tablename = 'titles' and indexname like '%\\_idx' order by 1", [db.schema]);
+  const byName = new Map(defs.rows.map((row) => [row.indexname, row.indexdef]));
+  assert.equal(byName.size, 5);
+  assert.match(byName.get("titles_name_idx")!, /lower\(\("json" ->> 'name'::text\)\)/);
+  assert.match(byName.get("titles_external_id_idx")!, /\("json" -> 'catalog'::text\) ->> 'externalId'::text/);
+  assert.match(byName.get("titles_medium_idx")!, /"json" ->> 'medium'::text/);
+  assert.match(byName.get("titles_status_idx")!, /"json" ->> 'status'::text/);
+  assert.match(byName.get("titles_ownership_idx")!, /"json" ->> 'ownership'::text/);
+});
+
 test("every pooled connection has search_path set to the schema", async () => {
   const checks = await Promise.all(
     Array.from({ length: 4 }, () => db.pool.query<{ schemas: string[] }>("select current_schemas(false)::text[] as schemas")),
@@ -56,7 +77,7 @@ test("migrate is idempotent on the same schema", async () => {
   await migrate(createDb(db.pool), { schema: db.schema });
   assert.deepEqual(await tablesIn(db.pool, db.schema), EXPECTED_TABLES);
   const applied = await db.pool.query<{ n: string }>("select count(*)::text as n from __drizzle_migrations");
-  assert.equal(applied.rows[0]!.n, "2");
+  assert.equal(applied.rows[0]!.n, "3");
 });
 
 test("migrate over a single client sets its search_path and migrates that schema", async () => {
@@ -87,7 +108,7 @@ test("migrate without a schema option journals where search_path points, not in 
     // A second run is a no-op because it reads the same journal.
     await migrate(createDb(client));
     const applied = await client.query<{ n: string }>("select count(*)::text as n from __drizzle_migrations");
-    assert.equal(applied.rows[0]!.n, "2");
+    assert.equal(applied.rows[0]!.n, "3");
   } finally {
     await client.query(`drop schema if exists "${schema}" cascade`);
     await client.end();

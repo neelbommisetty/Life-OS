@@ -17,13 +17,27 @@ import {
   issuesOf,
   projectSchema,
   recordId,
+  entryId,
+  entryInputSchema,
+  entryPatchSchema,
+  entrySchema,
+  on,
+  rating,
   taskAddSchema,
   taskSchema,
+  titleAddSchema,
+  titleId,
+  titleListSchema,
+  titleSchema,
+  titleUpdateSchema,
   type Account,
   type Calendar,
+  type Entry,
   type Event,
   type Task,
+  type Title,
 } from "./contract.ts";
+import { finalize } from "./media/derive.ts";
 
 const now = "2026-09-06T12:00:00Z";
 const origin = { actor: "neel", at: now, evidence: [] };
@@ -339,4 +353,268 @@ test("event inputs accept what the CLI sends and reject contradictions", () => {
   assert.equal(calendarUpdateSchema.safeParse({ labels: ["health"], hidden: true, color: null }).success, true);
   assert.equal(calendarUpdateSchema.safeParse({ labels: ["Health"] }).success, false);
   assert.equal(calendarUpdateSchema.safeParse({ name: "Renamed" }).success, false, "the name is the provider's");
+});
+
+// ------------------------------------------------------------------ library records
+
+function entry(overrides: Partial<Entry> = {}): Entry {
+  return {
+    id: "n_abcdefghij",
+    type: "note",
+    on: { date: "2026-09-07", precision: "day" },
+    at: now,
+    actor: "neel",
+    text: "a thought",
+    progress: null,
+    format: null,
+    rating: null,
+    minutes: null,
+    spend: null,
+    where: null,
+    evidence: [],
+    ...overrides,
+  };
+}
+
+/** A valid title over `entries`, its derived fields computed by finalize. */
+function title(entries: Entry[], overrides: Partial<Title> = {}): Title {
+  return finalize({
+    id: "m_abcdefghij",
+    medium: "book",
+    name: "Skyward",
+    aliases: ["Skyward (Sanderson)"],
+    year: 2018,
+    creators: ["Brandon Sanderson"],
+    cover: "https://covers.openlibrary.org/b/id/1-L.jpg",
+    length: { pages: 513, hours: 15.5 },
+    facts: null,
+    catalog: { source: "openlibrary", externalId: "OL17930368W", pulledAt: now },
+    edited: [],
+    series: { name: "Skyward", position: 1 },
+    status: "curious",
+    ownership: "none",
+    ownershipDetail: null,
+    priority: "soon",
+    moodFit: ["immersive"],
+    timeFit: "long",
+    notes: null,
+    detail: { format: "audiobook", platform: null, where: null },
+    rating: null,
+    review: null,
+    liked: false,
+    entries,
+    origin,
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    ...overrides,
+  });
+}
+
+test("the title kind has the m prefix, recordId knows it, and entry ids are their own regex", () => {
+  assert.equal(ID_PREFIXES.title, "m");
+  assert.equal(recordId.safeParse("m_abcdefghij").success, true);
+  assert.equal(titleId.safeParse("m_abcdefghij").success, true);
+  assert.equal(titleId.safeParse("t_abcdefghij").success, false);
+  assert.equal(recordId.safeParse("n_abcdefghij").success, false, "an entry is not a record");
+  assert.equal(recordId.safeParse("ml_abcdefghij").success, false, "ml_ is reserved for lists");
+  assert.equal(entryId.safeParse("n_abcdefghij").success, true);
+  assert.equal(entryId.safeParse("n_ABCDEFGHIJ").success, false);
+  assert.equal(entryId.safeParse("m_abcdefghij").success, false);
+  assert.equal(entryId.safeParse("n_abcdefghi").success, false);
+});
+
+test("an On is spelled at its precision's grain and a week is a Monday", () => {
+  for (const good of [
+    { date: "2026-09-07", precision: "day" },
+    { date: "2026-09-07", precision: "week" },
+    { date: "2026-09", precision: "month" },
+    { date: "2026", precision: "year" },
+    { date: null, precision: "unknown" },
+  ]) assert.equal(on.safeParse(good).success, true, JSON.stringify(good));
+  rejects(on, { date: "2026-09-07", precision: "day" }, [
+    [{ date: "2026-09-09", precision: "week" }, /date: A week's date is the Monday of its ISO week/],
+    [{ date: "2026-09-31" }, /date: Use YYYY-MM-DD for a day/],
+    [{ date: "2026-9", precision: "month" }, /date: Use YYYY-MM for a month/],
+    [{ date: "2026-09-07", precision: "month" }, /date: Use YYYY-MM/],
+    [{ date: "26", precision: "year" }, /date: Use YYYY for a year/],
+    [{ date: null }, /date: A day needs a date/],
+    [{ date: "2026-09-07", precision: "unknown" }, /date: An unknown date carries no date/],
+    [{ precision: "approx" }, /precision/],
+    [{ approx: true }, /Unrecognized/],
+  ]);
+  assert.equal(rating.safeParse(4.5).success, true);
+  assert.equal(rating.safeParse(0.5).success, true);
+  for (const bad of [0, 4.25, 5.5, -1, "4"]) {
+    const result = rating.safeParse(bad);
+    assert.equal(result.success, false, String(bad));
+    if (!result.success) assert.match(issuesOf(result.error).join(), /Use half stars from 0.5 to 5/);
+  }
+});
+
+test("an entry validates and its facet rules say why not", () => {
+  assert.equal(entrySchema.safeParse(entry()).success, true);
+  assert.equal(entrySchema.safeParse(entry({ type: "finish", rating: 4.5, text: "a review", format: "audiobook", minutes: 90 })).success, true);
+  assert.equal(entrySchema.safeParse(entry({ type: "drop", rating: 1, text: "not fun anymore" })).success, true);
+  assert.equal(entrySchema.safeParse(entry({ type: "buy", text: null, where: "Steam", spend: { amount: 59.99, currency: "USD", kind: "purchase" } })).success, true);
+  assert.equal(entrySchema.safeParse(entry({ type: "return", text: null })).success, true);
+  assert.equal(entrySchema.safeParse(entry({ type: "start", text: null, progress: "2 hours in", minutes: 120 })).success, true);
+  assert.equal(entrySchema.safeParse(entry({ type: "finish", text: null, on: { date: null, precision: "unknown" } })).success, true, "a finish years ago");
+  rejects(entrySchema, entry(), [
+    [{ id: "m_abcdefghij" }, /id: Not an entry id/],
+    [{ type: "rewatch" }, /type/],
+    [{ rating: 4 }, /rating: Only a finish or drop carries a rating/],
+    [{ type: "start", rating: 4 }, /rating: Only a finish or drop/],
+    [{ type: "finish", rating: 4.25 }, /rating: Use half stars/],
+    [{ type: "drop", text: null }, /text: A drop needs its reason as text/],
+    [{ type: "buy", minutes: 30 }, /minutes: Only a progress-facet entry carries minutes/],
+    [{ minutes: 0 }, /minutes/],
+    [{ type: "finish", spend: { amount: 10, currency: "USD", kind: "rental" } }, /spend: Only buy, borrow, return, or service carries spend/],
+    [{ type: "buy", spend: { amount: 10, currency: "usd", kind: "purchase" } }, /spend.currency: Use a three-letter currency code/],
+    [{ type: "buy", spend: { amount: 10, currency: "USD" } }, /spend.kind/],
+    [{ type: "buy", spend: { amount: -1, currency: "USD", kind: "purchase" } }, /spend.amount/],
+    [{ type: "return", where: "Steam" }, /where: Only buy, borrow, or service carries where/],
+    [{ type: "finish", where: "couch" }, /where: Only buy/],
+    [{ on: { date: "2026-09-09", precision: "week" } }, /on.date: A week's date is the Monday/],
+    [{ text: "" }, /text: Required/],
+    [{ format: "paperback" }, /format/],
+    [{ actor: "somebody" }, /actor/],
+    [{ review: "x" }, /Unrecognized/],
+  ]);
+});
+
+test("a title validates with its derived fields and rejects stale ones, bad detail, and duplicate entry ids", () => {
+  const entries = [
+    entry({ id: "n_0000000001", type: "want", text: null, on: { date: "2026-08", precision: "month" } }),
+    entry({ id: "n_0000000002", type: "buy", text: null, where: "Audible", spend: { amount: 14.95, currency: "USD", kind: "purchase" }, on: { date: "2026-08-03", precision: "day" } }),
+    entry({ id: "n_0000000003", type: "start", text: null, format: "audiobook", on: { date: "2026-08-10", precision: "week" } }),
+    entry({ id: "n_0000000004", type: "finish", text: "loved it", rating: 4.5, on: { date: "2026-08-31", precision: "week" } }),
+  ];
+  const record = title(entries);
+  assert.equal(record.status, "done");
+  assert.equal(record.ownership, "owned");
+  assert.equal(titleSchema.safeParse(record).success, true);
+  assert.equal(titleSchema.safeParse(title([])).success, true, "a bare curious title");
+  const game = title([], { medium: "game", detail: { format: null, platform: "Switch", where: null }, length: { hours: 40 } });
+  assert.equal(titleSchema.safeParse(game).success, true);
+  const movie = title([], { medium: "movie", detail: { format: null, platform: null, where: "Netflix" }, length: { minutes: 116 } });
+  assert.equal(titleSchema.safeParse(movie).success, true);
+  rejects(titleSchema, record, [
+    [{ id: "t_abcdefghij" }, /id: Not a title id/],
+    [{ medium: "music" }, /medium/],
+    [{ status: "active" }, /status: Stale derived field: entries derive "done"/],
+    [{ ownership: "none" }, /ownership: Stale derived field/],
+    [{ ownershipDetail: null }, /ownershipDetail: Stale derived field/],
+    [{ rating: 5 }, /rating: Stale derived field: entries derive 4.5/],
+    [{ review: "changed" }, /review: Stale derived field/],
+    [{ entries: [...entries, entry({ id: "n_0000000004", type: "note" })] }, /entries.4.id: Duplicate entry id n_0000000004/],
+    [{ detail: { format: "audiobook", platform: "Switch", where: null } }, /detail.platform: A book has no platform/],
+    [{ detail: { format: "audiobook", platform: null, where: "couch" } }, /detail.where: A book has no where/],
+    [{ medium: "game", detail: { format: "kindle", platform: null, where: null } }, /detail.format: A game has no format/],
+    [{ medium: "show", detail: { format: null, platform: "TV", where: null } }, /detail.platform: A show has no platform/],
+    [{ detail: { format: "audiobook" } }, /detail.platform/],
+    [{ edited: ["synopsis"] }, /edited.0/],
+    [{ catalog: { source: "goodreads", externalId: "1", pulledAt: now } }, /catalog.source/],
+    [{ catalog: { source: "tmdb", externalId: "1" } }, /catalog.pulledAt/],
+    [{ length: { pages: 0 } }, /length.pages/],
+    [{ length: { chapters: 10 } }, /Unrecognized/],
+    [{ series: { name: "Skyward" } }, /series.position/],
+    [{ priority: "someday" }, /priority/],
+    [{ moodFit: ["cozy"] }, /moodFit.0/],
+    [{ timeFit: "epic" }, /timeFit/],
+    [{ year: 0 }, /year/],
+    [{ liked: "yes" }, /liked/],
+    [{ facts: { synopsis: "x" } }, /facts\./],
+    [{ dropReason: "x" }, /Unrecognized/],
+  ]);
+  const facts = {
+    synopsis: "A girl wants to be a pilot.",
+    genres: ["Science fiction"],
+    people: [{ role: "author", name: "Brandon Sanderson" }],
+    released: "2018-11-06",
+    runtime: null,
+    pages: 513,
+    episodes: null,
+    playtime: null,
+    series: { name: "Skyward", position: 1, entries: [{ externalId: "OL1W", name: "Skyward", position: 1, released: "2018" }, { externalId: "OL2W", name: "Starsight", position: 2, released: null }] },
+    platforms: [],
+    formats: ["audiobook", "kindle", "physical"],
+    language: "eng",
+    links: [{ label: "Open Library", url: "https://openlibrary.org/works/OL17930368W" }],
+    availability: [{ kind: "listen", name: "Audible", url: "https://www.audible.com/search?keywords=Skyward", region: "US", price: null, constructed: true }],
+    sourceRating: { value: 4.3, scale: 5, count: 1200 },
+  };
+  assert.equal(titleSchema.safeParse({ ...record, facts }).success, true, "a full facts block");
+  rejects(titleSchema, { ...record, facts }, [
+    [{ facts: { ...facts, availability: [{ ...facts.availability[0], region: "usa" }] } }, /facts.availability.0.region: Use a two-letter region code/],
+    [{ facts: { ...facts, availability: [{ ...facts.availability[0], kind: "watch" }] } }, /facts.availability.0.kind/],
+    [{ facts: { ...facts, availability: [{ kind: "buy", name: "Steam", url: "https://s", region: "US", price: null }] } }, /facts.availability.0.constructed/],
+    [{ facts: { ...facts, sourceRating: { value: 4.3, scale: 0, count: null } } }, /facts.sourceRating.scale/],
+    [{ facts: { ...facts, episodes: { seasons: 2 } } }, /facts.episodes.episodes/],
+  ]);
+});
+
+test("library inputs accept what the CLI sends and reject the rest", () => {
+  assert.equal(titleAddSchema.safeParse({ medium: "game", name: "Aniimo" }).success, true, "a mention");
+  assert.equal(titleAddSchema.safeParse({ medium: "game", name: "Fire Emblem: Fortune's Weave", want: true, priority: "soon", year: 2026 }).success, true);
+  assert.equal(titleAddSchema.safeParse({ medium: "book", name: "Starsight", started: true, detail: { format: "audiobook" } }).success, true);
+  assert.equal(
+    titleAddSchema.safeParse({ medium: "movie", name: "Arrival", seenBefore: true, finished: { on: { date: "2026-09-11", precision: "day" }, rating: 5, liked: true, text: "still a 5" }, catalog: "329865", lookup: false, allowDuplicate: true }).success,
+    true,
+  );
+  assert.equal(titleAddSchema.safeParse({ medium: "movie", name: "Arrival", seenBefore: { date: "2016", precision: "year" }, want: true, started: true }).success, true, "want and started together append both");
+  rejects(titleAddSchema, { medium: "book", name: "Starsight" }, [
+    [{ medium: "audiobook" }, /medium/],
+    [{ name: " " }, /name: Required/],
+    [{ started: { rating: 4.25 } }, /started/],
+    [{ finished: "yes" }, /finished/],
+    [{ seenBefore: "?" }, /seenBefore/],
+    [{ detail: { format: "paperback" } }, /detail.format/],
+    [{ moodFit: ["cozy"] }, /moodFit.0/],
+    [{ status: "backlog" }, /Unrecognized/],
+    [{ entries: [] }, /Unrecognized/],
+  ]);
+
+  assert.equal(titleUpdateSchema.safeParse({}).success, true, "an empty update is the operation's call");
+  assert.equal(titleUpdateSchema.safeParse({ name: "Skyward", aliases: [], year: null, creators: ["B. Sanderson"], cover: null, length: null, series: { name: "Skyward", position: 1 }, priority: null, moodFit: ["comfort"], timeFit: null, notes: null, detail: { format: null } }).success, true);
+  rejects(titleUpdateSchema, {}, [
+    [{ status: "done" }, /Unrecognized/],
+    [{ rating: 5 }, /Unrecognized/],
+    [{ liked: true }, /Unrecognized/],
+    [{ name: null }, /name/],
+    [{ series: { name: "x" } }, /series.position/],
+    [{ length: { pages: -1 } }, /length.pages/],
+  ]);
+
+  assert.equal(titleListSchema.safeParse({}).success, true);
+  assert.equal(titleListSchema.safeParse({ medium: "book", status: ["backlog", "active"], ownership: ["owned"], priority: "now", moodFit: "low-energy", timeFit: "short", format: "kindle", text: "sky", includeDeleted: true, full: true }).success, true);
+  rejects(titleListSchema, {}, [
+    [{ status: [] }, /status/],
+    [{ status: "backlog" }, /status/],
+    [{ ownership: ["mine"] }, /ownership.0/],
+    [{ text: "" }, /text/],
+    [{ limit: 5 }, /Unrecognized/],
+  ]);
+
+  assert.equal(entryInputSchema.safeParse({}).success, true);
+  assert.equal(entryInputSchema.safeParse({ on: { date: "2026-09-07", precision: "week" }, text: "note", progress: "S2E4", format: "kindle", rating: 4, liked: true, minutes: 45, spend: { amount: 5, currency: "USD", kind: "iap" }, where: "eShop", evidence: ["chat:2026-09-12"] }).success, true);
+  rejects(entryInputSchema, {}, [
+    [{ text: null }, /text/],
+    [{ on: "2026-09-07" }, /on/],
+    [{ rating: 3.3 }, /rating/],
+    [{ minutes: 0 }, /minutes/],
+    [{ type: "finish" }, /Unrecognized/],
+  ]);
+
+  assert.equal(entryPatchSchema.safeParse({ type: "finish" }).success, true);
+  assert.equal(entryPatchSchema.safeParse({ on: { date: null, precision: "unknown" }, text: null, rating: null, minutes: null, spend: null, where: null, format: null, progress: null }).success, true, "null clears");
+  rejects(entryPatchSchema, { type: "finish" }, [
+    [{ on: null }, /on/],
+    [{ type: null }, /type/],
+    [{ liked: true }, /Unrecognized/],
+  ]);
+  const empty = entryPatchSchema.safeParse({});
+  assert.equal(empty.success, false);
+  if (!empty.success) assert.deepEqual(issuesOf(empty.error), ["input: Nothing to amend"]);
 });

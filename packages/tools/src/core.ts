@@ -17,6 +17,7 @@ import {
   projectSchema,
   sectionSchema,
   taskSchema,
+  titleSchema,
   type Ctx,
   type Needs,
   type Receipt,
@@ -82,6 +83,7 @@ const SCHEMAS = {
   account: accountSchema,
   calendar: calendarSchema,
   event: eventSchema,
+  title: titleSchema,
 } as const;
 
 /** Fields the diff ignores: bookkeeping that every mutation touches. */
@@ -90,8 +92,8 @@ const DIFF_IGNORED = new Set(["version", "updatedAt"]);
 const ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 const ID_LENGTH = 10;
 
-/** A new id: the kind's prefix, an underscore, ten random [a-z0-9] characters. */
-export function newId(kind: Kind): string {
+/** Ten random [a-z0-9] characters: the suffix of every id, records and entries alike. */
+export function randomSuffix(): string {
   let suffix = "";
   while (suffix.length < ID_LENGTH) {
     for (const byte of randomBytes(ID_LENGTH * 2)) {
@@ -101,7 +103,12 @@ export function newId(kind: Kind): string {
       if (suffix.length === ID_LENGTH) break;
     }
   }
-  return `${ID_PREFIXES[kind]}_${suffix}`;
+  return suffix;
+}
+
+/** A new id: the kind's prefix, an underscore, ten random [a-z0-9] characters. */
+export function newId(kind: Kind): string {
+  return `${ID_PREFIXES[kind]}_${randomSuffix()}`;
 }
 
 /** The clock's instant as "YYYY-MM-DDTHH:MM:SSZ". */

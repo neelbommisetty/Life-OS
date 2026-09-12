@@ -1,12 +1,14 @@
 // The contract: what a task, project, section, label, filter, account,
-// calendar, and event are, what the operations accept, and what every mutation
-// returns. Everything is validated here before anything is written,
+// calendar, event, and title are, what the operations accept, and what every
+// mutation returns. Everything is validated here before anything is written,
 // regardless of who is calling.
 
 import { z } from "zod";
 import { isValidDate, isValidTimezone } from "./time.ts";
 import { parseRule } from "./recurrence.ts";
 import { parseFilter } from "./filter.ts";
+import { onIssue } from "./media/on.ts";
+import { derive } from "./media/derive.ts";
 
 export const ID_PREFIXES = {
   task: "t",
@@ -17,10 +19,11 @@ export const ID_PREFIXES = {
   account: "a",
   calendar: "c",
   event: "e",
+  title: "m",
 } as const;
 export type RecordKind = keyof typeof ID_PREFIXES;
 
-export const recordId = z.string().regex(/^[tpslface]_[a-z0-9]{10}$/, "Not a Life-OS id");
+export const recordId = z.string().regex(/^[tpslfacem]_[a-z0-9]{10}$/, "Not a Life-OS id");
 const idOf = (kind: RecordKind) =>
   z.string().regex(new RegExp(`^${ID_PREFIXES[kind]}_[a-z0-9]{10}$`), `Not a ${kind} id`);
 export const taskId = idOf("task");
@@ -31,6 +34,9 @@ export const filterId = idOf("filter");
 export const accountId = idOf("account");
 export const calendarId = idOf("calendar");
 export const eventId = idOf("event");
+export const titleId = idOf("title");
+/** A diary entry's id: `n_` plus ten characters. Entries live inside a title, so this is not a record id. */
+export const entryId = z.string().regex(/^n_[a-z0-9]{10}$/, "Not an entry id");
 
 export const slug = z
   .string()
@@ -88,6 +94,7 @@ export const origin = z.strictObject({
   reason: text.optional(),
   evidence,
 });
+export type Origin = z.infer<typeof origin>;
 export const externalRef = z.strictObject({
   provider: slug,
   id: z.string().min(1).max(200),
@@ -371,6 +378,212 @@ function checkEventShape(
 
 export const eventSchema = z.strictObject(eventFields).superRefine(checkEventShape);
 
+// ------------------------------------------------------------------ library records
+
+export const medium = z.enum(["movie", "show", "game", "book"]);
+export const progress = z.enum(["curious", "backlog", "active", "paused", "done", "dropped"]);
+export const ownership = z.enum(["none", "owned", "service", "borrowed"]);
+export const precision = z.enum(["day", "week", "month", "year", "unknown"]);
+export const bookFormat = z.enum(["audiobook", "physical", "kindle"]);
+export const catalogSource = z.enum(["tmdb", "openlibrary", "igdb"]);
+export const titlePriority = z.enum(["now", "soon", "later"]);
+export const moodFit = z.enum(["comfort", "immersive", "social", "learning", "low-energy"]);
+export const timeFit = z.enum(["short", "medium", "long"]);
+export const RATINGS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5] as const;
+export const rating = z.literal(RATINGS, "Use half stars from 0.5 to 5");
+export const entryType = z.enum([
+  "want", "start", "progress", "finish", "pause", "resume", "drop", "again", "note",
+  "buy", "borrow", "return", "service",
+]);
+/** The entry types that speak about progress; every other type is about ownership. */
+export const PROGRESS_ENTRY_TYPES = ["want", "start", "progress", "finish", "pause", "resume", "drop", "again", "note"] as const;
+export const OWNERSHIP_ENTRY_TYPES = ["buy", "borrow", "return", "service"] as const;
+/** The factual fields Neel can change by hand; each is listed in `edited` once he has (D93). */
+export const editedField = z.enum(["name", "year", "creators", "cover", "length"]);
+
+/**
+ * When something happened, at the precision Neel gave (D92): the date at the
+ * precision's grain (a week is its Monday), null only with `unknown`. The
+ * forms are parsed and printed by src/media/on.ts.
+ */
+export const on = z
+  .strictObject({ date: z.string().max(10).nullable(), precision })
+  .superRefine((value, ctx) => {
+    const issue = onIssue(value);
+    if (issue) ctx.addIssue({ code: "custom", path: ["date"], message: issue });
+  });
+export const currency = z.string().regex(/^[A-Z]{3}$/, "Use a three-letter currency code");
+export const money = z.strictObject({ amount: z.number().finite().min(0), currency });
+export const spend = money.extend({ kind: z.enum(["purchase", "iap", "rental"]) });
+const url = z.string().trim().min(1).max(2000);
+const titleYear = z.number().int().min(1).max(9999);
+/** One sitting's time, in minutes (D100): never cumulative. */
+const sittingMinutes = z.number().int().min(1).max(24 * 60);
+/** A diary text: a note, a review, a drop reason. Longer than a task title; kept in full (D98). */
+const entryText = z.string().trim().min(1, "Required").max(20000);
+
+const OWNERSHIP_TYPES: ReadonlySet<string> = new Set(OWNERSHIP_ENTRY_TYPES);
+const CLOSING_TYPES: ReadonlySet<string> = new Set(["finish", "drop"]);
+
+export const entrySchema = z
+  .strictObject({
+    id: entryId,
+    type: entryType,
+    on,
+    at: timestamp,
+    actor,
+    text: entryText.nullable(),
+    progress: text.nullable(),
+    format: bookFormat.nullable(),
+    rating: rating.nullable(),
+    minutes: sittingMinutes.nullable(),
+    spend: spend.nullable(),
+    where: text.nullable(),
+    evidence,
+  })
+  .superRefine((value, ctx) => {
+    const isOwnership = OWNERSHIP_TYPES.has(value.type);
+    if (value.rating !== null && !CLOSING_TYPES.has(value.type)) {
+      ctx.addIssue({ code: "custom", path: ["rating"], message: "Only a finish or drop carries a rating" });
+    }
+    if (value.type === "drop" && value.text === null) {
+      ctx.addIssue({ code: "custom", path: ["text"], message: "A drop needs its reason as text" });
+    }
+    if (value.minutes !== null && isOwnership) {
+      ctx.addIssue({ code: "custom", path: ["minutes"], message: "Only a progress-facet entry carries minutes" });
+    }
+    if (value.spend !== null && !isOwnership) {
+      ctx.addIssue({ code: "custom", path: ["spend"], message: "Only buy, borrow, return, or service carries spend" });
+    }
+    if (value.where !== null && !["buy", "borrow", "service"].includes(value.type)) {
+      ctx.addIssue({ code: "custom", path: ["where"], message: "Only buy, borrow, or service carries where" });
+    }
+  });
+
+export const availabilityKind = z.enum(["stream", "rent", "buy", "play", "borrow", "listen"]);
+export const availabilitySchema = z.strictObject({
+  kind: availabilityKind,
+  name: text,
+  url,
+  region: z.string().regex(/^[A-Z]{2}$/, "Use a two-letter region code"),
+  price: money.nullable(),
+  constructed: z.boolean(),
+});
+
+const seriesEntry = z.strictObject({
+  externalId: z.string().min(1).max(200),
+  name: text,
+  position: z.number().int().min(0).nullable(),
+  released: z.string().trim().min(1).max(40).nullable(),
+});
+
+/** The raw catalog pull (D71): theirs, correctable, nothing of Neel's in it. */
+export const factsSchema = z.strictObject({
+  synopsis: longText.nullable(),
+  genres: z.array(text).max(50),
+  people: z.array(z.strictObject({ role: text, name: text })).max(500),
+  released: z.string().trim().min(1).max(40).nullable(),
+  runtime: z.number().int().min(0).nullable(),
+  pages: z.number().int().min(0).nullable(),
+  episodes: z.strictObject({ seasons: z.number().int().min(0), episodes: z.number().int().min(0) }).nullable(),
+  playtime: z.number().finite().min(0).nullable(),
+  series: z
+    .strictObject({ name: text, position: z.number().int().min(0).nullable(), entries: z.array(seriesEntry).max(500) })
+    .nullable(),
+  platforms: z.array(text).max(100),
+  formats: z.array(text).max(50),
+  language: text.nullable(),
+  links: z.array(z.strictObject({ label: text, url })).max(100),
+  availability: z.array(availabilitySchema).max(200),
+  sourceRating: z
+    .strictObject({ value: z.number().finite().min(0), scale: z.number().finite().positive(), count: z.number().int().min(0).nullable() })
+    .nullable(),
+});
+
+const positiveInt = z.number().int().min(1);
+export const titleLength = z.strictObject({
+  minutes: positiveInt.optional(),
+  pages: positiveInt.optional(),
+  hours: z.number().finite().positive().optional(),
+  seasons: positiveInt.optional(),
+  episodes: positiveInt.optional(),
+});
+export const titleSeries = z.strictObject({ name: text, position: z.number().int().min(0).nullable() });
+export const titleCatalog = z.strictObject({ source: catalogSource, externalId: z.string().min(1).max(200), pulledAt: timestamp });
+export const ownershipDetail = z.strictObject({ where: text.nullable(), since: on.nullable(), price: money.nullable() });
+/** The medium block (D73): a book's wanted format, a game's platform, a movie's or show's where watched. */
+export const titleDetail = z.strictObject({ format: bookFormat.nullable(), platform: text.nullable(), where: text.nullable() });
+
+/** Which detail fields a medium has; the others must be null. */
+const DETAIL_FIELDS: Record<z.infer<typeof medium>, readonly (keyof z.infer<typeof titleDetail>)[]> = {
+  book: ["format"],
+  game: ["platform"],
+  movie: ["where"],
+  show: ["where"],
+};
+
+const sameMoney = (a: { amount: number; currency: string } | null, b: { amount: number; currency: string } | null) =>
+  a === b || (a !== null && b !== null && a.amount === b.amount && a.currency === b.currency);
+const sameOn = (a: { date: string | null; precision: string } | null, b: { date: string | null; precision: string } | null) =>
+  a === b || (a !== null && b !== null && a.date === b.date && a.precision === b.precision);
+
+export const titleSchema = z
+  .strictObject({
+    id: titleId,
+    medium,
+    name: text,
+    aliases: z.array(text).max(50),
+    year: titleYear.nullable(),
+    creators: z.array(text).max(50),
+    cover: url.nullable(),
+    length: titleLength.nullable(),
+    facts: factsSchema.nullable(),
+    catalog: titleCatalog.nullable(),
+    edited: z.array(editedField).max(5),
+    series: titleSeries.nullable(),
+    status: progress,
+    ownership,
+    ownershipDetail: ownershipDetail.nullable(),
+    priority: titlePriority.nullable(),
+    moodFit: z.array(moodFit).max(5),
+    timeFit: timeFit.nullable(),
+    notes: longText.nullable(),
+    detail: titleDetail,
+    rating: rating.nullable(),
+    review: entryText.nullable(),
+    liked: z.boolean(),
+    entries: z.array(entrySchema).max(5000),
+    origin,
+    ...bookkeeping,
+  })
+  .superRefine((value, ctx) => {
+    // Entry ids are unique within the title.
+    const seen = new Set<string>();
+    value.entries.forEach((entry, index) => {
+      if (seen.has(entry.id)) ctx.addIssue({ code: "custom", path: ["entries", index, "id"], message: `Duplicate entry id ${entry.id}` });
+      seen.add(entry.id);
+    });
+    // Inapplicable detail fields are always null.
+    const applies = DETAIL_FIELDS[value.medium];
+    for (const field of ["format", "platform", "where"] as const) {
+      if (value.detail[field] !== null && !applies.includes(field)) {
+        ctx.addIssue({ code: "custom", path: ["detail", field], message: `A ${value.medium} has no ${field}` });
+      }
+    }
+    // The stored derived fields must be what the diary derives (D91), so a forgotten finalize is caught here.
+    const derived = derive(value.entries);
+    const stale = (field: string, expected: unknown) =>
+      ctx.addIssue({ code: "custom", path: [field], message: `Stale derived field: entries derive ${JSON.stringify(expected)}` });
+    if (value.status !== derived.status) stale("status", derived.status);
+    if (value.ownership !== derived.ownership) stale("ownership", derived.ownership);
+    if (value.rating !== derived.rating) stale("rating", derived.rating);
+    if (value.review !== derived.review) stale("review", derived.review);
+    const a = value.ownershipDetail;
+    const b = derived.ownershipDetail;
+    const sameDetail = a === b || (a !== null && b !== null && a.where === b.where && sameOn(a.since, b.since) && sameMoney(a.price, b.price));
+    if (!sameDetail) stale("ownershipDetail", derived.ownershipDetail);
+  });
+
 // ------------------------------------------------------------------ inputs
 
 /** A project reference: an id, or a slug path like `health/dental`, or `inbox`. */
@@ -563,6 +776,96 @@ export const calendarUpdateSchema = z.strictObject({
   color: color.nullable().optional(),
 });
 
+// ------------------------------------------------------------------ library inputs
+
+/** A title reference: an id, or a name (exact, alias, or unique substring) among the medium's titles. */
+export const titleRef = z.string().trim().min(1).max(4000);
+
+/** What every entry operation accepts; `on` defaults to today at day precision, `liked` sets the title, not the entry. */
+export const entryInputSchema = z.strictObject({
+  on: on.optional(),
+  text: entryText.optional(),
+  progress: text.optional(),
+  format: bookFormat.optional(),
+  rating: rating.optional(),
+  liked: z.boolean().optional(),
+  minutes: sittingMinutes.optional(),
+  spend: spend.optional(),
+  where: text.optional(),
+  evidence: evidence.optional(),
+});
+
+/** An amend patch: any entry field including `type` and `on`; `null` clears a nullable one. */
+export const entryPatchSchema = z
+  .strictObject({
+    type: entryType.optional(),
+    on: on.optional(),
+    text: entryText.nullable().optional(),
+    progress: text.nullable().optional(),
+    format: bookFormat.nullable().optional(),
+    rating: rating.nullable().optional(),
+    minutes: sittingMinutes.nullable().optional(),
+    spend: spend.nullable().optional(),
+    where: text.nullable().optional(),
+    evidence: evidence.optional(),
+  })
+  .refine((value) => Object.keys(value).length > 0, { message: "Nothing to amend" });
+
+/** The medium block as an input: only the fields that apply to the medium may be non-null; the operation checks that. */
+export const titleDetailInputSchema = z.strictObject({
+  format: bookFormat.nullable().optional(),
+  platform: text.nullable().optional(),
+  where: text.nullable().optional(),
+});
+
+export const titleAddSchema = z
+  .strictObject({
+    medium,
+    name: text,
+    year: titleYear.optional(),
+    catalog: z.string().min(1).max(200).optional(),
+    lookup: z.boolean().optional(),
+    want: z.boolean().optional(),
+    started: z.union([entryInputSchema, z.literal(true)]).optional(),
+    finished: z.union([entryInputSchema, z.literal(true)]).optional(),
+    seenBefore: z.union([on, z.literal(true)]).optional(),
+    liked: z.boolean().optional(),
+    priority: titlePriority.optional(),
+    moodFit: z.array(moodFit).max(5).optional(),
+    timeFit: timeFit.optional(),
+    notes: longText.optional(),
+    detail: titleDetailInputSchema.optional(),
+    allowDuplicate: z.boolean().optional(),
+  });
+
+export const titleUpdateSchema = z.strictObject({
+  name: text.optional(),
+  aliases: z.array(text).max(50).optional(),
+  year: titleYear.nullable().optional(),
+  creators: z.array(text).max(50).optional(),
+  cover: url.nullable().optional(),
+  length: titleLength.nullable().optional(),
+  series: titleSeries.nullable().optional(),
+  priority: titlePriority.nullable().optional(),
+  moodFit: z.array(moodFit).max(5).optional(),
+  timeFit: timeFit.nullable().optional(),
+  notes: longText.nullable().optional(),
+  detail: titleDetailInputSchema.optional(),
+});
+
+export const titleListSchema = z.strictObject({
+  medium: medium.optional(),
+  status: z.array(progress).min(1).optional(),
+  ownership: z.array(ownership).min(1).optional(),
+  priority: titlePriority.optional(),
+  moodFit: moodFit.optional(),
+  timeFit: timeFit.optional(),
+  format: bookFormat.optional(),
+  text: z.string().trim().min(1).max(200).optional(),
+  includeDeleted: z.boolean().optional(),
+  full: z.boolean().optional(),
+});
+
 /**
  * An idempotency key as a caller passes it. No control characters: core.ts
  * derives per-item keys for batch, reorder, and import with one, so a caller's
@@ -622,9 +925,54 @@ export type EventPatch = z.infer<typeof eventPatchSchema>;
 export type AccountUpdate = z.infer<typeof accountUpdateSchema>;
 export type CalendarUpdate = z.infer<typeof calendarUpdateSchema>;
 
-/** The todo list's records. The CLI renders these; the calendar's are `CalendarRecord`. */
+export type Medium = z.infer<typeof medium>;
+export type Progress = z.infer<typeof progress>;
+export type Ownership = z.infer<typeof ownership>;
+export type Precision = z.infer<typeof precision>;
+export type On = z.infer<typeof on>;
+export type Rating = z.infer<typeof rating>;
+export type BookFormat = z.infer<typeof bookFormat>;
+export type CatalogSource = z.infer<typeof catalogSource>;
+export type Money = z.infer<typeof money>;
+export type Spend = z.infer<typeof spend>;
+export type EntryType = z.infer<typeof entryType>;
+export type Entry = z.infer<typeof entrySchema>;
+export type Availability = z.infer<typeof availabilitySchema>;
+export type Facts = z.infer<typeof factsSchema>;
+export type Title = z.infer<typeof titleSchema>;
+export type TitleLength = z.infer<typeof titleLength>;
+export type TitleDetail = z.infer<typeof titleDetail>;
+export type TitlePriority = z.infer<typeof titlePriority>;
+export type MoodFit = z.infer<typeof moodFit>;
+export type TimeFit = z.infer<typeof timeFit>;
+export type EditedField = z.infer<typeof editedField>;
+export type TitleAdd = z.infer<typeof titleAddSchema>;
+export type TitleUpdate = z.infer<typeof titleUpdateSchema>;
+export type TitleList = z.infer<typeof titleListSchema>;
+export type EntryInput = z.infer<typeof entryInputSchema>;
+export type EntryPatch = z.infer<typeof entryPatchSchema>;
+export type TitleDetailInput = z.infer<typeof titleDetailInputSchema>;
+
+/** What `list` and every library view return unless asked for the full record: a backlog readable in a few hundred tokens. */
+export type TitleSummary = {
+  id: string;
+  medium: Medium;
+  name: string;
+  year: number | null;
+  status: Progress;
+  ownership: Ownership;
+  priority: TitlePriority | null;
+  rating: Rating | null;
+  liked: boolean;
+  timeFit: TimeFit | null;
+  moodFit: MoodFit[];
+  lastEntry: { type: EntryType; on: On; text: string | null } | null;
+};
+
+/** The todo list's records. The CLI renders these; the calendar's are `CalendarRecord`, the library's `MediaRecord`. */
 export type AnyRecord = Task | Project | Section | Label | Filter;
 export type CalendarRecord = Account | Calendar | Event;
+export type MediaRecord = Title;
 
 export type Outcome = "created" | "updated" | "unchanged" | "duplicate" | "rejected";
 

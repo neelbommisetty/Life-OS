@@ -16,12 +16,13 @@ import {
   type RecordKind,
   type Section,
   type Task,
+  type Title,
 } from "./contract.ts";
 import { addDays, toInstant } from "./time.ts";
 import { createDb, type Db } from "./db/client.ts";
 import * as schema from "./db/schema.ts";
 
-export type Kind = "task" | "project" | "section" | "label" | "filter" | "account" | "calendar" | "event";
+export type Kind = "task" | "project" | "section" | "label" | "filter" | "account" | "calendar" | "event" | "title";
 export type RecordOf<K extends Kind> = K extends "task"
   ? Task
   : K extends "project"
@@ -36,7 +37,9 @@ export type RecordOf<K extends Kind> = K extends "task"
             ? Account
             : K extends "calendar"
               ? Calendar
-              : Event;
+              : K extends "event"
+                ? Event
+                : Title;
 
 export interface Tx {
   get<K extends Kind>(kind: K, id: string): Promise<RecordOf<K> | null>;              // deleted records included
@@ -76,6 +79,7 @@ const TABLES = {
   account: schema.accounts,
   calendar: schema.calendars,
   event: schema.events,
+  title: schema.titles,
 } as const;
 
 type RecordTable = (typeof TABLES)[Kind];
