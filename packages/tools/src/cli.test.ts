@@ -7,10 +7,11 @@ import { join } from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { FakeAdapter, ProviderRejected, ProviderUnavailable, type CalendarAdapter, type ProviderCalendar, type SeedEvent } from "./calendar/adapter.ts";
+import { CatalogUnavailable, CatalogUnconfigured, FakeCatalog } from "./media/catalog/adapter.ts";
 import { CredentialStore } from "./calendar/credentials.ts";
 import { fromGoogleEvent, toGoogleInsert } from "./calendar/google/map.ts";
 import { NeedsReauth } from "./calendar/google/oauth.ts";
-import type { EventWrite, When } from "./contract.ts";
+import type { Availability, EventWrite, When } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import { databaseUrl } from "./db/client.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
@@ -70,8 +71,8 @@ type InProcessOptions = {
   clock?: Clock;
   env?: Record<string, string | undefined>;
   db?: string;
-  /** The calendar's injection points: adapters, credentials, the browser opener, doctor's token check. */
-  io?: Pick<CliIo, "adapters" | "credentials" | "openUrl" | "refreshToken">;
+  /** The calendar's injection points (adapters, credentials, the browser opener, doctor's token check) and the library's (catalogs, the IGDB token directory). */
+  io?: Pick<CliIo, "adapters" | "credentials" | "openUrl" | "refreshToken" | "catalogs" | "igdbTokenDir">;
 };
 
 /** `main()` in this process with fake streams: a terminal or not, an optional typed answer, a fixed clock. LIFE_ACTOR=neel unless overridden. */
@@ -451,7 +452,8 @@ test("a similar title exits 2 as a duplicate error with the candidates and --all
   assert.equal(receipt.ok, false);
   assert.equal(receipt.outcome, "duplicate");
   assert.deepEqual(receipt.candidates!.map((c) => c.id), [dentist.id], "the receipt is the library's, untouched");
-  assert.deepEqual(error.candidates!.map((c) => c.id), [dentist.id], "and the error carries the candidates too");
+  assert.deepEqual((error.candidates as { id: string }[]).map((c) => c.id), [dentist.id], "and the error carries the candidates too");
+  assert.equal(error.candidateKind, "task");
   assert.match(error.hint!, /--allow-duplicate/);
   assert.ok(error.hint!.includes(`${dentist.id} "Book the dentist"`), "candidate ids and titles in the hint");
   assert.match(dup.stderr, /hint: pass --allow-duplicate/);
@@ -901,7 +903,7 @@ test("export writes a file, or JSON to stdout", async () => {
   assert.ok(dump.log.length > 10);
 
   const human = await inProcess(["export", file], { tty: true });
-  assert.match(human.stdout, /^Exported \d+ projects, \d+ sections, \d+ labels, \d+ filters, \d+ tasks, \d+ accounts, \d+ calendars, \d+ events, \d+ log to .* \(\d+ bytes\)\.$/m);
+  assert.match(human.stdout, /^Exported \d+ projects, \d+ sections, \d+ labels, \d+ filters, \d+ tasks, \d+ accounts, \d+ calendars, \d+ events, \d+ titles, \d+ log to .* \(\d+ bytes\)\.$/m);
 
   const stdout = await life(["export"]);
   assert.equal(result<{ tasks: unknown[] }>(stdout).tasks.length, dump.tasks.length, "the dump is the envelope's result");
@@ -940,8 +942,8 @@ test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other
   assert.equal(healthy.code, EXIT.ok, healthy.stdout + healthy.stderr);
   const report = result<Report>(healthy);
   assert.equal(report.healthy, true);
-  assert.deepEqual(report.checks.map((c) => c.name), ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "accounts", "credential files", "timezone", "actor"]);
-  assert.ok(report.checks.every((c) => c.status === "ok" || (c.name === "google client" && c.status === "warn")), JSON.stringify(report.checks));
+  assert.deepEqual(report.checks.map((c) => c.name), ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "accounts", "credential files", "catalog tmdb", "catalog openlibrary", "catalog igdb", "igdb token", "region", "timezone", "actor"]);
+  assert.ok(report.checks.every((c) => c.status === "ok" || (["google client", "catalog tmdb", "catalog igdb"].includes(c.name) && c.status === "warn")), JSON.stringify(report.checks));
   const check = (name: string) => report.checks.find((c) => c.name === name)!;
   assert.match(check("google client").value, /^LIFE_GOOGLE_CLIENT_ID is (set|not set)/);
   assert.ok(!healthy.stdout.includes("CLIENT_SECRET="), "never the secret");
@@ -1615,7 +1617,7 @@ test("doctor reports the Google client, each account with its credential and tok
   assert.equal(report.healthy, true);
   assert.deepEqual(
     report.checks.map((c) => c.name),
-    ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "primary account", "account neel@gmail.com", "credential neel@gmail.com", "calendar neel@gmail.com/Personal", "calendar neel@gmail.com/Holidays", "credential files", "timezone", "actor"],
+    ["env file", "database url", "connectivity", "migrations", "inbox", "google client", "primary account", "account neel@gmail.com", "credential neel@gmail.com", "calendar neel@gmail.com/Personal", "calendar neel@gmail.com/Holidays", "credential files", "catalog tmdb", "catalog openlibrary", "catalog igdb", "igdb token", "region", "timezone", "actor"],
   );
   const check = (name: string) => report.checks.find((c) => c.name === name)!;
   assert.match(check("google client").value, /^LIFE_GOOGLE_CLIENT_ID is (set|not set)/);
@@ -1772,4 +1774,750 @@ test("task add --project inbox on an empty database creates the Inbox on first u
   } finally {
     await fresh.drop();
   }
+});
+
+// ------------------------------------------------------------------ the library: movie, show, game, book, media
+
+// 2026-09-12T12:00Z is 05:00 in Los Angeles, so today is 2026-09-12 (a Saturday; the ISO week starts 2026-09-07).
+const LIB_NOW = "2026-09-12T12:00:00Z";
+const libClock = fixedClock(LIB_NOW, TZ);
+const MEDIA4 = ["movie", "show", "game", "book"] as const;
+let libDb: TestDb;
+let libUrl: string;
+let tokenDir: string;
+let tmdb: FakeCatalog;
+let openlibrary: FakeCatalog;
+let igdb: FakeCatalog;
+
+/** `inProcess` against the library schema with the three FakeCatalogs injected and a fixed clock. */
+const lib = (args: string[], opts: InProcessOptions = {}): Promise<Run> =>
+  inProcess(args, { db: libUrl, clock: libClock, ...opts, io: { catalogs: { tmdb, openlibrary, igdb }, igdbTokenDir: tokenDir, ...opts.io } });
+
+type AnyOn = { date: string | null; precision: string };
+type AnyAvailability = { kind: string; name: string; url: string; region: string; price: { amount: number; currency: string } | null; constructed: boolean };
+type AnyTitleEntry = { id: string; type: string; on: AnyOn; text: string | null; progress: string | null; format: string | null; rating: number | null; minutes: number | null; spend: { amount: number; currency: string; kind: string } | null; where: string | null };
+type AnyTitle = {
+  id: string; medium: string; name: string; aliases: string[]; year: number | null; creators: string[]; status: string; ownership: string;
+  ownershipDetail: { where: string | null; since: AnyOn | null; price: { amount: number; currency: string } | null } | null;
+  rating: number | null; review: string | null; liked: boolean; priority: string | null; notes: string | null;
+  catalog: { source: string; externalId: string } | null; facts: { availability: AnyAvailability[] } | null; length: Record<string, number> | null;
+  detail: { format: string | null; platform: string | null; where: string | null }; entries: AnyTitleEntry[]; origin: { actor: string; evidence: string[] }; deletedAt: string | null; version: number;
+};
+type AnySummary = { id: string; medium: string; name: string; year: number | null; status: string; ownership: string; priority: string | null; rating: number | null; liked: boolean; lastEntry: { type: string; on: AnyOn; text: string | null } | null };
+type AnyCandidate = { source: string; externalId: string; name: string; year: number | null; creators: string[]; inLibrary: string | null; availability?: AnyAvailability[] };
+type Report = { healthy: boolean; checks: { name: string; status: string; value: string; hint?: string }[] };
+
+/** Assert an ok title receipt and return its record. */
+const title = (run: Run, outcome = "created"): AnyTitle => created(run, outcome) as unknown as AnyTitle;
+const us = (kind: Availability["kind"], name: string, url: string, price: { amount: number; currency: string } | null = null, constructed = false): Availability => ({ kind, name, url, region: "US", price, constructed });
+const DUNE_SERIES = {
+  name: "Dune Collection",
+  position: 1,
+  entries: [
+    { externalId: "438631", name: "Dune", position: 1, released: "2021-10-22" },
+    { externalId: "693134", name: "Dune: Part Two", position: 2, released: "2024-02-27" },
+    { externalId: "999", name: "Dune: Part Three", position: 3, released: "2026-12-18" },
+  ],
+};
+
+before(async () => {
+  libDb = await createTestDb();
+  libUrl = `${databaseUrl()}${databaseUrl().includes("?") ? "&" : "?"}options=-c search_path=${libDb.schema}`;
+  tokenDir = await mkdtemp(join(tmpdir(), "life-cli-igdb-"));
+  tmdb = new FakeCatalog({ source: "tmdb" });
+  openlibrary = new FakeCatalog({ source: "openlibrary" });
+  igdb = new FakeCatalog({ source: "igdb" });
+  tmdb.seed("movie", [
+    { externalId: "329865", name: "Arrival", year: 2016, creators: ["Denis Villeneuve"], length: { minutes: 116 }, availability: [us("stream", "Paramount+", "https://paramountplus.example/arrival"), us("rent", "Apple TV", "https://tv.apple.example/arrival", { amount: 3.99, currency: "USD" }), { kind: "stream", name: "Netflix", url: "https://netflix.example/gb/arrival", region: "GB", price: null, constructed: false }] },
+    { externalId: "438631", name: "Dune", year: 2021, creators: ["Denis Villeneuve"], facts: { released: "2021-10-22", series: DUNE_SERIES }, availability: [us("buy", "Apple TV", "https://tv.apple.example/dune", { amount: 19.99, currency: "USD" })] },
+    { externalId: "841", name: "Dune", year: 1984, creators: ["David Lynch"] },
+    { externalId: "693134", name: "Dune: Part Two", year: 2024, creators: ["Denis Villeneuve"], facts: { released: "2024-02-27", series: { ...DUNE_SERIES, position: 2 } }, availability: [us("buy", "Apple TV", "https://tv.apple.example/dune2", { amount: 19.99, currency: "USD" }), us("rent", "Apple TV", "https://tv.apple.example/dune2?rent", { amount: 5.99, currency: "USD" })] },
+  ]);
+  tmdb.seed("show", [{ externalId: "95396", name: "Severance", year: 2022, creators: ["Dan Erickson"], length: { seasons: 2, episodes: 19 } }]);
+  openlibrary.seed("book", [
+    { externalId: "OL1W", name: "Skyward", year: 2018, creators: ["Brandon Sanderson"], editionCount: 40, length: { pages: 510 }, availability: [us("listen", "Audible", "https://audible.example/search?keywords=Skyward", null, true), us("borrow", "Libby", "https://libbyapp.example/search/Skyward", null, true)] },
+    { externalId: "OL2W", name: "Skyward Flight", year: 2021, creators: ["Brandon Sanderson"], editionCount: 5 },
+    { externalId: "OL3W", name: "Project Hail Mary", year: 2021, creators: ["Andy Weir"], editionCount: 30 },
+  ]);
+  igdb.seed("game", [
+    { externalId: "1", name: "Hollow Knight", year: 2017, creators: ["Team Cherry"], category: "main", availability: [us("buy", "Steam", "https://store.steampowered.example/367520", { amount: 14.99, currency: "USD" })] },
+    { externalId: "2", name: "Hollow Knight: Silksong", year: 2025, creators: ["Team Cherry"], category: "main" },
+    { externalId: "3", name: "Celeste", year: 2018, creators: ["Maddy Makes Games"], category: "main" },
+  ]);
+});
+after(async () => {
+  await libDb.drop();
+  await rm(tokenDir, { recursive: true, force: true });
+});
+
+test("help alone reaches every movie, show, game, book, and media command; the group notes explain refs, dates, ratings, and entry types; inapplicable flags are usage errors per medium", async () => {
+  for (const group of [...MEDIA4, "media"] as const) {
+    const help = await life(["help", group]);
+    assert.equal(help.code, EXIT.ok);
+    assert.equal(help.stdout.trimEnd(), groupHelp(group));
+    for (const command of COMMANDS.values()) if (command.group === group) assert.match(help.stdout, new RegExp(`^  life ${group} ${command.name}\\b.*  \\S`, "m"), `${group} ${command.name} with a purpose`);
+    assert.match(help.stdout, /^refs: a title id \(m_\.\.\.\) or a name/m, `${group} names its ref rule`);
+    assert.match(help.stdout, /^dates: .*YYYY-MM-DD~w/m, `${group} names the date forms`);
+  }
+  const TABLE = ["add", "get", "list", "update", "want", "start", "resume", "pause", "again", "progress", "note", "finish", "drop", "buy", "borrow", "return", "service", "rate", "unrate", "review", "like", "unlike", "where", "next", "series", "lookup", "link", "unlink", "refresh", "merge", "amend", "unlog", "relog", "curious", "backlog", "buy-list", "shelf", "delete", "restore", "history"];
+  for (const medium of MEDIA4) {
+    for (const command of TABLE) assert.ok(COMMANDS.has(`${medium} ${command}`), `${medium} ${command} exists`);
+    const help = (await life(["help", medium])).stdout;
+    assert.match(help, /^ratings: half stars from 0\.5 to 5, written 4\.5 or 4½/m);
+    assert.match(help, /^entry types and the states they are allowed from/m);
+    for (const type of ["want", "start", "again", "resume", "pause", "finish", "drop", "progress, note", "buy, borrow, service"]) assert.match(help, new RegExp(`^  ${type}\\s+\\S`, "m"), `${medium}: ${type} in the table`);
+    assert.match(help, /^minutes: --minutes is one sitting's time, never cumulative/m);
+    assert.match(help, /^list hides dropped titles unless --status names them/m);
+    assert.match(help, new RegExp(`^entry ids \\(n_\\.\\.\\.\\) come from \`life ${medium} get <ref>\` and \`life ${medium} history <ref>\``, "m"));
+  }
+  for (const command of ["list", "get", "now", "curious", "backlog", "buy-list", "shelf", "diary", "time", "year", "search", "availability"]) assert.ok(COMMANDS.has(`media ${command}`), `media ${command} exists`);
+  assert.match((await life(["help", "book"])).stdout, /^audiobooks are books: pass --format audiobook/m);
+  assert.doesNotMatch((await life(["help", "movie"])).stdout, /^audiobooks/m);
+  assert.deepEqual((result<{ notes: string[] }>(await life(["help", "book", "--json"]))).notes.at(-1)?.startsWith("audiobooks are books"), true, "the notes hook is in the help data too");
+
+  const bookAdd = (await life(["help", "book", "add"])).stdout;
+  assert.equal(bookAdd.trimEnd(), commandHelp(COMMANDS.get("book add")!));
+  assert.match(bookAdd, /^  --format <audiobook\|physical\|kindle>/m);
+  assert.match(bookAdd, /^  --seen-before \[date\] /m, "an optional value shows in brackets");
+  assert.match(bookAdd, /^  --on <date> .*YYYY-MM-DD~w/m);
+  assert.doesNotMatch(bookAdd, /^  --platform/m);
+  assert.doesNotMatch(bookAdd, /^  --watched-on/m);
+  const gameAdd = (await life(["help", "game", "add"])).stdout;
+  assert.match(gameAdd, /^  --platform <text>/m);
+  assert.doesNotMatch(gameAdd, /^  --format/m);
+  assert.doesNotMatch(gameAdd, /^  --watched-on/m);
+  for (const medium of ["movie", "show"]) {
+    const add = (await life(["help", medium, "add"])).stdout;
+    assert.match(add, /^  --watched-on <text>/m);
+    assert.doesNotMatch(add, /^  --format/m);
+    assert.doesNotMatch(add, /^  --platform/m);
+  }
+  assert.match((await life(["help", "book", "update"])).stdout, /^  --no-format/m);
+  assert.doesNotMatch((await life(["help", "movie", "update"])).stdout, /^  --no-format/m);
+
+  const bad = await life(["book", "add", "Skyward", "--platform", "Switch"]);
+  assert.match(failed(bad, "usage", EXIT.usage).message, /^unknown flag --platform for `life book add`/);
+  assert.match(bad.stderr, /^usage: life book add/m, "the command's help follows");
+  assert.match(failed(await life(["game", "add", "Celeste", "--format", "kindle"]), "usage", EXIT.usage).message, /unknown flag --format for `life game add`/);
+  assert.match(failed(await life(["movie", "update", "Arrival", "--no-platform"]), "usage", EXIT.usage).message, /unknown flag --no-platform/);
+  assert.match(failed(await life(["show", "start", "Severance", "--format", "audiobook"]), "usage", EXIT.usage).message, /unknown flag --format for `life show start`/);
+  assert.match(failed(await life(["movie", "list", "--format", "kindle"]), "usage", EXIT.usage).message, /unknown flag --format/);
+  assert.match(failed(await life(["media", "list", "--format", "kindle"]), "usage", EXIT.usage).message, /unknown flag --format for `life media list`/);
+  assert.match(failed(await life(["book", "add", "X", "--finished", "--rating", "six"]), "usage", EXIT.usage).message, /--rating expects a rating \(half stars from 0\.5 to 5, written 4\.5 or 4½\), got "six"/);
+});
+
+test("the top help lists the library groups, keys, and formats, and documents catalog_unavailable and error.candidates with candidateKind", async () => {
+  const top = (await life(["--help"])).stdout;
+  for (const group of [...MEDIA4, "media"]) assert.match(top, new RegExp(`^  life ${group} <command>`, "m"), `the ${group} group is listed`);
+  for (const name of ["LIFE_TMDB_KEY", "LIFE_IGDB_CLIENT_ID", "LIFE_IGDB_CLIENT_SECRET", "LIFE_REGION"]) assert.ok(top.includes(name), `environment variable ${name}`);
+  assert.match(top, /catalog_unavailable \(exit 3\)/);
+  assert.match(top, /error\.candidates is Task\[\] \| Title\[\] \| Candidate\[\] with error\.candidateKind task \| title \| catalog/);
+  assert.match(top, /m_ \(title\)/);
+  assert.match(top, /n_ \(a diary entry inside a title\)/);
+  assert.match(top, /^  on\s+YYYY-MM-DD, YYYY-MM-DD~w/m);
+  assert.match(top, /^  rating\s+half stars/m);
+  assert.match(top, /^  3   database, calendar provider, or catalog unavailable \(run `life doctor`\)$/m);
+  assert.match((await life(["help", "book", "add"])).stdout, /^  3   database, calendar provider, or catalog unavailable/m);
+  assert.deepEqual((result<{ environment: string[] }>(await life(["help", "--json"]))).environment.slice(-4), ["LIFE_TMDB_KEY", "LIFE_IGDB_CLIENT_ID", "LIFE_IGDB_CLIENT_SECRET", "LIFE_REGION"]);
+});
+
+test("a flow driven from help alone through the book group: discover add and its audiobook example, run it, read it back with get; the title page prints the take and the diary", async () => {
+  const top = (await life(["--help"])).stdout;
+  assert.match(top, /^  life book <command>/m);
+  const group = (await life(["help", "book"])).stdout;
+  assert.ok(group.split("\n").some((line) => /^  life book add <name>/.test(line)), "the group help lists book add with its positional");
+  assert.match(group, /run `life help book <command>`/);
+
+  const command = (await life(["help", "book", "add"])).stdout;
+  const examples = command.split("\n").filter((line) => /^  life book add /.test(line)).map((line) => line.trim());
+  assert.ok(examples.length >= 2, "copy-pasteable examples");
+  const example = examples.find((e) => e.includes("--format audiobook") && e.includes("--finished"))!;
+  const argv = shellWords(example).slice(1);
+  assert.deepEqual(argv.slice(0, 3), ["book", "add", "Skyward"]);
+  const run = await lib(argv, { env: { LIFE_ACTOR: undefined } });
+  const skyward = title(run);
+  assert.equal(envelope(run).warnings, undefined, "a confident lookup warns about nothing");
+  assert.equal(skyward.medium, "book");
+  assert.equal(skyward.name, "Skyward");
+  assert.equal(skyward.year, 2018, "the catalog filled the year");
+  assert.deepEqual(skyward.creators, ["Brandon Sanderson"]);
+  assert.deepEqual(skyward.catalog, { source: "openlibrary", externalId: "OL1W", pulledAt: LIB_NOW });
+  assert.equal(skyward.status, "done");
+  assert.equal(skyward.rating, 4.5);
+  assert.equal(skyward.liked, true);
+  assert.equal(skyward.detail.format, "audiobook");
+  assert.equal(skyward.entries.length, 1);
+  assert.equal(skyward.entries[0]!.type, "finish");
+  assert.deepEqual(skyward.entries[0]!.on, { date: "2026-09-07", precision: "week" }, "~w stored as the ISO week's Monday");
+  assert.equal(skyward.entries[0]!.format, "audiobook", "the wanted format is the entry's format too");
+  assert.equal(skyward.origin.actor, "codex");
+  assert.equal("warnings" in (envelope(run).result as object), false);
+
+  const getHelp = (await life(["help", "book", "get"])).stdout;
+  const getExample = getHelp.split("\n").find((line) => /^  life book get "Skyward"/.test(line))!.trim();
+  assert.equal(result<AnyTitle>(await lib(shellWords(getExample).slice(1))).id, skyward.id, "the example's ref is the name");
+
+  const human = await lib(["book", "get", "Skyward"], { tty: true });
+  assert.equal(human.code, EXIT.ok);
+  assert.match(human.stdout, new RegExp(`^${skyward.id}  Skyward \\(2018\\)  book  done$`, "m"));
+  assert.match(human.stdout, /^rating       4\.5\/5$/m);
+  assert.match(human.stdout, /^liked        yes$/m);
+  assert.match(human.stdout, /^catalog      Open Library OL1W \(pulled 2026-09-12T12:00:00Z\)$/m);
+  assert.match(human.stdout, /^diary \(1\), newest first$/m);
+  assert.match(human.stdout, /^  2026-09-07~w  finish  n_[a-z0-9]{10}  audiobook  4\.5\/5$/m);
+  assert.match(human.stdout, /^availability \(2\)$/m);
+
+  const guess = await lib(["book", "finsh", "Skyward"]);
+  assert.match(failed(guess, "usage", EXIT.usage).message, /did you mean `life book finish`/);
+});
+
+test("a flow driven from help alone through life media: list's example returns compact summaries, --full and get return whole records", async () => {
+  const group = (await life(["help", "media"])).stdout;
+  assert.match(group, /^  life media list /m);
+  assert.match(group, /^output: lists and views return compact summaries/m);
+  const listHelp = (await life(["help", "media", "list"])).stdout;
+  const example = listHelp.split("\n").find((line) => /^  life media list --json$/.test(line))!.trim();
+  const rows = result<AnySummary[]>(await lib(shellWords(example).slice(1)));
+  assert.ok(rows.length >= 1);
+  const skyward = rows.find((row) => row.name === "Skyward")!;
+  assert.deepEqual(Object.keys(skyward), ["id", "medium", "name", "year", "status", "ownership", "priority", "rating", "liked", "timeFit", "moodFit", "lastEntry"], "a summary, not the record");
+  assert.equal(skyward.medium, "book");
+  assert.equal(skyward.status, "done");
+  assert.deepEqual(skyward.lastEntry, { type: "finish", on: { date: "2026-09-07", precision: "week" }, text: null });
+  const full = result<AnyTitle[]>(await lib(["media", "list", "--full"]));
+  assert.ok("entries" in full[0]!, "--full returns records");
+  assert.equal(result<AnyTitle>(await lib(["media", "get", "skyward"])).entries.length, 1);
+  const human = await lib(["media", "list"], { tty: true });
+  assert.match(human.stdout, new RegExp(`^${skyward.id}  book  done  Skyward \\(2018\\)  4\\.5/5  liked  finish 2026-09-07~w$`, "m"), "one aligned line per title");
+});
+
+test("a catalog needs carries the candidates; a terminal asks with a numbered table and takes a number or an id; --json never asks; --catalog and --year retry from scratch; a title duplicate is exit 2 with title candidates", async () => {
+  const needs = await lib(["movie", "add", "Dune"]);
+  const error = failed(needs, "needs", EXIT.rejected);
+  assert.equal(error.needs!.field, "catalog");
+  assert.deepEqual(error.needs!.options, ["438631", "841", "693134"], "every hit is a candidate, the two exact matches first");
+  assert.match(error.needs!.message, /^3 TMDB candidates for "Dune" \(several exact matches\); pass catalog with one of their ids, or year to narrow the search$/);
+  assert.equal(error.candidateKind, "catalog");
+  const candidates = error.candidates as AnyCandidate[];
+  assert.deepEqual(candidates.map((c) => [c.externalId, c.year, c.inLibrary]), [["438631", 2021, null], ["841", 1984, null], ["693134", 2024, null]]);
+  assert.equal(error.hint, 'pass --catalog <id> with one of: 438631 "Dune" (2021), 841 "Dune" (1984), 693134 "Dune: Part Two" (2024); or --year <n> to narrow the search');
+  const receipt = envelope(needs).result as AnyReceipt & { candidateKind: string };
+  assert.equal(receipt.outcome, "rejected");
+  assert.equal(receipt.candidateKind, "catalog");
+  assert.equal(receipt.candidates!.length, 3, "the receipt is the library's, candidates included");
+  assert.equal(result<AnySummary[]>(await lib(["movie", "list"])).length, 0, "nothing was written");
+
+  const jsonOnTty = await lib(["movie", "add", "Dune", "--json"], { tty: true, input: "1\n" });
+  failed(jsonOnTty, "needs", EXIT.rejected);
+  assert.equal(result<AnySummary[]>(await lib(["movie", "list"])).length, 0, "--json on a terminal never asks");
+
+  const asked = await lib(["movie", "add", "Dune"], { tty: true, input: "1\n" });
+  assert.equal(asked.code, EXIT.ok, asked.stdout + asked.stderr);
+  assert.match(asked.stdout, /^#\s+id\s+name \(year\)\s+creators\s+category$/m, "the question is a numbered table");
+  assert.match(asked.stdout, /^1\s+438631\s+Dune \(2021\)\s+Denis Villeneuve$/m);
+  assert.match(asked.stdout, /^2\s+841\s+Dune \(1984\)\s+David Lynch$/m);
+  assert.match(asked.stdout, /^3\s+693134\s+Dune: Part Two \(2024\)\s+Denis Villeneuve$/m);
+  assert.match(asked.stdout, /^catalog \[1-3, or the id\]: /m);
+  // A terminal echoes the typed answer and its newline; the fake stream does not, so the receipt follows the prompt on the same line here.
+  assert.match(asked.stdout, /created m_[a-z0-9]{10} v1  Dune \(2021\)  movie  curious$/m);
+  const dune = result<AnyTitle>(await lib(["movie", "get", "Dune"]));
+  assert.deepEqual(dune.catalog, { source: "tmdb", externalId: "438631", pulledAt: LIB_NOW }, "the number mapped onto options[0] and add re-ran with --catalog");
+  assert.deepEqual(dune.facts!.availability.map((row) => row.name), ["Apple TV"]);
+
+  const byId = await lib(["movie", "add", "Dune", "--allow-duplicate"], { tty: true, input: "841\n" });
+  assert.equal(byId.code, EXIT.ok, byId.stdout + byId.stderr);
+  assert.match(byId.stdout, new RegExp(`^1\\s+438631\\s+Dune \\(2021\\)\\s+Denis Villeneuve\\s+in the library as ${dune.id}$`, "m"), "a candidate already linked says so");
+  assert.match(byId.stdout, /created m_[a-z0-9]{10} v1  Dune \(1984\)  movie  curious$/m);
+  const noAnswer = await lib(["movie", "add", "Dune", "--allow-duplicate"], { tty: true, input: "7\n" });
+  assert.equal(noAnswer.code, EXIT.rejected);
+  assert.match(noAnswer.stdout, /rejected\n  - catalog:/);
+  assert.match(noAnswer.stdout, /pass --catalog <id>/);
+
+  const duplicate = await lib(["movie", "add", "Dune"]);
+  const dup = failed(duplicate, "duplicate", EXIT.duplicate);
+  assert.equal(dup.candidateKind, "title");
+  assert.deepEqual((dup.candidates as AnyTitle[]).map((t) => t.year).sort(), [1984, 2021]);
+  assert.equal(dup.hint, "pass --allow-duplicate to add anyway, or reuse a candidate: " + (dup.candidates as AnyTitle[]).map((t) => `${t.id} "${t.name}" (${t.year}, ${t.status})`).join(", "));
+  const dupHuman = await lib(["movie", "add", "Dune"], { tty: true });
+  assert.equal(dupHuman.code, EXIT.duplicate);
+  assert.match(dupHuman.stdout, /^duplicate: 2 titles named alike$/m);
+  assert.match(dupHuman.stdout, new RegExp(`^  ${dune.id}  curious  Dune \\(2021\\)$`, "m"));
+  assert.match(dupHuman.stdout, /^  pass --allow-duplicate to add anyway, or reuse one of them$/m);
+
+  const relinked = await lib(["movie", "add", "Dune", "--catalog", "841", "--allow-duplicate"]);
+  assert.match(failed(relinked, "duplicate", EXIT.duplicate).message, /is already linked to tmdb 841; use it, or merge/);
+  const narrowed = await lib(["movie", "add", "Dune", "--year", "2021", "--allow-duplicate"]);
+  assert.match(failed(narrowed, "duplicate", EXIT.duplicate).message, /is already linked to tmdb 438631/, "--year narrowed the candidates to one, which is linked already");
+  assert.match(failed(await lib(["movie", "add", "Dune", "--catalog", "999", "--no-lookup"]), "usage", EXIT.usage).message, /--catalog and --no-lookup exclude each other/);
+  const refused = await lib(["movie", "add", "Nope", "--catalog", "nope"]);
+  assert.match(failed(refused, "rejected", EXIT.rejected).message, /^catalog: no movie with id "nope" at TMDB$/);
+});
+
+test("lookup exits 3 when the source is down and 1 when its key is unset; add warns and creates instead; refresh links the title later and maps catalog_unavailable to exit 3", async () => {
+  tmdb.failNext(new CatalogUnavailable("TMDB is unavailable (HTTP 503): down", 503), "search");
+  const down = await lib(["movie", "lookup", "Arrival"]);
+  const unavailable = failed(down, "catalog_unavailable", EXIT.catalog);
+  assert.equal(unavailable.message, "catalog unavailable: TMDB is unavailable (HTTP 503): down");
+  assert.match(unavailable.hint!, /life doctor/);
+  assert.match(down.stderr, /catalog unavailable/);
+
+  tmdb.failNext(new CatalogUnconfigured("LIFE_TMDB_KEY"), "search");
+  const unset = await lib(["movie", "lookup", "Arrival"]);
+  const unconfigured = failed(unset, "rejected", EXIT.rejected);
+  assert.equal(unconfigured.message, "catalog not configured: LIFE_TMDB_KEY is not set in the root .env");
+  assert.ok(unconfigured.hint!.includes(ENV_FILE) && /add --no-lookup/.test(unconfigured.hint!));
+
+  tmdb.failNext(new CatalogUnconfigured("LIFE_TMDB_KEY"), "search");
+  const added = await lib(["show", "add", "Severance", "--want", "--actor", "codex"]);
+  const severance = title(added);
+  assert.equal(severance.catalog, null);
+  assert.equal(severance.status, "backlog");
+  const env = envelope(added);
+  assert.equal(env.warnings!.length, 1);
+  assert.match(env.warnings![0]!, /^Created without a catalog: LIFE_TMDB_KEY is not set in the root \.env; run life show refresh <ref> once it is$/);
+  assert.match(env.warnings![0]!, /created without a catalog/i, "the skill's wording matches case-insensitively");
+  assert.equal("warnings" in (env.result as object), false, "lifted into the envelope and nowhere else");
+  const human = await lib(["show", "add", "Severance", "--allow-duplicate", "--no-lookup"], { tty: true });
+  assert.match(human.stdout, /^created m_[a-z0-9]{10} v1  Severance  show  curious$/m);
+  const extra = result<AnyTitle>(await lib(["show", "get", human.stdout.match(/m_[a-z0-9]{10}/)![0]!]));
+  created(await lib(["show", "delete", extra.id]), "updated");
+
+  tmdb.failNext(new CatalogUnavailable("TMDB is unavailable (HTTP 500): boom", 500), "search");
+  const arrivalRun = await lib(["movie", "add", "Arrival"]);
+  const arrival = title(arrivalRun);
+  assert.equal(arrival.catalog, null);
+  assert.match(envelope(arrivalRun).warnings![0]!, /^Created without a catalog: TMDB is unavailable \(HTTP 500\): boom; run life movie refresh <ref> to link it later$/);
+
+  const refreshed = title(await lib(["show", "refresh", "Severance"]), "updated");
+  assert.deepEqual(refreshed.catalog, { source: "tmdb", externalId: "95396", pulledAt: LIB_NOW });
+  assert.deepEqual(refreshed.length, { seasons: 2, episodes: 19 });
+  const relinked = title(await lib(["movie", "refresh", "arrival"]), "updated");
+  assert.equal(relinked.catalog!.externalId, "329865");
+  assert.deepEqual(relinked.facts!.availability.map((row) => row.name), ["Paramount+", "Apple TV"], "availability is the region's");
+
+  tmdb.failNext(new CatalogUnavailable("TMDB is unavailable (HTTP 503): down", 503));
+  const stuck = await lib(["movie", "refresh", "Arrival"]);
+  const stuckError = failed(stuck, "catalog_unavailable", EXIT.catalog);
+  assert.match(stuckError.issues[0]!, /^catalog_unavailable: TMDB is unavailable/);
+  assert.match(stuckError.hint!, /could not be reached and nothing was stored/);
+  assert.equal(result<AnyTitle>(await lib(["movie", "get", "Arrival"])).version, relinked.version, "nothing was stored");
+});
+
+test("lookup --where carries availability; where answers from a title's facts or a catalog id live, one line per row with * on constructed links", async () => {
+  const found = result<AnyCandidate[]>(await lib(["movie", "lookup", "Arrival", "--where"]));
+  assert.equal(found.length, 1);
+  assert.equal(found[0]!.externalId, "329865");
+  assert.deepEqual(found[0]!.availability!.map((row) => `${row.kind} ${row.name}`), ["stream Paramount+", "rent Apple TV"]);
+  assert.match(found[0]!.inLibrary!, /^m_[a-z0-9]{10}$/, "the title exists");
+  const human = await lib(["movie", "lookup", "Arrival", "--where"], { tty: true });
+  assert.match(human.stdout, /^329865  Arrival \(2016\)  Denis Villeneuve\s+in the library as m_/m);
+  assert.match(human.stdout, /^    stream  Paramount\+\s+US  https:\/\/paramountplus\.example\/arrival$/m);
+  assert.match(human.stdout, /^    rent    Apple TV    3\.99 USD  US  https/m);
+  assert.equal(result<AnyCandidate[]>(await lib(["movie", "lookup", "Dune", "--year", "1984"])).length, 3, "the search returns every hit; --year narrows the confidence rule");
+
+  const live = result<AnyAvailability[]>(await lib(["movie", "where", "--catalog", "329865"]));
+  assert.deepEqual(live.map((row) => row.name), ["Paramount+", "Apple TV"]);
+  const fromTitle = result<AnyAvailability[]>(await lib(["movie", "where", "Arrival"]));
+  assert.deepEqual(fromTitle, live);
+  const book = await lib(["book", "where", "Skyward"], { tty: true });
+  assert.equal(book.code, EXIT.ok);
+  assert.match(book.stdout, /^listen  Audible  \*  US  https:\/\/audible\.example/m, "a constructed link is starred");
+  assert.match(book.stdout, /^borrow  Libby    \*  US  /m);
+  assert.match(failed(await lib(["movie", "where"]), "usage", EXIT.usage).message, /pass a ref or --catalog <id>/);
+  assert.match(failed(await lib(["movie", "where", "Arrival", "--catalog", "1"]), "usage", EXIT.usage).message, /not both/);
+  assert.match(failed(await lib(["movie", "where", "Nope"]), "not_found", EXIT.rejected).message, /^title: no movie "Nope"$/);
+  tmdb.failNext(new CatalogUnavailable("TMDB is unavailable (HTTP 503): down", 503), "availability");
+  failed(await lib(["movie", "where", "--catalog", "329865"]), "catalog_unavailable", EXIT.catalog);
+});
+
+test("every date form rides inside the value (day, ~w, month, year, ?), 4½ is a rating, --on defaults to today, and add's flag rules hold", async () => {
+  assert.match(failed(await lib(["book", "add", "Project Hail Mary", "--rating", "4"]), "usage", EXIT.usage).message, /--rating and --review need --finished/);
+  assert.match(failed(await lib(["book", "add", "X", "--review", "fun"]), "usage", EXIT.usage).message, /--rating and --review need --finished/);
+  assert.match(failed(await lib(["book", "add", "X", "--progress", "ch. 2"]), "usage", EXIT.usage).message, /--progress and --minutes need --started/);
+  assert.match(failed(await lib(["book", "add", "X", "--minutes", "30"]), "usage", EXIT.usage).message, /--progress and --minutes need --started/);
+  assert.match(failed(await lib(["book", "add", "X", "--started-on", "2026-09"]), "usage", EXIT.usage).message, /--started-on needs --started/);
+  assert.match(failed(await lib(["game", "buy", "Celeste", "--currency", "EUR"]), "usage", EXIT.usage).message, /--currency and --kind need --price/);
+  const badMonth = failed(await lib(["book", "add", "X", "--finished", "--on", "2026-9"]), "usage", EXIT.usage);
+  assert.match(badMonth.message, /^--on: "2026-9" is not a date form; use YYYY-MM-DD, YYYY-MM-DD~w/);
+  assert.match(badMonth.hint!, /pass --on 2026-09-07, 2026-09-07~w, 2026-09, 2026, or \?/);
+  assert.match(failed(await lib(["book", "add", "X", "--finished", "--on", "2026-09-31"]), "usage", EXIT.usage).message, /"2026-09-31" is not a real date/);
+  assert.match(failed(await lib(["book", "add", "X", "--finished", "--on", "2026-09~m"]), "usage", EXIT.usage).message, /the only marker is ~w after a full date/);
+  assert.match(failed(await lib(["book", "rate", "Skyward", "6"]), "usage", EXIT.usage).message, /^<rating> expects a rating/);
+  assert.match(failed(await lib(["book", "rate", "Skyward", "4.25"]), "usage", EXIT.usage).message, /^<rating> expects a rating/);
+
+  const phm = title(await lib(["book", "add", "Project Hail Mary", "--started", "--started-on", "2026-08", "--finished", "--finished-on", "2026-09-07~w", "--rating", "4½", "--review", "fun", "--liked", "--progress", "ch. 1"]));
+  assert.equal(phm.catalog!.externalId, "OL3W");
+  assert.deepEqual(phm.entries.map((e) => [e.type, e.on, e.rating, e.text, e.progress]), [
+    ["start", { date: "2026-08", precision: "month" }, null, null, "ch. 1"],
+    ["finish", { date: "2026-09-07", precision: "week" }, 4.5, "fun", null],
+  ]);
+  assert.equal(phm.status, "done");
+  assert.equal(phm.rating, 4.5);
+  assert.equal(phm.review, "fun");
+  assert.equal(phm.liked, true);
+
+  const again = title(await lib(["book", "again", "Project Hail Mary", "--on", "2026-09-11", "--finished", "--rating", "5", "--format", "kindle"]), "updated");
+  assert.deepEqual(again.entries.slice(2).map((e) => [e.type, e.on, e.rating, e.format]), [
+    ["again", { date: "2026-09-11", precision: "day" }, null, "kindle"],
+    ["finish", { date: "2026-09-11", precision: "day" }, 5, "kindle"],
+  ]);
+  assert.equal(again.rating, 5, "the latest closing entry's rating");
+  assert.match(failed(await lib(["book", "again", "Project Hail Mary", "--rating", "4"]), "usage", EXIT.usage).message, /--rating and --review need --finished/);
+  const noted = title(await lib(["book", "note", "Project Hail Mary", "read it on the flight", "--on", "2026"]), "updated");
+  assert.deepEqual(noted.entries.find((e) => e.type === "note")!.on, { date: "2026", precision: "year" });
+  assert.deepEqual(envelope(await lib(["book", "note", "Project Hail Mary", "warns", "--on", "?"])).warnings, ["title is done; use start if he is on it"]);
+  const rated = title(await lib(["book", "rate", "Project Hail Mary", "4½"]), "updated");
+  assert.equal(rated.rating, 4.5, "4½ on the positional too");
+
+  const seen = title(await lib(["movie", "add", "Blade Runner", "--no-lookup", "--seen-before", "--finished", "--on", "2026-09-11", "--rating", "4.5"]));
+  assert.deepEqual(seen.entries.map((e) => [e.type, e.on, e.rating]), [
+    ["finish", { date: null, precision: "unknown" }, null],
+    ["finish", { date: "2026-09-11", precision: "day" }, 4.5],
+  ]);
+  const seenDated = title(await lib(["movie", "add", "Blade Runner 2049", "--no-lookup", "--seen-before", "2019", "--started"]));
+  assert.deepEqual(seenDated.entries.map((e) => [e.type, e.on]), [
+    ["finish", { date: "2019", precision: "year" }],
+    ["again", { date: "2026-09-12", precision: "day" }],
+  ], "--seen-before takes a date when one follows, and --on defaults to today in the effective timezone");
+  const celeste = title(await lib(["game", "add", "Celeste", "--want", "--actor", "codex"]));
+  assert.deepEqual(celeste.entries[0]!.on, { date: "2026-09-12", precision: "day" });
+
+  const human = await lib(["book", "get", "Project Hail Mary"], { tty: true });
+  const lines = human.stdout.split("\n");
+  const at = (pattern: RegExp) => lines.findIndex((line) => pattern.test(line));
+  assert.match(human.stdout, /^diary \(6\), newest first$/m);
+  const order = [at(/^  2026-09-11 {2,}finish/), at(/^  2026-09-11 {2,}again/), at(/^  2026-09-07~w {2,}finish/), at(/^  2026-08~m {2,}start/), at(/^  2026~y {2,}note/), at(/^  \? {2,}note/)];
+  assert.ok(order.every((i) => i > 0), `every marker prints: ${JSON.stringify(order)}\n${human.stdout}`);
+  assert.deepEqual([...order].sort((a, b) => a - b), order, "newest first: day, week, month, year, then ?");
+});
+
+test("refs by name everywhere: exact, case-insensitive, alias, substring; several matches are a needs on ref with the titles; another medium is named; ids are checked against the group", async () => {
+  const skyward = title(await lib(["book", "update", "Skyward", "--alias", "Sky1", "--priority", "later"]), "updated");
+  assert.deepEqual(skyward.aliases, ["Sky1"]);
+  assert.equal(result<AnyTitle>(await lib(["book", "get", "sky1"])).id, skyward.id, "alias");
+  assert.equal(result<AnyTitle>(await lib(["book", "get", "hail mary"])).name, "Project Hail Mary", "substring");
+  assert.equal(result<AnyTitle>(await lib(["book", "get", "SKYWARD"])).id, skyward.id, "case");
+  assert.equal(result<AnyTitle>(await lib(["media", "get", "Skyward"])).medium, "book", "media resolves across media");
+
+  const ambiguous = await lib(["movie", "start", "Dune"]);
+  const error = failed(ambiguous, "needs", EXIT.rejected);
+  assert.equal(error.needs!.field, "ref");
+  assert.equal(error.candidateKind, "title");
+  assert.deepEqual(new Set((error.candidates as AnyTitle[]).map((t) => t.id)), new Set(error.needs!.options));
+  assert.match(error.message, /^"Dune" names 2 movies \(m_[a-z0-9]{10}, m_[a-z0-9]{10}\); use the id$/);
+  assert.equal(error.hint, "pass the title's id as the ref, one of: " + (error.candidates as AnyTitle[]).map((t) => `${t.id} "${t.name}" (${t.year}, ${t.status})`).join(", "));
+  const ambiguousGet = await lib(["movie", "get", "Dune"]);
+  assert.equal(failed(ambiguousGet, "needs", EXIT.rejected).candidateKind, "title");
+  const human = await lib(["movie", "get", "Dune"], { tty: true });
+  assert.equal(human.code, EXIT.rejected);
+  assert.match(human.stdout, /^rejected$/m);
+  assert.match(human.stdout, /^  m_[a-z0-9]{10}  curious  Dune \(2021\)$/m);
+  assert.match(human.stdout, /^  pass the title's id as the ref/m);
+
+  const wrong = await lib(["game", "get", "Skyward"]);
+  const elsewhere = failed(wrong, "not_found", EXIT.rejected);
+  assert.match(elsewhere.message, new RegExp(`^title: no game "Skyward"; found as book ${skyward.id}; use life book$`));
+  assert.match(elsewhere.hint!, /run `life game list --text "<part of the name>"`/);
+  assert.match(failed(await lib(["game", "get", skyward.id]), "not_found", EXIT.rejected).message, /is a book, not a game; use life book/);
+  assert.match(failed(await lib(["game", "start", "Skyward"]), "not_found", EXIT.rejected).message, /found as book/);
+  assert.match(failed(await lib(["book", "start", "Nope"]), "not_found", EXIT.rejected).message, /^title: no book "Nope"$/);
+});
+
+test("entry commands and corrections: start, progress, buy with a price, borrow needs --where, service, return, pause, resume, drop, finish with the next in a series, next --queue, series, rate, unrate, review, like, unlike, amend, unlog, relog, merge, trash, restore, history", async () => {
+  // Distinct commands are recorded at distinct instants; equal timestamps deliberately use the derivation rank.
+  let tick = Date.parse(LIB_NOW);
+  const stepLib = (args: string[], opts: InProcessOptions = {}) =>
+    lib(args, { ...opts, clock: fixedClock(new Date(tick += 1000).toISOString(), TZ) });
+  const hk = title(await stepLib(["game", "add", "Hollow Knight", "--want", "--platform", "Switch", "--actor", "codex", "--evidence", 'chat:2026-09-12 "wants to play it"']));
+  assert.equal(hk.status, "backlog");
+  assert.equal(hk.catalog!.externalId, "1", "one exact match among two hits auto-links");
+  assert.equal(hk.detail.platform, "Switch");
+  assert.deepEqual(hk.origin.evidence, ['chat:2026-09-12 "wants to play it"']);
+
+  const started = title(await stepLib(["game", "start", "hollow knight", "--progress", "2 hours in", "--minutes", "120"]), "updated");
+  assert.equal(started.status, "active");
+  const start = started.entries.at(-1)!;
+  assert.deepEqual([start.type, start.progress, start.minutes, start.on], ["start", "2 hours in", 120, { date: "2026-09-12", precision: "day" }], "--on defaults to today");
+  const progressed = await stepLib(["game", "progress", "Hollow Knight", "5 hours in", "--minutes", "45"], { tty: true });
+  assert.match(progressed.stdout, new RegExp(`^updated ${hk.id} v3  Hollow Knight \\(2017\\)  game  active$`, "m"), "every success line carries the id");
+  assert.deepEqual(envelope(await stepLib(["game", "progress", "Celeste", "1 hour in"])).warnings, ["title is backlog; use start if he is on it"]);
+
+  const bought = title(await stepLib(["game", "buy", "Hollow Knight", "--where", "Steam", "--price", "14.99"]), "updated");
+  assert.equal(bought.ownership, "owned");
+  assert.deepEqual(bought.ownershipDetail, { where: "Steam", since: { date: "2026-09-12", precision: "day" }, price: { amount: 14.99, currency: "USD" } });
+  assert.deepEqual(bought.entries.at(-1)!.spend, { amount: 14.99, currency: "USD", kind: "purchase" }, "--currency defaults from the region, --kind to purchase");
+  const rental = title(await stepLib(["movie", "buy", "Arrival", "--price", "3.99", "--kind", "rental", "--currency", "eur", "--where", "Apple TV"]), "updated");
+  assert.deepEqual(rental.entries.at(-1)!.spend, { amount: 3.99, currency: "EUR", kind: "rental" });
+  assert.match(failed(await stepLib(["game", "borrow", "Celeste"]), "usage", EXIT.usage).message, /^life game borrow: pass --where <lender>$/);
+  assert.equal(title(await stepLib(["game", "borrow", "Celeste", "--where", "a friend"]), "updated").ownership, "borrowed");
+  const onService = title(await stepLib(["game", "service", "Celeste", "--where", "Game Pass"]), "updated");
+  assert.equal(onService.ownership, "service");
+  assert.equal(onService.ownershipDetail!.where, "Game Pass");
+  assert.equal(title(await stepLib(["game", "return", "Celeste"]), "updated").ownership, "none");
+  const nothing = failed(await stepLib(["game", "return", "Celeste"]), "rejected", EXIT.rejected);
+  assert.equal(nothing.message, "return: ownership is none; nothing to return");
+  assert.match(nothing.hint!, /record `buy`, `borrow`, or `service` first/);
+
+  assert.equal(title(await stepLib(["game", "pause", "Hollow Knight", "--text", "waiting for a patch"]), "updated").status, "paused");
+  const refused = failed(await stepLib(["game", "pause", "Hollow Knight"]), "rejected", EXIT.rejected);
+  assert.equal(refused.message, "pause: title is paused; not active");
+  assert.match(refused.hint!, /`life game get <ref>` shows the status and the diary/);
+  const refusedHuman = await stepLib(["book", "start", "Skyward"], { tty: true });
+  assert.equal(refusedHuman.code, EXIT.rejected);
+  assert.match(refusedHuman.stdout, /^rejected m_[a-z0-9]{10}\n  - start: title is done; already done; use again\n  /, "a rejection on a resolved title names its id, as task rejections do");
+  assert.equal(title(await stepLib(["game", "resume", "Hollow Knight"]), "updated").status, "active");
+  assert.match(failed(await stepLib(["game", "drop", "Celeste"]), "usage", EXIT.usage).message, /missing <text>/);
+  const dropped = title(await stepLib(["game", "drop", "Celeste", "not fun anymore, the difficulty spikes are the problem", "--rating", "2"]), "updated");
+  assert.equal(dropped.status, "dropped");
+  assert.equal(dropped.review, "not fun anymore, the difficulty spikes are the problem");
+  assert.equal(dropped.rating, 2);
+
+  const movies = result<AnySummary[]>(await stepLib(["movie", "list", "--text", "Dune"]));
+  const dune = movies.find((row) => row.year === 2021)!;
+  const dune84 = movies.find((row) => row.year === 1984)!;
+  const finished = await stepLib(["movie", "finish", dune.id, "--rating", "4", "--review", "big screen stuff", "--on", "2026-09-05"]);
+  const done = title(finished, "updated");
+  assert.equal(done.status, "done");
+  assert.equal(done.rating, 4);
+  assert.equal(done.review, "big screen stuff");
+  assert.deepEqual((envelope(finished).result as { next: unknown }).next, { externalId: "693134", name: "Dune: Part Two", position: 2, titleId: null });
+  assert.deepEqual(envelope(finished).warnings, ['Next in Dune Collection: "Dune: Part Two"']);
+  const again = failed(await stepLib(["movie", "finish", dune.id]), "rejected", EXIT.rejected);
+  assert.equal(again.message, "finish: title is done; already done; use again");
+
+  const next = result<{ seriesEntry: { name: string; externalId: string }; title: null }>(await stepLib(["movie", "next", dune.id]));
+  assert.equal(next.seriesEntry.name, "Dune: Part Two");
+  assert.equal(next.title, null);
+  assert.match((await stepLib(["movie", "next", dune.id], { tty: true })).stdout, /^Next after Dune: "Dune: Part Two" \(#2\), catalog 693134; not in the library; pass --queue to add it to the backlog$/m);
+  const queued = title(await stepLib(["movie", "next", dune.id, "--queue", "--actor", "codex"]));
+  assert.equal(queued.name, "Dune: Part Two");
+  assert.equal(queued.status, "backlog");
+  assert.equal(queued.catalog!.externalId, "693134");
+  assert.deepEqual(queued.origin.evidence, [`series:${dune.id}`]);
+  const queuedAgain = await stepLib(["movie", "next", dune.id, "--queue"]);
+  assert.equal(queuedAgain.code, EXIT.ok);
+  assert.match(envelope(queuedAgain).warnings![0]!, new RegExp(`already in the library as ${queued.id} \\(backlog\\); nothing queued`));
+  const series = result<{ name: string; position: number; entries: { name: string; title: { id: string } | null }[] }>(await stepLib(["movie", "series", "Dune: Part Two"]));
+  assert.equal(series.name, "Dune Collection");
+  assert.equal(series.position, 2);
+  assert.deepEqual(series.entries.map((e) => [e.name, e.title?.id ?? null]), [["Dune", dune.id], ["Dune: Part Two", queued.id], ["Dune: Part Three", null]]);
+  const seriesHuman = await stepLib(["movie", "series", dune.id], { tty: true });
+  assert.match(seriesHuman.stdout, /^Dune Collection \(this title is #1\)$/m);
+  assert.match(seriesHuman.stdout, /^  #3  Dune: Part Three  2026-12-18  999     not in the library$/m);
+  assert.match((await stepLib(["movie", "series", "Arrival"], { tty: true })).stdout, /^Arrival is not in a series/);
+
+  assert.equal(title(await stepLib(["movie", "rate", dune.id, "4.5"]), "updated").rating, 4.5);
+  assert.equal(title(await stepLib(["movie", "unrate", dune.id]), "updated").rating, null);
+  const nothingToRate = failed(await stepLib(["movie", "rate", "Arrival", "3"]), "rejected", EXIT.rejected);
+  assert.equal(nothingToRate.message, "rating: nothing to rate; finish or drop first");
+  assert.match(nothingToRate.hint!, /finish or drop the title first/);
+  assert.equal(title(await stepLib(["movie", "review", dune.id, "rewatch worthy"]), "updated").review, "rewatch worthy");
+  assert.equal(title(await stepLib(["movie", "like", dune.id]), "updated").liked, true);
+  assert.equal(title(await stepLib(["movie", "unlike", dune.id]), "updated").liked, false);
+
+  const finishEntry = done.entries.find((e) => e.type === "finish")!;
+  const amended = title(await stepLib(["movie", "amend", dune.id, finishEntry.id, "--on", "2026-09-06", "--no-rating", "--reason", "he named the day"]), "updated");
+  const amendedEntry = amended.entries.find((e) => e.id === finishEntry.id)!;
+  assert.deepEqual([amendedEntry.on, amendedEntry.rating, amendedEntry.text], [{ date: "2026-09-06", precision: "day" }, null, "rewatch worthy"]);
+  assert.match(failed(await stepLib(["movie", "amend", dune.id, finishEntry.id]), "usage", EXIT.usage).message, /nothing to change/);
+  const noEntry = failed(await stepLib(["movie", "amend", dune.id, "n_zzzzzzzzzz", "--on", "2026-09-06"]), "rejected", EXIT.rejected);
+  assert.match(noEntry.message, /^entry: no entry "n_zzzzzzzzzz" on m_/);
+  assert.match(noEntry.hint!, /entry ids \(n_\.\.\.\) are listed by `life movie get <ref>` and `life movie history <ref>`/);
+  const retyped = title(await stepLib(["movie", "amend", dune.id, finishEntry.id, "--type", "drop", "--text", "changed his mind"]), "updated");
+  assert.equal(retyped.status, "dropped", "amend changes the type and the diary re-derives");
+  title(await stepLib(["movie", "amend", dune.id, finishEntry.id, "--type", "finish"]), "updated");
+
+  const relogged = await stepLib(["movie", "relog", dune.id, finishEntry.id, "--to", "Dune: Part Two", "--reason", "wrong title"]);
+  created(relogged, "updated");
+  assert.ok(envelope(relogged).warnings!.some((warning) => warning === `Moved finish ${finishEntry.id} to Dune: Part Two (${queued.id}), now backlog`));
+  assert.ok(envelope(relogged).warnings!.some((warning) => warning.includes("finish on 2026-09-06 is not the latest entry")));
+  assert.equal(result<AnyTitle>(await stepLib(["movie", "get", dune.id])).status, "curious", "the source re-derived");
+  const partTwo = result<AnyTitle>(await stepLib(["movie", "get", "Dune: Part Two"]));
+  assert.equal(partTwo.status, "backlog", "the later want decides status after the backdated finish moves");
+  const unlogged = await stepLib(["movie", "unlog", "Dune: Part Two", finishEntry.id, "--reason", "logged twice"]);
+  const unlogReceipt = envelope(unlogged).result as { removed: { id: string; type: string }; record: AnyTitle };
+  assert.equal(unlogReceipt.removed.id, finishEntry.id);
+  assert.equal(unlogReceipt.record.status, "backlog", "the want remains");
+  assert.match((await stepLib(["movie", "unlog", "Dune: Part Two", unlogReceipt.record.entries[0]!.id, "--reason", "again"], { tty: true })).stdout, /^  removed 2026-09-12  want  n_/m);
+  title(await stepLib(["movie", "want", "Dune: Part Two"]), "updated");
+
+  const merged = await stepLib(["movie", "merge", dune84.id, dune.id, "--reason", "added twice"]);
+  created(merged, "updated");
+  assert.match(envelope(merged).warnings![0]!, new RegExp(`^Merged Dune \\(${dune84.id}\\) into Dune \\(${dune.id}\\); ${dune84.id} is in the trash$`));
+  const gone = result<AnyTitle>(await stepLib(["movie", "get", dune84.id]));
+  assert.ok(gone.deletedAt);
+  assert.match(gone.notes!, new RegExp(`merged into ${dune.id}`));
+  const trash = result<{ titles: { id: string }[] }>(await stepLib(["trash"]));
+  assert.ok(trash.titles.some((t) => t.id === dune84.id));
+  assert.match((await stepLib(["trash"], { tty: true })).stdout, /^Titles \(2\)\n  m_[a-z0-9]{10}  movie  curious  Dune \(1984\)/m);
+  assert.equal(result<AnyTitle>(await stepLib(["movie", "get", "Dune"])).id, dune.id, "the surviving title resolves by name after merge");
+  assert.equal(title(await stepLib(["movie", "restore", dune84.id]), "updated").deletedAt, null);
+  title(await stepLib(["movie", "delete", dune84.id, "--reason", "keep one"]), "updated");
+  const deleted = title(await stepLib(["movie", "delete", "Blade Runner 2049", "--reason", "never mind"]), "updated");
+  assert.ok(deleted.deletedAt);
+  assert.match(failed(await stepLib(["movie", "get", "Blade Runner 2049"]), "not_found", EXIT.rejected).message, /^title: no movie "Blade Runner 2049"$/);
+  assert.equal(result<AnyTitle>(await stepLib(["movie", "get", deleted.id])).id, deleted.id, "by id, deleted included");
+
+  const history = result<{ op: string }[]>(await stepLib(["game", "history", "Hollow Knight"]));
+  assert.deepEqual(history.map((e) => e.op), ["title.add", "title.start", "title.progress", "title.buy", "title.pause", "title.resume"]);
+  assert.match(failed(await stepLib(["game", "history", "Nope"]), "not_found", EXIT.rejected).message, /^title: no game "Nope"$/);
+  assert.match((await stepLib(["game", "history", "Hollow Knight"], { tty: true })).stdout, /title\.add .*created: Hollow Knight/);
+});
+
+test("views: now, curious, backlog, buy-list, shelf per medium and across media; diary, time, year, search; ranges take the date forms and refuse ?", async () => {
+  const hk = result<AnyTitle>(await lib(["game", "get", "Hollow Knight"]));
+  assert.deepEqual(result<AnySummary[]>(await lib(["game", "now"])).map((row) => row.id), [hk.id]);
+  const now = result<AnySummary[]>(await lib(["media", "now"]));
+  assert.ok(now.some((row) => row.id === hk.id && row.medium === "game"));
+  assert.ok(!now.some((row) => row.name === "Skyward"), "done titles are not on now");
+  assert.ok(result<AnySummary[]>(await lib(["movie", "curious"])).some((row) => row.name === "Arrival"));
+
+  const buyList = result<{ title: AnySummary; availability: AnyAvailability[]; lowestPrice: { amount: number; currency: string } | null }[]>(await lib(["media", "buy-list"]));
+  const partTwo = buyList.find((item) => item.title.name === "Dune: Part Two")!;
+  assert.deepEqual(partTwo.lowestPrice, { amount: 5.99, currency: "USD" });
+  assert.deepEqual(partTwo.availability.map((row) => row.kind), ["buy", "rent"]);
+  assert.ok(buyList.some((item) => item.title.name === "Severance" && item.lowestPrice === null));
+  assert.match((await lib(["movie", "buy-list"], { tty: true })).stdout, /Dune: Part Two \(2024\).*lowest 5\.99 USD\n  buy   Apple TV  19\.99 USD/);
+  assert.equal(result<AnySummary[]>(await lib(["media", "backlog"])).length, 0, "backlog needs ownership");
+  title(await lib(["movie", "service", "Dune: Part Two", "--where", "Apple TV"]), "updated");
+  assert.deepEqual(result<AnySummary[]>(await lib(["media", "backlog"])).map((row) => row.name), ["Dune: Part Two"]);
+  assert.deepEqual(result<AnySummary[]>(await lib(["movie", "backlog", "--service", "Apple TV"])).map((row) => row.name), ["Dune: Part Two"]);
+  assert.equal(result<AnySummary[]>(await lib(["movie", "backlog", "--service", "Netflix"])).length, 0);
+  assert.deepEqual(result<AnySummary[]>(await lib(["media", "backlog", "--wanted-again"])).map((row) => row.name).sort(), ["Dune: Part Two", "Skyward"], "Skyward already has a replay priority from the ref test");
+  title(await lib(["book", "update", "Project Hail Mary", "--priority", "soon"]), "updated");
+  assert.ok(result<AnySummary[]>(await lib(["media", "backlog", "--wanted-again"])).some((row) => row.name === "Project Hail Mary"), "a done title with a priority is wanted again");
+  const shelf = result<{ done: AnySummary[]; inProgress: AnySummary[]; untouched: AnySummary[]; dropped: AnySummary[] }>(await lib(["game", "shelf"]));
+  assert.deepEqual(shelf.inProgress.map((row) => row.id), [hk.id]);
+  assert.match((await lib(["media", "shelf"], { tty: true })).stdout, /^In progress \(1\)\n  m_[a-z0-9]{10}  game  active  owned  Hollow Knight \(2017\)/m);
+  assert.ok("entries" in result<AnyTitle[]>(await lib(["game", "now", "--full"]))[0]!, "--full on a view returns records");
+
+  const diary = result<{ entries: { type: string; medium: string; titleName: string; on: AnyOn }[] }>(await lib(["media", "diary", "--since", "2026-09", "--medium", "game"]));
+  assert.ok(diary.entries.length >= 5);
+  assert.ok(diary.entries.every((e) => e.medium === "game" && e.on.precision !== "unknown"));
+  assert.ok(diary.entries.every((e, i, all) => i === 0 || all[i - 1]!.on.date! >= e.on.date!), "newest first");
+  assert.equal(result<{ entries: unknown[] }>(await lib(["media", "diary", "--since", "2026-09-07~w", "--until", "2026-09-07~w", "--limit", "2"])).entries.length, 2);
+  assert.match(failed(await lib(["media", "diary", "--since", "?"]), "usage", EXIT.usage).message, /^--since: \? cannot bound a range$/);
+  assert.match(failed(await lib(["media", "diary", "--since", "2026-09-10", "--until", "2026-09-01"]), "rejected", EXIT.rejected).message, /is after until 2026-09-01/);
+  assert.match((await lib(["media", "diary", "--medium", "game"], { tty: true })).stdout, /^2026-09-12  game  Hollow Knight  buy /m);
+
+  const time = result<{ from: string; to: string; total: { minutes: Record<string, number>; spend: Record<string, { purchase: number }> }; weeks: { from: string }[]; unplaced: number }>(await lib(["media", "time", "--since", "2026-09-07~w", "--until", "2026-09-07~w"]));
+  assert.equal(time.from, "2026-09-07");
+  assert.equal(time.to, "2026-09-13");
+  assert.equal(time.total.minutes.game, 165, "120 and 45 today");
+  assert.equal(time.total.spend.USD!.purchase, 14.99);
+  assert.equal(time.weeks.length, 1);
+  assert.equal(result<{ weeks: unknown[] }>(await lib(["media", "time", "--weeks", "3"])).weeks.length, 3);
+  assert.match(failed(await lib(["media", "time", "--weeks", "0"]), "rejected", EXIT.rejected).message, /^time: weeks: /);
+  assert.match((await lib(["media", "time", "--since", "2026-09"], { tty: true })).stdout, /^Time 2026-09-01 to 2026-09-13: game 165 min; 3\.99 EUR rental; 14\.99 USD purchase/m);
+
+  const year = result<{ year: number; finished: { title: { name: string }; entry: { on: AnyOn } }[]; dropped: { title: { name: string } }[]; again: number; byMedium: Record<string, { count: number; avgRating: number | null }> }>(await lib(["media", "year", "2026"]));
+  assert.equal(year.year, 2026);
+  assert.deepEqual(year.finished.map((item) => item.title.name).sort(), ["Blade Runner", "Project Hail Mary", "Project Hail Mary", "Skyward"]);
+  assert.equal(year.again, 2, "Project Hail Mary and the seen-before Blade Runner completion are replays");
+  assert.deepEqual(year.dropped.map((item) => item.title.name), ["Celeste"]);
+  assert.equal(year.byMedium.book!.count, 3);
+  assert.equal(year.byMedium.book!.avgRating, 4.5, "the later rate command changed the replay rating to 4.5");
+  assert.equal(result<{ finished: unknown[] }>(await lib(["media", "year", "2026", "--medium", "movie"])).finished.length, 1);
+  assert.match(failed(await lib(["media", "year", "26"]), "usage", EXIT.usage).message, /<yyyy> must be a four-digit year/);
+  assert.match((await lib(["media", "year", "2026"], { tty: true })).stdout, /^2026: 4 finished \(2 again\), 1 dropped; /m);
+
+  assert.deepEqual(result<AnySummary[]>(await lib(["media", "search", "waiting for a patch"])).map((row) => row.id), [hk.id], "entry text is searched");
+  assert.deepEqual(result<AnySummary[]>(await lib(["media", "search", "Sanderson"])).map((row) => row.name), ["Skyward"], "creators are searched");
+  assert.match(failed(await lib(["media", "search", "  "]), "rejected", EXIT.rejected).message, /^search: text is required/);
+
+  const file = join(scratch, "library-export.json");
+  const exported = result<{ titles: number; log: number }>(await lib(["export", file]));
+  assert.ok(exported.titles >= 8, `titles are counted: ${exported.titles}`);
+  assert.match((await lib(["export", file], { tty: true })).stdout, /\d+ events, \d+ titles, \d+ log to /);
+});
+
+test("media availability re-pulls one title or the backlog one transaction at a time; a source that is down is catalog_unavailable with exit 3", async () => {
+  const one = await lib(["media", "availability", "Hollow Knight", "--actor", "codex"]);
+  assert.equal(envelope(one).ok, true, one.stdout + one.stderr);
+  assert.equal((envelope(one).result as { outcome: string }).outcome, "unchanged");
+  igdb.failNext(new CatalogUnavailable("IGDB is unavailable (HTTP 503): down", 503), "availability");
+  const down = await lib(["media", "availability", "Hollow Knight"]);
+  assert.match(failed(down, "catalog_unavailable", EXIT.catalog).issues[0]!, /^catalog_unavailable: IGDB is unavailable/);
+
+  const report = result<{ refreshed: { name: string; outcome: string }[]; failed: unknown[] }>(await lib(["media", "availability", "--backlog"]));
+  assert.deepEqual(report.refreshed.map((r) => r.name).sort(), ["Dune: Part Two", "Severance"]);
+  assert.equal(report.failed.length, 0);
+  tmdb.failAlways(new CatalogUnavailable("TMDB is unavailable (HTTP 503): down", 503), "availability");
+  try {
+    const partly = await lib(["media", "availability", "--backlog", "--medium", "show"]);
+    const error = failed(partly, "catalog_unavailable", EXIT.catalog);
+    assert.match(error.message, /^1 of 1 titles failed: m_[a-z0-9]{10} \(Severance\): catalog_unavailable: TMDB is unavailable/);
+    assert.equal(result<{ failed: unknown[] }>(partly).failed.length, 1);
+    assert.match((await lib(["media", "availability", "--backlog", "--medium", "show"], { tty: true })).stdout, /^Refreshed 0, failed 1\.\nFailed\n  m_/);
+  } finally {
+    tmdb.recover();
+  }
+  assert.match(failed(await lib(["media", "availability"]), "usage", EXIT.usage).message, /pass a ref or --backlog$/);
+  assert.match(failed(await lib(["media", "availability", "x", "--backlog"]), "usage", EXIT.usage).message, /not both/);
+  assert.match(failed(await lib(["media", "availability", "Nope"]), "not_found", EXIT.rejected).message, /^title: no title "Nope"$/);
+});
+
+test("doctor reports each catalog key present or not, the IGDB token file and its expiry, and LIFE_REGION; --online searches each configured source through the injected catalogs", async () => {
+  const io = { credentials: new CredentialStore(join(scratch, "no-credentials", "google")) };
+  const check = (report: Report, name: string) => report.checks.find((c) => c.name === name)!;
+  const withoutKeys = await lib(["doctor"], { io });
+  assert.equal(withoutKeys.code, EXIT.ok, withoutKeys.stdout + withoutKeys.stderr);
+  const bare = result<Report>(withoutKeys);
+  assert.equal(check(bare, "catalog tmdb").status, "warn");
+  assert.match(check(bare, "catalog tmdb").value, /^LIFE_TMDB_KEY is not set; movies and shows are created without a catalog/);
+  assert.ok(check(bare, "catalog tmdb").hint!.includes(ENV_FILE));
+  assert.equal(check(bare, "catalog openlibrary").status, "ok");
+  assert.match(check(bare, "catalog openlibrary").value, /^Open Library needs no key; books look up there$/);
+  assert.equal(check(bare, "catalog igdb").status, "warn");
+  assert.match(check(bare, "catalog igdb").value, /^LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are not set; games are created without a catalog/);
+  assert.equal(check(bare, "igdb token").status, "ok");
+  assert.equal(check(bare, "igdb token").value, `no token file at ${join(tokenDir, "token.json")} yet; not needed until LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are set`);
+  assert.equal(check(bare, "region").value, "US (default; set LIFE_REGION to change it)");
+  assert.ok(!bare.checks.some((c) => c.name.endsWith(" online")), "offline by default");
+
+  const keys = { LIFE_TMDB_KEY: "tmdb-secret-token", LIFE_IGDB_CLIENT_ID: "igdb-client-id", LIFE_IGDB_CLIENT_SECRET: "igdb-client-secret", LIFE_REGION: "gb" };
+  await writeFile(join(tokenDir, "token.json"), JSON.stringify({ accessToken: "igdb-access-token", expiresAt: "2026-12-01T00:00:00Z" }));
+  const withKeys = await lib(["doctor"], { env: keys, io });
+  assert.equal(withKeys.code, EXIT.ok, withKeys.stdout + withKeys.stderr);
+  const keyed = result<Report>(withKeys);
+  assert.equal(check(keyed, "catalog tmdb").status, "ok");
+  assert.match(check(keyed, "catalog tmdb").value, /^LIFE_TMDB_KEY is set \(never shown\); movies and shows look up at TMDB$/);
+  assert.match(check(keyed, "catalog igdb").value, /^LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are set \(never shown\); games look up at IGDB$/);
+  assert.equal(check(keyed, "igdb token").status, "ok");
+  assert.equal(check(keyed, "igdb token").value, `file present at ${join(tokenDir, "token.json")}; expires 2026-12-01T00:00:00Z`);
+  assert.equal(check(keyed, "region").value, 'GB (LIFE_REGION="gb", normalized)');
+  for (const secret of ["tmdb-secret-token", "igdb-client-secret", "igdb-client-id", "igdb-access-token"]) assert.ok(!withKeys.stdout.includes(secret) && !withKeys.stderr.includes(secret), `${secret} never appears`);
+
+  await writeFile(join(tokenDir, "token.json"), JSON.stringify({ accessToken: "igdb-access-token", expiresAt: "2026-09-12T20:00:00Z" }));
+  const expiring = result<Report>(await lib(["doctor"], { env: keys, io }));
+  assert.equal(check(expiring, "igdb token").status, "warn");
+  assert.match(check(expiring, "igdb token").value, /expires within a day \(2026-09-12T20:00:00Z\); the next game lookup refreshes it$/);
+  await writeFile(join(tokenDir, "token.json"), JSON.stringify({ accessToken: "igdb-access-token", expiresAt: "2026-09-01T00:00:00Z" }));
+  const expired = result<Report>(await lib(["doctor"], { io }));
+  assert.match(check(expired, "igdb token").value, /expired \(2026-09-01T00:00:00Z\); the next game lookup refreshes it, once LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are set$/);
+  assert.equal(expired.healthy, true, "a stale token is a warning");
+
+  const offline = result<Report>(await lib(["doctor", "--online"], { io }));
+  assert.equal(check(offline, "catalog tmdb online").status, "warn");
+  assert.equal(check(offline, "catalog tmdb online").value, "skipped: not configured");
+  assert.equal(check(offline, "catalog igdb online").value, "skipped: not configured");
+  assert.equal(check(offline, "catalog openlibrary online").status, "ok");
+  assert.equal(check(offline, "catalog openlibrary online").value, 'Open Library answered: 0 candidates for "Dune"');
+
+  const online = await lib(["doctor", "--online"], { env: keys, io });
+  assert.equal(online.code, EXIT.ok, online.stdout + online.stderr);
+  const live = result<Report>(online);
+  assert.equal(check(live, "catalog tmdb online").value, 'TMDB answered: 3 candidates for "Dune"');
+  assert.equal(check(live, "catalog igdb online").value, 'IGDB answered: 1 candidate for "Celeste"');
+  assert.deepEqual(live.checks.map((c) => c.name).slice(-8), ["catalog igdb", "igdb token", "region", "catalog tmdb online", "catalog openlibrary online", "catalog igdb online", "timezone", "actor"]);
+  igdb.failNext(new CatalogUnavailable("IGDB is unavailable (HTTP 503): down", 503), "search");
+  const down = await lib(["doctor", "--online"], { env: keys, io });
+  const error = failed(down, "rejected", EXIT.rejected);
+  assert.equal(error.message, "1 check failed: catalog igdb online");
+  assert.match(check(result<Report>(down), "catalog igdb online").value, /^IGDB could not answer a search for "Celeste": IGDB is unavailable/);
+
+  const human = await lib(["doctor"], { tty: true, io });
+  assert.match(human.stdout, /^catalog tmdb +warn +LIFE_TMDB_KEY is not set/m);
+  assert.match(human.stdout, /^catalog openlibrary +ok +Open Library needs no key/m);
+  assert.match(human.stdout, /^region +ok +US \(default/m);
 });

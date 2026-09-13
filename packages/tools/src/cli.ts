@@ -1,17 +1,20 @@
 // The `life` CLI: a thin client of the Tools facade for a shell, usable by a
 // program. Every command maps onto one library call; the CLI adds argument
-// parsing, the actor rule, relative dates, the sub-task and scope questions on
-// a terminal, human or JSON output, and stable exit codes. Nothing here writes
-// a record; calendar writes go through the provider inside the library.
+// parsing, the actor rule, relative dates, the sub-task, scope, and catalog
+// questions on a terminal, human or JSON output, and stable exit codes.
+// Nothing here writes a record; calendar writes go through the provider inside
+// the library, and catalog lookups through the adapters it was opened with.
 //
 // One declarative command table (COMMANDS) drives parsing, validation, and
-// help at every layer, so the three cannot drift. An agent's contract is the
-// JSON envelope: with --json, or whenever stdout is not a terminal, stdout
-// carries exactly one JSON object and everything else goes to stderr.
+// help at every layer, so the three cannot drift. The four medium groups
+// (movie, show, game, book) are generated from one table with the flags that
+// do not apply to a medium left out. An agent's contract is the JSON envelope:
+// with --json, or whenever stdout is not a terminal, stdout carries exactly one
+// JSON object and everything else goes to stderr.
 //
 //   life <group> <command> [args] [flags]
 //   exit codes: 0 ok, 1 rejected or invalid, 2 duplicate candidates,
-//               3 database or provider unavailable, 64 usage
+//               3 database, provider, or catalog unavailable, 64 usage
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -28,14 +31,19 @@ import { GoogleOAuth, NeedsReauth, googleClientIdPresent } from "./calendar/goog
 import { maxAgeFromEnv, type Day, type Freshness, type ScheduleEntry, type SlotsView, type WeekView } from "./calendar/schedule.ts";
 import type { Adapters, SyncReport } from "./calendar/sync.ts";
 import {
+  RATINGS,
   isTimedWhen,
   type Account,
   type AnyRecord,
+  type Availability,
   type Calendar,
   type CalendarRecord,
   type CalendarUpdate,
   type Ctx,
   type Due,
+  type Entry,
+  type EntryInput,
+  type EntryPatch,
   type Event,
   type EventAdd,
   type EventUpdate,
@@ -45,10 +53,13 @@ import {
   type LabelAdd,
   type LabelUpdate,
   type LogEntry,
+  type Medium,
   type Needs,
+  type On,
   type Project,
   type ProjectAdd,
   type ProjectUpdate,
+  type Rating,
   type Receipt,
   type Section,
   type Task,
@@ -56,10 +67,23 @@ import {
   type TaskList,
   type TaskMove,
   type TaskUpdate,
+  type Title,
+  type TitleAdd,
+  type TitleList,
+  type TitleSummary,
+  type TitleUpdate,
   type When,
 } from "./contract.ts";
 import type { Clock } from "./core.ts";
 import { createPool, databaseUrl } from "./db/client.ts";
+import { CatalogUnavailable, CatalogUnconfigured, HttpError, MEDIA_BY_SOURCE, SOURCE_BY_MEDIUM, readEnv, type Candidate } from "./media/catalog/adapter.ts";
+import { IGDB_TOKEN_DIR, igdbTokenFresh, igdbTokenPath, readIgdbToken } from "./media/catalog/igdb.ts";
+import { defaultCatalogs, type Catalogs } from "./media/catalog/index.ts";
+import { SOURCE_NAMES, normalizeRegion } from "./media/catalog/links.ts";
+import { lastEntry, orderEntries } from "./media/derive.ts";
+import { ON_FORMS, parseOn } from "./media/on.ts";
+import { CATALOG_UNAVAILABLE, type AvailabilityReport, type CandidateKind, type NextInSeries, type NextView, type SearchCandidate, type SeriesView, type TitleOps, type TitleReceipt } from "./media/titles.ts";
+import type { BuyItem, DiaryView, ShelfView, TimeView, ViewTitle, YearView } from "./media/views.ts";
 import { effectiveLabels, findInbox, indexProjects, projectPath, type ProjectContents, type ProjectNode, type SectionTasks } from "./organize.ts";
 import { PgStore } from "./store.ts";
 import type { CompleteOptions, DeleteOptions, ImportResult, TaskAssign } from "./tasks.ts";
@@ -69,11 +93,14 @@ import type { TodayView, TrashView, UpcomingView } from "./views.ts";
 
 // ------------------------------------------------------------------ public surface
 
-/** Exit codes. `provider` shares 3 with `database`: in both cases the thing behind the command could not be reached and nothing was done. */
-export const EXIT = { ok: 0, rejected: 1, duplicate: 2, database: 3, provider: 3, usage: 64 } as const;
+/** Exit codes. `provider` and `catalog` share 3 with `database`: in every case the thing behind the command could not be reached and nothing was done. */
+export const EXIT = { ok: 0, rejected: 1, duplicate: 2, database: 3, provider: 3, catalog: 3, usage: 64 } as const;
 
 /** The error codes an envelope can carry; each maps onto one exit code. */
-export type ErrorCode = "usage" | "rejected" | "duplicate" | "needs" | "not_found" | "db_unavailable" | "provider_unavailable" | "provider_rejected" | "internal";
+export type ErrorCode = "usage" | "rejected" | "duplicate" | "needs" | "not_found" | "db_unavailable" | "provider_unavailable" | "provider_rejected" | "catalog_unavailable" | "internal";
+
+/** What a `duplicate` or `needs` error's `candidates` hold: tasks, library titles, or catalog hits (LEISURE D94). */
+export type EnvelopeCandidateKind = "task" | CandidateKind;
 
 export type EnvelopeError = {
   code: ErrorCode;
@@ -81,7 +108,8 @@ export type EnvelopeError = {
   issues: string[];
   hint?: string;
   needs?: Needs;
-  candidates?: Task[];
+  candidates?: Task[] | Title[] | Candidate[];
+  candidateKind?: EnvelopeCandidateKind;
 };
 
 /** What JSON mode prints: exactly one of these on stdout. `result` is the library's return value, untouched. */
@@ -110,6 +138,10 @@ export type CliIo = {
   openUrl?: (url: string) => void;
   /** Replaces doctor's token check; default trades the account's refresh token for an access token through Google. */
   refreshToken?: (accountId: string) => Promise<void>;
+  /** Replaces the catalog adapters (tests pass FakeCatalogs); default one real adapter per source, each reading its key on first use. */
+  catalogs?: Catalogs;
+  /** Replaces where doctor looks for the IGDB token file; default `.local/igdb/` at the repository root. */
+  igdbTokenDir?: string;
 };
 
 /** Mirrors db/client.ts: the repository root .env, loaded when LIFE_DATABASE_URL is unset. */
@@ -273,10 +305,12 @@ type FlagDef = {
   default?: string;
   /** What the value refers to, so --verbose can report how it resolved. */
   ref?: RefKind;
+  /** A value flag whose value may be left out (`--seen-before` alone): the next token is its value only when `accepts` says so; without one the flag reads as a bare `true`. */
+  accepts?: (next: string) => boolean;
 };
 type FlagSpec = Readonly<Record<string, FlagDef>>;
 
-type RefKind = "project" | "section" | "label" | "filter" | "account" | "calendar" | "event";
+type RefKind = "project" | "section" | "label" | "filter" | "account" | "calendar" | "event" | "title";
 
 type Positional = {
   name: string;
@@ -287,7 +321,7 @@ type Positional = {
   ref?: RefKind;
 };
 
-type GroupName = "task" | "project" | "section" | "label" | "filter" | "account" | "calendar" | "event";
+type GroupName = "task" | "project" | "section" | "label" | "filter" | "account" | "calendar" | "event" | Medium | "media";
 
 type Rendered = {
   code: number;
@@ -299,6 +333,8 @@ type Rendered = {
   error?: EnvelopeError;
   /** A rejection the caller can turn into a question. */
   needs?: Needs;
+  /** With a catalog `needs`: the candidates the question lists as a numbered table. */
+  candidates?: Candidate[];
   /** Diagnostics for a terminal (copy freshness, view warnings): stderr in human mode, never printed in JSON mode. */
   stderr?: string[];
 };
@@ -357,7 +393,7 @@ const EXIT_MEANING: Record<number, string> = {
   [EXIT.ok]: "ok",
   [EXIT.rejected]: "rejected, invalid, or not found",
   [EXIT.duplicate]: "duplicate candidates (pass --allow-duplicate to add anyway)",
-  [EXIT.database]: "database or calendar provider unavailable (run `life doctor`)",
+  [EXIT.database]: "database, calendar provider, or catalog unavailable (run `life doctor`)",
   [EXIT.usage]: "usage error (unknown command or flag, missing argument)",
 };
 
@@ -441,6 +477,7 @@ const POS = {
   sectionId: { name: "id", help: "A section id (s_...). See `life project tree` or `life section list <project-ref>`." },
   labelRef: { name: "ref", help: "A label name or id (l_...). See `life label list`." },
   filterRef: { name: "ref", help: "A saved filter's name or id (f_...). See `life filter list`." },
+  titleId: { name: "id", help: "A title id (m_ followed by ten characters); a deleted title is only found by id. See `life trash`." },
 };
 
 const dateFlagDef = (help: string): FlagDef => ({ kind: "value", type: DATE_TYPE, help: `${help}: ${DATE_HELP}.` });
@@ -554,7 +591,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 
 // ------------------------------------------------------------------ hints: every failure names what to do next
 
-const NOT_FOUND = /^(?:[\w.]+): no (task|project|section|label|filter|account|calendar|event) "(.+?)"(?:;.*)?$/;
+const NOT_FOUND = /^(?:[\w.]+): no (task|project|section|label|filter|account|calendar|event|title|movie|show|game|book) "(.+?)"(?:;.*)?$/;
 
 /** The hint for a filter error: the grammar line that applies. */
 function filterHint(message: string): string {
@@ -581,8 +618,21 @@ function hintsFor(command: CommandDef | null, issues: string[]): string[] {
     if (!hints.includes(hint)) hints.push(hint);
   };
   const cmd = command ? commandName(command) : "<group> <command>";
+  const group = command?.group && isMedium(command.group) ? command.group : "<medium>";
   for (const issue of issues) {
     if (/neither a saved filter nor a valid query|Unknown filter term|filter: (Unclosed|Unexpected|Missing closing|Empty filter|Invalid filter|\w+: expected today)|query: /.test(issue)) add(filterHint(issue));
+    else if (/^(?:title|ref|into|to|\w+): no (?:title|movie|show|game|book) "/.test(issue))
+      add(`a ref is a title id (m_...) or a name; run \`life ${group} list --text "<part of the name>"\` to find it (deleted titles are in \`life trash\`; another medium's titles are under its own group)`);
+    else if (/^(?:ref|into|to): ".*" names \d+ /.test(issue)) add("several titles match the name; pass the id (m_...) of the one meant, listed in error.candidates");
+    else if (issue.startsWith(`${CATALOG_UNAVAILABLE}:`)) add("the catalog source could not be reached and nothing was stored; retry later (with the same --key for a write), or run `life doctor`");
+    else if (/^catalog: .*is not set in the root \.env/.test(issue)) add(`put the key in ${ENV_FILE}; \`add --no-lookup\` creates the title without a catalog and \`refresh\` links it once the key exists`);
+    else if (/^catalog: .*already linked to/.test(issue)) add("the work is in the library already; use that title, or `merge` the two");
+    else if (/^catalog: \d+ .* candidates for/.test(issue)) add(command?.flags.catalog ? "pass --catalog <id> with one of the ids in error.candidates, or --year to narrow the search" : `run \`life ${group} link <ref> <id>\` with one of the ids in error.candidates`);
+    else if (/^catalog: /.test(issue)) add(`pass --catalog <id> from \`life ${group} lookup "<name>"\`, or --no-lookup to create the title without a catalog`);
+    else if (/^entry: no entry "/.test(issue)) add(`entry ids (n_...) are listed by \`life ${group} get <ref>\` and \`life ${group} history <ref>\``);
+    else if (/^(?:rating|review): nothing to/.test(issue)) add("finish or drop the title first (`finish --rating 4.5`), or name a closing entry with --entry n_...");
+    else if (/^\w+: title is \w+; /.test(issue)) add(`the hint after the semicolon names the command that fits; \`life ${group} get <ref>\` shows the status and the diary`);
+    else if (/^return: ownership is none/.test(issue)) add("nothing is owned, borrowed, or on a service for this title; record `buy`, `borrow`, or `service` first");
     else if (/no project "|project ".*" is deleted|no section "|section ".*" is deleted|pass project to look up section/.test(issue))
       add("run `life project tree` to see project paths, project ids, and section ids (deleted ones are in `life trash`)");
     else if (/no label "/.test(issue)) add("run `life label list` to see label names and ids");
@@ -616,39 +666,76 @@ function isNotFound(issues: string[], args: string[]): boolean {
 
 // ------------------------------------------------------------------ rendering results
 
-/** A provider failure among a rejected receipt's issues: unreachable (exit 3) or refused (exit 1). */
-function providerCode(issues: string[]): "provider_unavailable" | "provider_rejected" | null {
+/** A provider or catalog failure among a rejected receipt's issues: unreachable (exit 3) or refused (exit 1). */
+function providerCode(issues: string[]): "provider_unavailable" | "provider_rejected" | "catalog_unavailable" | null {
   if (issues.some((issue) => issue.startsWith(`${PROVIDER_UNAVAILABLE}:`))) return "provider_unavailable";
+  if (issues.some((issue) => issue.startsWith(`${CATALOG_UNAVAILABLE}:`))) return "catalog_unavailable";
   if (issues.some((issue) => issue.startsWith(`${PROVIDER_REJECTED}:`))) return "provider_rejected";
   return null;
 }
 
-const receiptCode = (receipt: Receipt<unknown>): number =>
-  receipt.ok ? EXIT.ok : receipt.outcome === "duplicate" ? EXIT.duplicate : providerCode(receipt.issues) === "provider_unavailable" ? EXIT.provider : EXIT.rejected;
+const UNAVAILABLE_CODES: ReadonlySet<string> = new Set(["provider_unavailable", "catalog_unavailable"]);
 
-type AnyReceipt = Receipt<AnyRecord | CalendarRecord>;
+const receiptCode = (receipt: Receipt<unknown>): number =>
+  receipt.ok ? EXIT.ok : receipt.outcome === "duplicate" ? EXIT.duplicate : UNAVAILABLE_CODES.has(providerCode(receipt.issues) ?? "") ? EXIT.provider : EXIT.rejected;
+
+/** What a title receipt adds to the receipt shape (titles.ts `TitleReceipt`); every other receipt leaves these unset. */
+type ReceiptExtras = { warnings?: string[]; candidateKind?: CandidateKind; next?: NextInSeries; removed?: Entry };
+type AnyReceipt = (Receipt<AnyRecord | CalendarRecord | Title> | TitleReceipt) & ReceiptExtras;
+
+/** The candidates a failed receipt carries: tasks or titles on a duplicate, titles on a `needs` on ref, catalog hits on a `needs` on catalog. */
+const candidatesOf = (receipt: AnyReceipt): (Task | Title | Candidate)[] => ((receipt as { candidates?: (Task | Title | Candidate)[] }).candidates ?? []);
+
+/** The `candidateKind` of a failed receipt: the receipt's own, else `task`, the only kind before the library. */
+const candidateKindOf = (receipt: AnyReceipt): EnvelopeCandidateKind => receipt.candidateKind ?? "task";
+
+const isTitle = (record: object): record is Title => "medium" in record && "entries" in record;
+const isCandidate = (record: object): record is Candidate => "externalId" in record && "inLibrary" in record;
+
+/** One candidate named for a hint: `t_x "Title"`, `m_x "Name" (2018, backlog)`, or `438631 "Dune" (2021)`. */
+function candidateLabel(candidate: Task | Title | Candidate): string {
+  if (isCandidate(candidate)) return `${candidate.externalId} "${candidate.name}"${candidate.year ? ` (${candidate.year})` : ""}${candidate.inLibrary ? ` [in the library as ${candidate.inLibrary}]` : ""}`;
+  if (isTitle(candidate)) return `${candidate.id} "${candidate.name}" (${[candidate.year, candidate.status].filter((v) => v !== null).join(", ")})`;
+  return `${candidate.id} "${candidate.title}"`;
+}
+
+/** The hint for a `needs` rejection: the exact flag and values to pass, or for a catalog or ref question the ids to choose among. */
+function needsHint(command: CommandDef, needs: Needs, candidates: (Task | Title | Candidate)[]): string {
+  const listed = candidates.length ? candidates.map(candidateLabel).join(", ") : needs.options.join(", ");
+  if (needs.field === "catalog") {
+    const narrow = /year differs|several exact matches/.test(needs.message) ? "; or --year <n> to narrow the search" : "";
+    if (command.flags.catalog) return `pass --catalog <id> with one of: ${listed}${narrow}`;
+    return `run \`life ${command.group ?? "<medium>"} link <ref> <id>\` with one of: ${listed}`;
+  }
+  if (needs.field === "ref") return `pass the title's id as the ref, one of: ${listed}`;
+  return `pass --${needs.field} ${needs.options.join("|")}`;
+}
 
 /** The envelope error for a failed receipt. */
 function receiptError(command: CommandDef, receipt: AnyReceipt, args: string[]): EnvelopeError | undefined {
   if (receipt.ok) return undefined;
+  const kind = candidateKindOf(receipt);
   if (receipt.outcome === "duplicate") {
-    const candidates = receipt.candidates as Task[];
-    const listed = candidates.map((c) => `${c.id} "${c.title}"`).join(", ");
+    const candidates = candidatesOf(receipt);
+    const listed = candidates.map(candidateLabel).join(", ");
     return {
       code: "duplicate",
-      message: receipt.issues[0] ?? "Similar open tasks exist",
+      message: receipt.issues[0] ?? (kind === "title" ? "A title with this name exists" : "Similar open tasks exist"),
       issues: receipt.issues,
       hint: `pass --allow-duplicate to add anyway, or reuse a candidate: ${listed}`,
-      candidates,
+      candidates: candidates as Task[] | Title[] | Candidate[],
+      candidateKind: kind,
     };
   }
   if (receipt.needs) {
+    const candidates = candidatesOf(receipt);
     return {
       code: "needs",
       message: receipt.needs.message,
       issues: receipt.issues,
-      hint: `pass --${receipt.needs.field} ${receipt.needs.options.join("|")}`,
+      hint: needsHint(command, receipt.needs, candidates),
       needs: receipt.needs,
+      ...(candidates.length ? { candidates: candidates as Task[] | Title[] | Candidate[], candidateKind: kind } : {}),
     };
   }
   const hints = hintsFor(command, receipt.issues);
@@ -660,16 +747,25 @@ function receiptError(command: CommandDef, receipt: AnyReceipt, args: string[]):
   };
 }
 
-/** One receipt: exit code from the outcome, the receipt as the result, one line plus issues as text. A receipt's own `warnings` (an event split, a first sync) join the envelope's. */
-function rendered(inv: Invocation, command: CommandDef, receipt: AnyReceipt & { warnings?: string[] }): Rendered {
+/**
+ * One receipt: exit code from the outcome, the receipt as the result, one line
+ * plus issues as text. A receipt's own `warnings` (an event split, a first
+ * sync, a lookup that failed) join the envelope's; a title receipt's are lifted
+ * there and nowhere else, so `result` carries it without them.
+ */
+function rendered(inv: Invocation, command: CommandDef, receipt: AnyReceipt): Rendered {
   const error = receiptError(command, receipt, inv.args);
   if (receipt.warnings) for (const warning of receipt.warnings) if (!inv.warnings.includes(warning)) inv.warnings.push(warning);
+  const { warnings: _lifted, ...result } = receipt;
+  const isTitleReceipt = receipt.candidateKind !== undefined || (receipt.ok && isTitle(receipt.record)) || (!receipt.ok && receipt.outcome === "rejected" && receipt.record !== undefined && isTitle(receipt.record));
+  const needs = !receipt.ok && receipt.outcome === "rejected" ? receipt.needs : undefined;
   return {
     code: receiptCode(receipt),
-    result: receipt,
+    result: isTitleReceipt ? result : receipt,
     text: async () => receiptText(receipt, await projectIndex(inv.tools), inv.tz, error?.hint),
     ...(error ? { error } : {}),
-    ...(!receipt.ok && receipt.outcome === "rejected" && receipt.needs ? { needs: receipt.needs } : {}),
+    ...(needs ? { needs } : {}),
+    ...(needs?.field === "catalog" && receipt.candidateKind === "catalog" ? { candidates: candidatesOf(receipt) as Candidate[] } : {}),
   };
 }
 
@@ -2162,6 +2258,1042 @@ const eventHistory: CommandDef = {
   },
 };
 
+// ------------------------------------------------------------------ library: shared pieces
+
+/** The four media, each a CLI group of its own (LEISURE D82); `media` holds the cross-media views. */
+const MEDIA: readonly Medium[] = ["movie", "show", "game", "book"];
+const isMedium = (word: string): word is Medium => (MEDIA as readonly string[]).includes(word);
+
+const TITLE_REF = "a title id (m_...) or a name: exact (case-insensitive), an alias, or a part of the name unique among the group's titles";
+const RATING_HELP = "half stars from 0.5 to 5, written 4.5 or 4½";
+const PROGRESS_VALUES = ["curious", "backlog", "active", "paused", "done", "dropped"] as const;
+const OWNERSHIP_VALUES = ["none", "owned", "service", "borrowed"] as const;
+const PRIORITY_VALUES = ["now", "soon", "later"] as const;
+const MOOD_VALUES = ["comfort", "immersive", "social", "learning", "low-energy"] as const;
+const FIT_VALUES = ["short", "medium", "long"] as const;
+const FORMAT_VALUES = ["audiobook", "physical", "kindle"] as const;
+const SPEND_KINDS = ["purchase", "iap", "rental"] as const;
+const ENTRY_TYPES = ["want", "start", "progress", "finish", "pause", "resume", "drop", "again", "note", "buy", "borrow", "return", "service"] as const;
+
+/** Sample names for each medium's examples. */
+const SAMPLE: Record<Medium, { one: string; two: string; series: string }> = {
+  movie: { one: "Arrival", two: "Dune: Part Two", series: "Dune" },
+  show: { one: "Severance", two: "The Bear", series: "Severance" },
+  game: { one: "Hollow Knight", two: "Fire Emblem: Fortune's Weave", series: "Hollow Knight" },
+  book: { one: "Skyward", two: "Project Hail Mary", series: "Skyward" },
+};
+
+const onFlagDef = (help: string, extra: Partial<FlagDef> = {}): FlagDef => ({ kind: "value", type: "date", help: `${help}: ${ON_FORMS}.`, ...extra });
+
+/** A flag that applies to some media only; `mediumFlags` drops it elsewhere, so `--platform` on `book` is a usage error. */
+type MediumFlagDef = FlagDef & { media?: readonly Medium[] };
+type MediumFlagSpec = Readonly<Record<string, MediumFlagDef>>;
+
+const BOOK: readonly Medium[] = ["book"];
+const GAME: readonly Medium[] = ["game"];
+const SCREEN: readonly Medium[] = ["movie", "show"];
+
+/** The flags of `spec` that apply to `medium`, with the marker stripped. */
+function mediumFlags(medium: Medium, spec: MediumFlagSpec): FlagSpec {
+  const out: Record<string, FlagDef> = {};
+  for (const [name, { media, ...def }] of Object.entries(spec)) if (!media || media.includes(medium)) out[name] = def;
+  return out;
+}
+
+const ON_FLAG = onFlagDef("When it happened", { default: "today" });
+const TEXT_FLAG: FlagDef = { kind: "value", type: "text", help: "A note recorded on the entry." };
+const MINUTES_FLAG: FlagDef = { kind: "value", type: "integer", help: "Minutes spent in this sitting (never cumulative)." };
+const PROGRESS_FLAG: FlagDef = { kind: "value", type: "text", help: 'Where he is, as free text ("S2E4", "ch. 12", "10 hours in").' };
+const RATING_FLAG: FlagDef = { kind: "value", type: "rating", help: `Rating: ${RATING_HELP}.` };
+const LIKED_FLAG: FlagDef = { kind: "bool", help: "Mark the title liked (a title field, kept across cycles)." };
+const REVIEW_FLAG: FlagDef = { kind: "value", type: "text", help: "The review, in his words; it becomes the title's current review." };
+const ENTRY_FLAG: FlagDef = { kind: "value", type: "id", help: "The entry (n_...) to act on; default the latest finish or drop. Ids are in `get` and `history`." };
+const MEDIUM_FLAG: FlagDef = { kind: "value", values: MEDIA, help: "Only this medium." };
+const FULL_FLAG: FlagDef = { kind: "bool", help: "Full records with entries and facts instead of the compact summaries." };
+const MOOD_LIST_FLAG: FlagDef = { kind: "list", values: MOOD_VALUES, help: "A mood the title fits. Repeatable." };
+const MOOD_FLAG: FlagDef = { kind: "value", values: MOOD_VALUES, help: "Only titles fitting this mood." };
+const FIT_FLAG: FlagDef = { kind: "value", values: FIT_VALUES, help: "How long a sitting it wants." };
+const FORMAT_FLAG: MediumFlagDef = { kind: "value", values: FORMAT_VALUES, help: "The book's format for this entry (an audiobook is a book with this format).", media: BOOK };
+const FORMAT_FILTER_FLAG: MediumFlagDef = { kind: "value", values: FORMAT_VALUES, help: "Only books wanted in this format.", media: BOOK };
+const PLATFORM_FLAG: MediumFlagDef = { kind: "value", type: "text", help: "The platform the game is on (Switch 2, PS5, iOS...).", media: GAME };
+const WATCHED_ON_FLAG: MediumFlagDef = { kind: "value", type: "text", help: "Where it is or was watched (Netflix, the cinema...).", media: SCREEN };
+const WHERE_FLAG: FlagDef = { kind: "value", type: "text", help: "The store, lender, or service." };
+const STATUS_LIST_FLAG: FlagDef = { kind: "value", type: "list", help: `Only these statuses, comma-separated: ${PROGRESS_VALUES.join(", ")}. Dropped titles are hidden unless named here.`, default: "every status but dropped" };
+const OWNERSHIP_LIST_FLAG: FlagDef = { kind: "value", type: "list", help: `Only these ownerships, comma-separated: ${OWNERSHIP_VALUES.join(", ")}.` };
+const PRIORITY_FLAG: FlagDef = { kind: "value", values: PRIORITY_VALUES, help: "How soon he means to get to it." };
+const TEXT_FILTER_FLAG: FlagDef = { kind: "value", type: "text", help: "Name, an alias, or a creator contains this text (case-insensitive); `life media search` looks wider." };
+const SINCE_FLAG = onFlagDef("First date of the range (inclusive), at any precision but ?");
+const UNTIL_FLAG = onFlagDef("Last date of the range (inclusive), at any precision but ?");
+
+const BACKLOG_FLAGS: MediumFlagSpec = {
+  mood: MOOD_FLAG,
+  fit: FIT_FLAG,
+  format: FORMAT_FILTER_FLAG,
+  service: { kind: "value", type: "text", help: "Only titles a service of this name streams, rents, or sells (from the catalog's availability)." },
+  "wanted-again": { kind: "bool", help: "Also done titles with a priority (a replay or reread he wants)." },
+  full: FULL_FLAG,
+};
+
+/** The notes every medium group prints (the group-help hook) and every date-taking command repeats. */
+function mediumNotes(medium: Medium): string[] {
+  const lines = [
+    `refs: ${TITLE_REF}; a name resolves among ${medium}s only (\`life media\` takes any medium). Several matches are a \`needs\` on ref with the titles in error.candidates: pass the id. A name found in another medium is named in the message (\`use life book\`).`,
+    `dates: every date flag (--on, --started-on, --finished-on, --since, --until) carries its precision inside the value: ${ON_FORMS}. --on defaults to today; nothing is guessed and nothing is rejected for lacking a day.`,
+    `ratings: ${RATING_HELP}; only a finish or a drop carries one, and the title shows the latest closing entry's. --liked is a title field and goes anywhere.`,
+    "entry types and the states they are allowed from (status is derived from the diary, never set):",
+    "  want              curious -> backlog",
+    "  start             curious, backlog, paused, dropped -> active",
+    "  again             done -> active (a new cycle; again --finished closes it in the same call)",
+    "  resume            paused -> active",
+    "  pause             active -> paused",
+    "  finish            anything but done -> done (rating, review, format, minutes)",
+    "  drop              backlog, active, paused -> dropped; the text is the reason and doubles as the review",
+    "  progress, note    any state (a warning when the title is not active)",
+    "  buy, borrow, service   any state; return needs owned, borrowed, or service. Ownership never changes progress.",
+    "minutes: --minutes is one sitting's time, never cumulative (\"10 hours in\" is progress text).",
+    "list hides dropped titles unless --status names them; deleted titles are in `life trash`.",
+    `entry ids (n_...) come from \`life ${medium} get <ref>\` and \`life ${medium} history <ref>\`; amend, unlog, rate --entry, and relog take them.`,
+    `catalog: ${SOURCE_NAMES[SOURCE_BY_MEDIUM[medium]]}. A lookup that cannot decide is a needs on catalog with error.candidates (candidateKind catalog): retry with --year when the message says year differs or several exact matches, else --catalog <id>. A missing key or a source that is down never blocks add: the title is created with a warning and refresh links it later.`,
+  ];
+  if (medium === "book") lines.push("audiobooks are books: pass --format audiobook on add (the wanted format), start, again, or finish; Audible, Libby, and Kindle links are constructed from the catalog and marked * by where.");
+  return lines;
+}
+
+const MEDIA_NOTES = [
+  `refs: ${TITLE_REF}, resolved across every medium here; the four groups (\`life movie\`, \`life show\`, \`life game\`, \`life book\`) resolve within their medium and hold every write.`,
+  `dates: --since and --until carry their precision inside the value: ${ON_FORMS}; ? cannot bound a range. Entries dated ? appear only in a title's own diary.`,
+  "output: lists and views return compact summaries { id, medium, name, year, status, ownership, priority, rating, liked, timeFit, moodFit, lastEntry } unless --full; get always returns the full record with entries and facts.",
+  "time places entries by their --on at day and week precision over ISO weeks; month, year, and ? entries count in unplaced. year places a finish by its year at any precision but ?.",
+];
+
+/** A date with its precision inside the value (LEISURE D92), through on.ts; a bad one is a usage error naming the forms. */
+function parseOnArg(value: string, what: string): On {
+  const parsed = parseOn(value);
+  if (!parsed.ok) throw new UsageError(`${what}: ${parsed.error}`, { hint: `pass ${what} 2026-09-07, 2026-09-07~w, 2026-09, 2026, or ?` });
+  return parsed.on;
+}
+
+function onFlag(inv: Setup, name: string): On | undefined {
+  const value = inv.flags.str(name);
+  return value === undefined ? undefined : parseOnArg(value, `--${name}`);
+}
+
+/** A range bound: any precision but unknown. */
+function boundFlag(inv: Setup, name: string): On | undefined {
+  const on = onFlag(inv, name);
+  if (on && on.precision === "unknown") throw new UsageError(`--${name}: ? cannot bound a range`, { hint: `pass --${name} 2026-09-01, 2026-09-07~w, 2026-09, or 2026` });
+  return on;
+}
+
+/** `4.5` or `4½` as a Rating; anything off the half-star scale is a usage error. */
+function parseRating(value: string, what: string): Rating {
+  const text = value.trim().replace(/^½$/, "0.5").replace(/½$/, ".5");
+  const found = /^\d+(\.\d+)?$/.test(text) ? RATINGS.find((r) => r === Number(text)) : undefined;
+  if (found === undefined) throw new UsageError(`${what} expects a rating (${RATING_HELP}), got "${value}"`, { hint: `pass ${what} 4.5 (or 4½)` });
+  return found;
+}
+
+function ratingFlag(inv: Setup, name = "rating"): Rating | undefined {
+  const value = inv.flags.str(name);
+  return value === undefined ? undefined : parseRating(value, `--${name}`);
+}
+
+/** Comma-separated values (`--status active,paused`), trimmed, empties dropped; undefined when the flag is absent. */
+function csvFlag(inv: Setup, name: string): string[] | undefined {
+  const raw = inv.flags.str(name);
+  if (raw === undefined) return undefined;
+  const values = raw.split(",").map((s) => s.trim()).filter(Boolean);
+  if (!values.length) throw new UsageError(`--${name} expects at least one value`);
+  return values;
+}
+
+/** The currency LIFE_REGION implies when --currency is not passed; USD for any region not listed. */
+const REGION_CURRENCY: Readonly<Record<string, string>> = {
+  US: "USD", GB: "GBP", IN: "INR", CA: "CAD", AU: "AUD", NZ: "NZD", JP: "JPY", KR: "KRW", CH: "CHF", SE: "SEK", NO: "NOK", DK: "DKK", BR: "BRL", MX: "MXN", SG: "SGD",
+  DE: "EUR", FR: "EUR", ES: "EUR", IT: "EUR", NL: "EUR", IE: "EUR", PT: "EUR", AT: "EUR", BE: "EUR", FI: "EUR",
+};
+const regionOf = (io: CliIo): string => normalizeRegion(readEnv(io.env, "LIFE_REGION"));
+const defaultCurrency = (inv: Setup): string => REGION_CURRENCY[regionOf(inv.io)] ?? "USD";
+
+/** `--price n [--currency XXX] [--kind purchase|iap|rental]` as a spend; the two options need the price. */
+function spendFlags(inv: Setup): EntryInput["spend"] | undefined {
+  const f = inv.flags;
+  const price = f.str("price");
+  if (price === undefined) {
+    if (f.has("currency") || f.has("kind")) throw new UsageError("--currency and --kind need --price", { hint: "pass --price 59.99 --currency USD --kind purchase" });
+    return undefined;
+  }
+  if (!/^\d+(\.\d+)?$/.test(price.trim())) throw new UsageError(`--price expects a number, got "${price}"`, { hint: "pass --price 59.99" });
+  const kind = (f.str("kind") ?? "purchase") as (typeof SPEND_KINDS)[number];
+  return { amount: Number(price), currency: (f.str("currency") ?? defaultCurrency(inv)).toUpperCase(), kind };
+}
+
+/** The entry input the entry flags describe; `text` may come from a positional or --review (the review is the entry's text). */
+function entryInput(inv: Setup, extra: { text?: string } = {}): EntryInput {
+  const f = inv.flags;
+  const review = f.str("review");
+  const text = f.str("text");
+  if (review !== undefined && text !== undefined) throw new UsageError("--review and --text exclude each other; the review is the entry's text");
+  return compact({
+    on: onFlag(inv, "on"),
+    text: extra.text ?? review ?? text,
+    progress: f.str("progress"),
+    format: f.str("format"),
+    rating: ratingFlag(inv),
+    liked: f.bool("liked") || undefined,
+    minutes: f.int("minutes"),
+    spend: spendFlags(inv),
+    where: f.str("where"),
+  }) as EntryInput;
+}
+
+/** The medium block from --format, --platform, --watched-on (and their --no- forms when `clearable`); undefined when none was passed. */
+function detailFlags(inv: Setup, clearable: boolean): TitleAdd["detail"] | undefined {
+  const f = inv.flags;
+  const pick = (name: string) => (clearable ? f.clearable(name) : f.str(name));
+  const detail = compact({ format: pick("format"), platform: pick("platform"), where: pick("watched-on") });
+  return Object.keys(detail).length ? (detail as TitleAdd["detail"]) : undefined;
+}
+
+/** A --mood list or --no-mood as the moodFit input. */
+function moodFlags(inv: Setup): string[] | undefined {
+  const moods = inv.flags.list("mood");
+  if (inv.flags.bool("no-mood")) {
+    if (moods.length) throw new UsageError("--mood and --no-mood exclude each other");
+    return [];
+  }
+  return moods.length ? moods : undefined;
+}
+
+const renderedTitles = (rows: ViewTitle[], showMedium: boolean, empty: string): Rendered => ({ code: EXIT.ok, result: rows, text: () => (rows.length ? titleTable(rows, showMedium) : empty) });
+
+/** A resolved ref, or the rendering of why not: a `needs` on ref with the titles, or not_found. */
+function unresolved(command: CommandDef, found: Exclude<Awaited<ReturnType<TitleOps["resolve"]>>, { ok: true }>, ref: string): Rendered {
+  const what = command.group && isMedium(command.group) ? command.group : "title";
+  if (found.kind === "ambiguous") {
+    const hint = needsHint(command, found.needs, found.candidates);
+    return {
+      code: EXIT.rejected,
+      result: null,
+      text: () => [`rejected`, ...found.issues.map((issue) => `  - ${issue}`), titleTable(found.candidates, what === "title", "  "), `  ${hint}`].join("\n"),
+      error: { code: "needs", message: found.needs.message, issues: found.issues, hint, needs: found.needs, candidates: found.candidates, candidateKind: "title" },
+      needs: found.needs,
+    };
+  }
+  if (found.kind === "deleted") return notFound(command, found.issues[0]!, `${what} ${found.title.id} is deleted.`);
+  return notFound(command, found.issues[0]!, `No ${what} "${ref}".`);
+}
+
+// ------------------------------------------------------------------ library: the medium groups
+
+const define = (group: GroupName, def: Omit<CommandBase, "group"> & { run(inv: Invocation): Promise<Rendered> }): CommandDef => ({ group, database: "connect", ...def });
+
+const titleAddFlags = (medium: Medium): FlagSpec =>
+  mediumFlags(medium, {
+    year: { kind: "value", type: "integer", help: "The release year; narrows the catalog search and the confidence rule." },
+    catalog: { kind: "value", type: "id", help: `The ${SOURCE_NAMES[SOURCE_BY_MEDIUM[medium]]} id to link, skipping the search (the answer to a catalog needs; \`lookup\` lists ids).` },
+    "no-lookup": { kind: "bool", help: "Create the title without asking the catalog; `refresh` links it later." },
+    want: { kind: "bool", help: "He wants it: a want entry lands it in the backlog." },
+    started: { kind: "bool", help: "He has started it: a start entry (dated --started-on, else --on)." },
+    finished: { kind: "bool", help: "He has finished it: a finish entry (dated --finished-on, else --on); alone it is a cycle of one." },
+    "started-on": onFlagDef("When it was started, with its own precision; needs --started", { default: "--on" }),
+    "finished-on": onFlagDef("When it was finished, with its own precision; needs --finished", { default: "--on" }),
+    on: onFlagDef("When it happened: the date for --started and --finished when they have none of their own", { default: "today" }),
+    "seen-before": { kind: "value", type: "date", accepts: (next) => parseOn(next).ok, help: `He finished it before: an earlier finish dated as given (${ON_FORMS}), or ? when no date follows. A rewatch he just made is --seen-before --finished.`, default: "? when the flag stands alone" },
+    rating: { ...RATING_FLAG, help: `Rating on the finish; needs --finished. ${RATING_HELP}.` },
+    liked: LIKED_FLAG,
+    review: { ...REVIEW_FLAG, help: "The review on the finish; needs --finished." },
+    progress: { ...PROGRESS_FLAG, help: "Where he is, on the start entry; needs --started." },
+    minutes: { ...MINUTES_FLAG, help: "Minutes of the first sitting, on the start entry; needs --started." },
+    priority: PRIORITY_FLAG,
+    mood: MOOD_LIST_FLAG,
+    fit: FIT_FLAG,
+    format: { ...FORMAT_FLAG, help: "The wanted format; also the format of the entry created here (an audiobook is a book with this format)." },
+    platform: PLATFORM_FLAG,
+    "watched-on": WATCHED_ON_FLAG,
+    notes: { kind: "value", type: "text", help: "Standing notes (markdown), such as where he means to buy it." },
+    "allow-duplicate": { kind: "bool", help: `Add even when a ${medium} with this name exists (otherwise exit 2 lists it as a candidate).` },
+  });
+
+const titleUpdateFlags = (medium: Medium): FlagSpec =>
+  mediumFlags(medium, {
+    name: { kind: "value", type: "text", help: "New name (a factual field: listed in edited, so refresh keeps it)." },
+    alias: { kind: "list", type: "text", help: "Replace the aliases (other names he uses) with these. Repeatable." },
+    "no-alias": { kind: "bool", help: "Remove every alias." },
+    year: { kind: "value", type: "integer", help: "New release year (edited)." },
+    "no-year": { kind: "bool", help: "Clear the year." },
+    creators: { kind: "value", type: "list", help: "Replace the creators, comma-separated (edited)." },
+    cover: { kind: "value", type: "url", help: "New cover URL (edited)." },
+    "no-cover": { kind: "bool", help: "Clear the cover." },
+    series: { kind: "value", type: "text", help: "The series name, set by hand (wins over the catalog's); --position gives the position." },
+    position: { kind: "value", type: "integer", help: "The position in the series; needs --series." },
+    "no-series": { kind: "bool", help: "Clear the hand-set series." },
+    priority: PRIORITY_FLAG,
+    "no-priority": { kind: "bool", help: "Clear the priority." },
+    mood: { ...MOOD_LIST_FLAG, help: "Replace the moods with these. Repeatable." },
+    "no-mood": { kind: "bool", help: "Remove every mood." },
+    fit: FIT_FLAG,
+    "no-fit": { kind: "bool", help: "Clear the time fit." },
+    format: { ...FORMAT_FLAG, help: "The wanted format (an audiobook is a book with this format)." },
+    "no-format": { kind: "bool", help: "Clear the wanted format.", media: BOOK },
+    platform: PLATFORM_FLAG,
+    "no-platform": { kind: "bool", help: "Clear the platform.", media: GAME },
+    "watched-on": WATCHED_ON_FLAG,
+    "no-watched-on": { kind: "bool", help: "Clear where it is watched.", media: SCREEN },
+    notes: { kind: "value", type: "text", help: "New standing notes (replace the old ones)." },
+    "no-notes": { kind: "bool", help: "Clear the notes." },
+  });
+
+const AMEND_FLAGS: MediumFlagSpec = {
+  type: { kind: "value", values: ENTRY_TYPES, help: "Change the entry's type (the diary is re-derived; any sequence is legal after a correction)." },
+  on: onFlagDef("Change when it happened"),
+  text: { kind: "value", type: "text", help: "New text (note, review, or drop reason)." },
+  "no-text": { kind: "bool", help: "Clear the text." },
+  progress: PROGRESS_FLAG,
+  "no-progress": { kind: "bool", help: "Clear the progress text." },
+  rating: RATING_FLAG,
+  "no-rating": { kind: "bool", help: "Clear the rating." },
+  minutes: MINUTES_FLAG,
+  "no-minutes": { kind: "bool", help: "Clear the minutes." },
+  format: FORMAT_FLAG,
+  "no-format": { kind: "bool", help: "Clear the entry's format.", media: BOOK },
+  where: WHERE_FLAG,
+  "no-where": { kind: "bool", help: "Clear the store, lender, or service." },
+};
+
+/** One medium's commands, generated from the shared table with the flags that do not apply to it left out. */
+function mediumCommands(medium: Medium): CommandDef[] {
+  const ops = (inv: Invocation): TitleOps => inv.tools.title.scoped(medium);
+  const media = (inv: Invocation) => inv.tools.media;
+  const source = SOURCE_NAMES[SOURCE_BY_MEDIUM[medium]];
+  const s = SAMPLE[medium];
+  const ref: Positional = { name: "ref", help: `The ${medium}: ${TITLE_REF}.`, ref: "title" };
+  const entryId: Positional = { name: "entryId", help: "The entry id (n_...), from `get` or `history`." };
+  const ex = (rest: string): string => `life ${medium} ${rest}`;
+  const notes = mediumNotes(medium);
+  const layerOf = (command: CommandDef): Layer => ({ kind: "command", command });
+  const formatExample = medium === "book" ? " --format audiobook" : "";
+
+  const add: CommandDef = define(medium, {
+    name: "add",
+    summary: `Add a ${medium} (curious; --want for the backlog, --started or --finished for the diary), looked up at ${source}`,
+    description: `Creates one title. The name is checked against the ${medium}s in the library (a match is exit 2 with the candidates unless --allow-duplicate), then looked up at ${source} unless --no-lookup or --catalog: one confident match links it and fills its facts and availability; several candidates are a needs on catalog with error.candidates (a terminal asks, a program retries with --catalog <id> or --year); no key, a source that is down, or the lookup budget running out create the title without a catalog and warn. --want, --started (with --progress, --minutes), --finished (with --rating, --review), and --seen-before compose the diary in one call.`,
+    positionals: [{ name: "name", help: `The ${medium}'s name as he said it; the catalog's name replaces it when it contains every word of his, and his stays as an alias.` }],
+    flags: titleAddFlags(medium),
+    examples: [
+      ex(`add "${s.one}" --actor codex --json`),
+      ex(`add "${s.two}" --want --priority soon --actor codex --evidence "chat:2026-09-12 \\"wants to ${medium === "book" ? "read" : medium === "game" ? "play" : "watch"} it\\"" --json`),
+      ex(`add "${s.one}" --finished --on 2026-09-07~w --rating 4.5 --liked${formatExample} --actor codex --json`),
+      ex(`add "${s.one}" --year 2016 --catalog 329865 --seen-before 2019 --finished --review "still a 5" --actor neel`),
+    ],
+    notes,
+    exits: [...EXITS.add],
+    mutates: true,
+    async run(inv) {
+      const f = inv.flags;
+      const layer = layerOf(add);
+      const started = f.bool("started");
+      const finished = f.bool("finished");
+      if ((f.has("rating") || f.has("review")) && !finished) throw new UsageError(`life ${medium} add: --rating and --review need --finished (a rated rewatch is --seen-before --finished; on a title already in the library use \`life ${medium} again --finished\`)`, { layer });
+      if ((f.has("progress") || f.has("minutes")) && !started) throw new UsageError(`life ${medium} add: --progress and --minutes need --started`, { layer });
+      if (f.has("started-on") && !started) throw new UsageError(`life ${medium} add: --started-on needs --started`, { layer });
+      if (f.has("finished-on") && !finished) throw new UsageError(`life ${medium} add: --finished-on needs --finished`, { layer });
+      if (f.has("catalog") && f.bool("no-lookup")) throw new UsageError("--catalog and --no-lookup exclude each other", { layer });
+      const on = onFlag(inv, "on");
+      const startedOn = onFlag(inv, "started-on") ?? on;
+      const finishedOn = onFlag(inv, "finished-on") ?? on;
+      const seenBefore = f.has("seen-before") ? (f.str("seen-before") === undefined ? true : onFlag(inv, "seen-before")) : undefined;
+      const input = compact({
+        medium,
+        name: inv.args[0]!,
+        year: f.int("year"),
+        catalog: f.str("catalog"),
+        lookup: f.bool("no-lookup") ? false : undefined,
+        want: f.bool("want") || undefined,
+        started: started ? compact({ on: startedOn, progress: f.str("progress"), minutes: f.int("minutes") }) : undefined,
+        finished: finished ? compact({ on: finishedOn, rating: ratingFlag(inv), text: f.str("review") }) : undefined,
+        seenBefore,
+        liked: f.bool("liked") || undefined,
+        priority: f.str("priority"),
+        moodFit: moodFlags(inv),
+        timeFit: f.str("fit"),
+        notes: f.str("notes"),
+        detail: detailFlags(inv, false),
+        allowDuplicate: f.bool("allow-duplicate") || undefined,
+      });
+      return rendered(inv, add, await ops(inv).add(input as TitleAdd, inv.ctx()));
+    },
+  });
+
+  const get: CommandDef = define(medium, {
+    name: "get",
+    summary: `Show one ${medium} in full: facts, the take, the diary (deleted included by id)`,
+    positionals: [ref],
+    flags: {},
+    examples: [ex(`get "${s.one}" --json`), ex("get m_abc123def0")],
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const found = await ops(inv).resolve(inv.args[0]!, { includeDeleted: true });
+      if (!found.ok) return unresolved(get, found, inv.args[0]!);
+      return { code: EXIT.ok, result: found.title, text: () => titleDetail(found.title) };
+    },
+  });
+
+  const list: CommandDef = define(medium, {
+    name: "list",
+    summary: `List ${medium}s as compact summaries, by status, ownership, priority, mood, fit, or text (dropped hidden by default)`,
+    description: "Sorted by status (active, paused, backlog, curious, done, dropped), then priority (now, soon, later, none), then name. Every criterion must hold.",
+    positionals: [],
+    flags: mediumFlags(medium, { status: STATUS_LIST_FLAG, ownership: OWNERSHIP_LIST_FLAG, priority: PRIORITY_FLAG, mood: MOOD_FLAG, fit: FIT_FLAG, format: FORMAT_FILTER_FLAG, text: TEXT_FILTER_FLAG, deleted: { kind: "bool", help: "Include deleted titles." }, full: FULL_FLAG }),
+    examples: [ex("list --json"), ex("list --status active,paused --json"), ex(`list --text "${s.one.split(" ")[0]}" --full --json`)],
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const f = inv.flags;
+      const criteria = compact({
+        medium,
+        status: csvFlag(inv, "status"),
+        ownership: csvFlag(inv, "ownership"),
+        priority: f.str("priority"),
+        moodFit: f.str("mood"),
+        timeFit: f.str("fit"),
+        format: f.str("format"),
+        text: f.str("text"),
+        includeDeleted: f.bool("deleted") || undefined,
+        full: f.bool("full") || undefined,
+      });
+      return renderedTitles(await ops(inv).list(criteria as TitleList), false, `No ${medium}s.`);
+    },
+  });
+
+  const update: CommandDef = define(medium, {
+    name: "update",
+    summary: `Change a ${medium}'s name, aliases, year, creators, cover, series, priority, moods, fit, detail, or notes`,
+    description: "Pass at least one flag; a --no-<field> flag clears it. Name, year, creators, and cover are factual: changing one lists it in edited, so refresh leaves it alone. Status, ownership, rating, and review are derived from the diary and cannot be set here.",
+    positionals: [ref],
+    flags: titleUpdateFlags(medium),
+    examples: [ex(`update "${s.one}" --priority now --mood comfort --fit ${medium === "movie" ? "medium" : "long"} --actor codex --json`), ex(`update "${s.series}" --series "${s.series}" --position 1 --actor neel`), ex(`update "${s.one}" --no-priority --notes "buy on sale" --actor neel --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    async run(inv) {
+      const f = inv.flags;
+      const layer = layerOf(update);
+      const aliasList = f.list("alias");
+      if (f.bool("no-alias") && aliasList.length) throw new UsageError("--alias and --no-alias exclude each other", { layer });
+      if (f.has("series") && f.bool("no-series")) throw new UsageError("--series and --no-series exclude each other", { layer });
+      if (f.has("position") && !f.has("series")) throw new UsageError("--position needs --series", { layer, hint: 'pass --series "Name" --position 2' });
+      const seriesName = f.str("series");
+      const input = compact({
+        name: f.str("name"),
+        aliases: f.bool("no-alias") ? [] : aliasList.length ? aliasList : undefined,
+        year: f.clearableInt("year"),
+        creators: csvFlag(inv, "creators"),
+        cover: f.clearable("cover"),
+        series: f.bool("no-series") ? null : seriesName !== undefined ? { name: seriesName, position: f.int("position") ?? null } : undefined,
+        priority: f.clearable("priority"),
+        moodFit: moodFlags(inv),
+        timeFit: f.clearable("fit"),
+        notes: f.clearable("notes"),
+        detail: detailFlags(inv, true),
+      });
+      if (!Object.keys(input).length) throw new UsageError(`life ${medium} update: nothing to change; pass at least one flag`, { layer });
+      return rendered(inv, update, await ops(inv).update(inv.args[0]!, input as TitleUpdate, inv.ctx()));
+    },
+  });
+
+  /** The entry commands that take the ref alone: one entry of that type, judged by `allowed`. */
+  const entryVerb = (name: "want" | "pause" | "start" | "resume" | "buy" | "borrow" | "return" | "service", summary: string, flags: MediumFlagSpec, examples: string[], description?: string): CommandDef => {
+    const def: CommandDef = define(medium, {
+      name,
+      summary,
+      ...(description ? { description } : {}),
+      positionals: [ref],
+      flags: mediumFlags(medium, flags),
+      examples,
+      notes,
+      exits: [...EXITS.write],
+      mutates: true,
+      async run(inv) {
+        if ((name === "borrow" || name === "service") && !inv.flags.has("where")) throw new UsageError(`life ${medium} ${name}: pass --where <${name === "borrow" ? "lender" : "service"}>`, { layer: layerOf(def) });
+        return rendered(inv, def, await ops(inv)[name](inv.args[0]!, entryInput(inv), inv.ctx()));
+      },
+    });
+    return def;
+  };
+
+  const want = entryVerb("want", "He wants it: backlog (from curious)", { on: ON_FLAG, text: TEXT_FLAG }, [ex(`want "${s.two}" --actor codex --evidence "chat:2026-09-12 \\"want to get to it\\"" --json`)]);
+  const pause = entryVerb("pause", "He set it aside for now: paused (from active)", { on: ON_FLAG, text: TEXT_FLAG }, [ex(`pause "${s.one}" --text "waiting for the next season" --actor codex --json`)]);
+  const START_FLAGS: MediumFlagSpec = { on: ON_FLAG, progress: PROGRESS_FLAG, minutes: MINUTES_FLAG, format: FORMAT_FLAG, text: TEXT_FLAG };
+  const start = entryVerb("start", "He started it: active (from curious, backlog, paused, or dropped); --progress says where he is", START_FLAGS, [ex(`start "${s.one}"${formatExample} --actor codex --json`), ex(`start "${s.two}" --progress "2 hours in" --minutes 120 --on 2026-09-11 --actor codex --json`)]);
+  const resume = entryVerb("resume", "He picked it up again: active (from paused)", START_FLAGS, [ex(`resume "${s.one}" --actor codex --json`)]);
+  const buy = entryVerb(
+    "buy",
+    "He bought it: owned; --where names the store, --price the spend",
+    { where: { ...WHERE_FLAG, help: "The store." }, price: { kind: "value", type: "number", help: "What it cost." }, currency: { kind: "value", type: "code", help: "Three-letter currency code; needs --price.", default: "from LIFE_REGION (USD for US)" }, kind: { kind: "value", values: SPEND_KINDS, help: "What kind of spend; needs --price.", default: "purchase" }, on: ON_FLAG },
+    [ex(`buy "${s.two}" --where "${medium === "game" ? "Nintendo eShop" : medium === "book" ? "Audible" : "Apple TV"}" --price 59.99 --actor codex --json`), ex(`buy "${s.one}" --on 2026-08 --actor neel`)],
+    "Ownership is independent of progress (LEISURE D88): buying changes nothing about whether he is on it.",
+  );
+  const borrow = entryVerb("borrow", "He borrowed it: borrowed; --where names the lender", { where: { ...WHERE_FLAG, help: "The lender (a library, a friend). Required." }, on: ON_FLAG }, [ex(`borrow "${s.one}" --where Libby --actor codex --json`)]);
+  const returnCmd = entryVerb("return", "He returned or let go of it: ownership none (from owned, borrowed, or service)", { on: ON_FLAG }, [ex(`return "${s.one}" --actor codex --json`)]);
+  const service = entryVerb("service", "It is on a service he has: ownership service; --where names it", { where: { ...WHERE_FLAG, help: "The service he has it on (Game Pass, Netflix, Audible). Required." }, on: ON_FLAG }, [ex(`service "${s.two}" --where "${medium === "game" ? "Game Pass" : medium === "book" ? "Audible" : "Netflix"}" --actor codex --json`)], "Only when he says he has it there; availability at a service he does not have is `where`, not an entry.");
+
+  const again: CommandDef = define(medium, {
+    name: "again",
+    summary: "He is on it again: a new cycle (from done); --finished closes it in the same call for a one-sitting rewatch",
+    positionals: [ref],
+    flags: mediumFlags(medium, { on: ON_FLAG, finished: { kind: "bool", help: "Also finish it now, in the same transaction, with --rating, --review, --minutes." }, rating: { ...RATING_FLAG, help: `Rating on the finish; needs --finished. ${RATING_HELP}.` }, liked: LIKED_FLAG, review: { ...REVIEW_FLAG, help: "The review on the finish; needs --finished." }, minutes: MINUTES_FLAG, format: FORMAT_FLAG, text: TEXT_FLAG }),
+    examples: [ex(`again "${s.one}" --finished --rating 5 --actor codex --json`), ex(`again "${s.one}"${formatExample} --actor neel`)],
+    notes,
+    exits: [...EXITS.write],
+    mutates: true,
+    async run(inv) {
+      const finished = inv.flags.bool("finished");
+      if ((inv.flags.has("rating") || inv.flags.has("review")) && !finished) throw new UsageError(`life ${medium} again: --rating and --review need --finished`, { layer: layerOf(again) });
+      return rendered(inv, again, await ops(inv).again(inv.args[0]!, entryInput(inv), inv.ctx(), finished ? { finished: true } : {}));
+    },
+  });
+
+  const progress: CommandDef = define(medium, {
+    name: "progress",
+    summary: "Where he is, as free text (S2E4, ch. 12, 10 hours in); --minutes for this sitting",
+    positionals: [ref, { name: "text", help: "The progress, in his words." }],
+    flags: { on: ON_FLAG, minutes: MINUTES_FLAG },
+    examples: [ex(`progress "${s.one}" "${medium === "show" ? "S2E4" : medium === "book" ? "ch. 12" : medium === "game" ? "10 hours in" : "halfway"}" --minutes 45 --actor codex --json`)],
+    notes,
+    exits: [...EXITS.write],
+    mutates: true,
+    async run(inv) {
+      const input = compact({ progress: inv.args[1]!, on: onFlag(inv, "on"), minutes: inv.flags.int("minutes") }) as EntryInput;
+      return rendered(inv, progress, await ops(inv).progress(inv.args[0]!, input, inv.ctx()));
+    },
+  });
+
+  const note: CommandDef = define(medium, {
+    name: "note",
+    summary: "A dated reflection about the title, in full (it stays here, not in the vault)",
+    positionals: [ref, { name: "text", help: "The note, in his words." }],
+    flags: { on: ON_FLAG },
+    examples: [ex(`note "${s.one}" "the second act drags but the ending lands" --actor codex --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, note, await ops(inv).note(inv.args[0]!, compact({ text: inv.args[1]!, on: onFlag(inv, "on") }) as EntryInput, inv.ctx())),
+  });
+
+  const finish: CommandDef = define(medium, {
+    name: "finish",
+    summary: "He finished it: done (from anything but done), with a rating and a review; names the next in a series",
+    description: "A finish on a done title is refused with the hint to use `again`. When the title is in a series the receipt carries `next` and a warning names it; --queue-next adds that entry to the backlog in the same call.",
+    positionals: [ref],
+    flags: mediumFlags(medium, { on: ON_FLAG, rating: RATING_FLAG, liked: LIKED_FLAG, review: REVIEW_FLAG, format: FORMAT_FLAG, minutes: MINUTES_FLAG, "queue-next": { kind: "bool", help: "Add the next work in the series to the backlog (want) in the same transaction." } }),
+    examples: [ex(`finish "${s.one}" --on 2026-08-31~w --rating 4.5 --liked --actor codex --json`), ex(`finish "${s.series}" --review "a very bad ${medium} that delivered neither horror nor comedy" --queue-next --actor codex --json`)],
+    notes,
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, finish, await ops(inv).finish(inv.args[0]!, entryInput(inv), inv.ctx(), inv.flags.bool("queue-next") ? { queueNext: true } : {})),
+  });
+
+  const drop: CommandDef = define(medium, {
+    name: "drop",
+    summary: "He gave up on it: dropped (from backlog, active, or paused); the text is his reason and the review",
+    positionals: [ref, { name: "text", help: "Why, in his words; quote him fully, it doubles as the review." }],
+    flags: { on: ON_FLAG, rating: RATING_FLAG, liked: LIKED_FLAG },
+    examples: [ex(`drop "${s.one}" "not fun anymore, the difficulty spikes are the problem" --actor codex --json`)],
+    notes,
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, drop, await ops(inv).drop(inv.args[0]!, entryInput(inv, { text: inv.args[1]! }), inv.ctx())),
+  });
+
+  const rate: CommandDef = define(medium, {
+    name: "rate",
+    summary: "Set the rating on the latest finish or drop (or on --entry)",
+    positionals: [ref, { name: "rating", help: `The rating: ${RATING_HELP}.` }],
+    flags: { entry: ENTRY_FLAG },
+    examples: [ex(`rate "${s.one}" 4.5 --actor codex --json`), ex(`rate "${s.one}" 4½ --entry n_abc123def0 --actor neel`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, rate, await ops(inv).rate(inv.args[0]!, parseRating(inv.args[1]!, "<rating>"), inv.ctx(), compact({ entry: inv.flags.str("entry") }))),
+  });
+
+  const unrate: CommandDef = define(medium, {
+    name: "unrate",
+    summary: "Clear the rating on the latest finish or drop (or on --entry)",
+    positionals: [ref],
+    flags: { entry: ENTRY_FLAG },
+    examples: [ex(`unrate "${s.one}" --actor codex --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, unrate, await ops(inv).unrate(inv.args[0]!, inv.ctx(), compact({ entry: inv.flags.str("entry") }))),
+  });
+
+  const review: CommandDef = define(medium, {
+    name: "review",
+    summary: "Set the review on the latest finish or drop (or on --entry)",
+    positionals: [ref, { name: "text", help: "The review, in his words." }],
+    flags: { entry: ENTRY_FLAG },
+    examples: [ex(`review "${s.one}" "comfy listen, nothing more" --actor codex --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, review, await ops(inv).review(inv.args[0]!, inv.args[1]!, inv.ctx(), compact({ entry: inv.flags.str("entry") }))),
+  });
+
+  const likeVerb = (name: "like" | "unlike"): CommandDef => {
+    const def: CommandDef = define(medium, {
+      name,
+      summary: name === "like" ? "Mark the title liked (a title field; fine on an unfinished title he is loving)" : "Take the liked mark off",
+      positionals: [ref],
+      flags: {},
+      examples: [ex(`${name} "${s.one}" --actor codex --json`)],
+      exits: [...EXITS.write],
+      mutates: true,
+      run: async (inv) => rendered(inv, def, await ops(inv)[name](inv.args[0]!, inv.ctx())),
+    });
+    return def;
+  };
+
+  const where: CommandDef = define(medium, {
+    name: "where",
+    summary: `Where to get it: the title's availability from ${source} (every service alike), or a catalog id's live`,
+    positionals: [{ ...ref, optional: true, help: `The ${medium}: ${TITLE_REF}. Or pass --catalog instead.` }],
+    flags: { catalog: { kind: "value", type: "id", help: `A ${source} id to ask live, without a title (from \`lookup\`).` } },
+    examples: [ex(`where "${s.one}"`), ex("where --catalog 329865 --json")],
+    exits: [EXIT.ok, EXIT.rejected, EXIT.catalog, EXIT.usage],
+    mutates: false,
+    async run(inv) {
+      const target = inv.args[0];
+      const catalog = inv.flags.str("catalog");
+      if (target !== undefined && catalog !== undefined) throw new UsageError(`life ${medium} where: pass a ref or --catalog, not both`, { layer: layerOf(where) });
+      if (target === undefined && catalog === undefined) throw new UsageError(`life ${medium} where: pass a ref or --catalog <id>`, { layer: layerOf(where) });
+      if (catalog !== undefined) {
+        const rows = await ops(inv).where({ catalog, medium });
+        return { code: EXIT.ok, result: rows, text: () => (rows.length ? availabilityText(rows) : `No availability for ${source} ${catalog} in ${inv.tools.region}.`) };
+      }
+      const found = await ops(inv).resolve(target!, { includeDeleted: true });
+      if (!found.ok) return unresolved(where, found, target!);
+      const rows = found.title.facts?.availability ?? [];
+      const empty = found.title.catalog ? `No availability on record for ${found.title.name} in ${inv.tools.region}; \`life media availability ${found.title.id}\` re-pulls it.` : `${found.title.name} has no catalog; \`life ${medium} refresh ${found.title.id}\` links one.`;
+      return { code: EXIT.ok, result: rows, text: () => (rows.length ? availabilityText(rows) : empty) };
+    },
+  });
+
+  const next: CommandDef = define(medium, {
+    name: "next",
+    summary: "The next work in the title's series and whether it is in the library; --queue adds it to the backlog",
+    positionals: [ref],
+    flags: { queue: { kind: "bool", help: "Add the next work as a backlog title (want), with the series as evidence; a write, so --actor applies." } },
+    examples: [ex(`next "${s.series}" --json`), ex(`next "${s.series}" --queue --actor codex --json`)],
+    exits: [...EXITS.add],
+    mutates: false,
+    async run(inv) {
+      const found = await ops(inv).resolve(inv.args[0]!);
+      if (!found.ok) return unresolved(next, found, inv.args[0]!);
+      const view = await ops(inv).next(found.title.id);
+      if (!view) return plain(EXIT.ok, null, `${found.title.name} is not in a series, or is its last entry.`);
+      if (!inv.flags.bool("queue")) return { code: EXIT.ok, result: view, text: () => nextText(found.title, view) };
+      if (view.title) {
+        inv.warnings.push(`"${view.seriesEntry.name}" is already in the library as ${view.title.id} (${view.title.status}); nothing queued`);
+        return { code: EXIT.ok, result: view, text: () => nextText(found.title, view) };
+      }
+      const ctx = inv.ctx();
+      const queued = await ops(inv).add(
+        compact({ medium, name: view.seriesEntry.name, catalog: view.seriesEntry.externalId ?? undefined, want: true }) as TitleAdd,
+        { ...ctx, evidence: [...(ctx.evidence ?? []), `series:${found.title.id}`] },
+      );
+      return rendered(inv, next, queued);
+    },
+  });
+
+  const series: CommandDef = define(medium, {
+    name: "series",
+    summary: "The title's series in order, with his status on each entry",
+    positionals: [ref],
+    flags: {},
+    examples: [ex(`series "${s.series}" --json`)],
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const found = await ops(inv).resolve(inv.args[0]!, { includeDeleted: true });
+      if (!found.ok) return unresolved(series, found, inv.args[0]!);
+      const view = await ops(inv).series(found.title.id);
+      if (!view) return plain(EXIT.ok, null, `${found.title.name} is not in a series (set one with \`life ${medium} update ${found.title.id} --series "Name" --position n\`).`);
+      return { code: EXIT.ok, result: view, text: () => seriesText(view) };
+    },
+  });
+
+  const lookup: CommandDef = define(medium, {
+    name: "lookup",
+    summary: `Search ${source} without creating a title; --where adds where each hit is available`,
+    description: `The candidates with their ids, years, creators, and category (a DLC, edition, or remake never auto-links), and \`inLibrary\` when a title is already linked to one. "Where can I watch X" is \`lookup "X" --where\`. Exit 3 when ${source} cannot be reached; exit 1 when its key is not set.`,
+    positionals: [{ name: "text", help: "The name to search." }],
+    flags: { year: { kind: "value", type: "integer", help: "Narrow the search to this release year." }, where: { kind: "bool", help: "Add availability: on the one confident match, else on up to three candidates." } },
+    examples: [ex(`lookup "${s.two}" --where --json`), ex(`lookup "${s.one}" --year 2016 --json`)],
+    exits: [EXIT.ok, EXIT.rejected, EXIT.catalog, EXIT.usage],
+    mutates: false,
+    async run(inv) {
+      const candidates = await ops(inv).catalog.search(medium, inv.args[0]!, compact({ year: inv.flags.int("year"), availability: inv.flags.bool("where") || undefined }));
+      return { code: EXIT.ok, result: candidates, text: () => (candidates.length ? candidateTable(candidates) : `No ${source} candidates for "${inv.args[0]}".`) };
+    },
+  });
+
+  const link: CommandDef = define(medium, {
+    name: "link",
+    summary: `Link the title to a ${source} id and fill its facts (fields he edited are kept)`,
+    positionals: [ref, { name: "externalId", help: `The ${source} id, from \`lookup\` or a catalog needs.` }],
+    flags: {},
+    examples: [ex(`link "${s.one}" 329865 --actor codex --json`)],
+    exits: [EXIT.ok, EXIT.rejected, EXIT.duplicate, EXIT.catalog, EXIT.database, EXIT.usage],
+    mutates: true,
+    run: async (inv) => rendered(inv, link, await ops(inv).catalog.link(inv.args[0]!, inv.args[1]!, inv.ctx())),
+  });
+
+  const unlink: CommandDef = define(medium, {
+    name: "unlink",
+    summary: "Drop the catalog link and facts; name, year, creators, cover, and length stay",
+    positionals: [ref],
+    flags: {},
+    examples: [ex(`unlink "${s.one}" --actor neel --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, unlink, await ops(inv).catalog.unlink(inv.args[0]!, inv.ctx())),
+  });
+
+  const refresh: CommandDef = define(medium, {
+    name: "refresh",
+    summary: `Re-pull facts and availability from ${source}; on a title without a catalog, look it up now`,
+    description: "Fields he edited and a hand-set series are left alone. When nothing changed the outcome is unchanged. On a title with no catalog this is the same lookup add runs, with the same needs on catalog: answer it with `link <ref> <id>`.",
+    positionals: [ref],
+    flags: {},
+    examples: [ex(`refresh "${s.one}" --actor codex --json`)],
+    exits: [EXIT.ok, EXIT.rejected, EXIT.catalog, EXIT.usage],
+    mutates: true,
+    run: async (inv) => rendered(inv, refresh, await ops(inv).catalog.refresh(inv.args[0]!, inv.ctx())),
+  });
+
+  const merge: CommandDef = define(medium, {
+    name: "merge",
+    summary: "Fold one title into another of the same medium: its entries move, moods union, and it goes to the trash",
+    positionals: [ref, { name: "into", help: `The surviving title: ${TITLE_REF}.`, ref: "title" }],
+    flags: {},
+    examples: [ex(`merge m_abc123def0 "${s.one}" --reason "added twice" --actor neel --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, merge, await ops(inv).merge(inv.args[0]!, inv.args[1]!, inv.ctx())),
+  });
+
+  const amend: CommandDef = define(medium, {
+    name: "amend",
+    summary: "Correct an entry: its type, date, text, progress, rating, minutes, format, or where",
+    description: "No allowed check: the diary is re-derived from what remains, and any sequence is legal after a correction. Fix a wrong title with `relog`, never by re-adding.",
+    positionals: [ref, entryId],
+    flags: mediumFlags(medium, AMEND_FLAGS),
+    examples: [ex(`amend "${s.one}" n_abc123def0 --on 2026-09-05 --reason "he named the day" --actor codex --json`), ex(`amend "${s.one}" n_abc123def0 --type finish --rating 4 --actor neel`)],
+    notes,
+    exits: [...EXITS.write],
+    mutates: true,
+    async run(inv) {
+      const f = inv.flags;
+      const rating = f.bool("no-rating") ? (f.has("rating") ? (() => { throw new UsageError("--rating and --no-rating exclude each other"); })() : null) : ratingFlag(inv);
+      const patch = compact({
+        type: f.str("type"),
+        on: onFlag(inv, "on"),
+        text: f.clearable("text"),
+        progress: f.clearable("progress"),
+        rating,
+        minutes: f.clearableInt("minutes"),
+        format: f.clearable("format"),
+        where: f.clearable("where"),
+      });
+      if (!Object.keys(patch).length) throw new UsageError(`life ${medium} amend: nothing to change; pass at least one flag`, { layer: layerOf(amend) });
+      return rendered(inv, amend, await ops(inv).amend(inv.args[0]!, inv.args[1]!, patch as EntryPatch, inv.ctx()));
+    },
+  });
+
+  const unlog: CommandDef = define(medium, {
+    name: "unlog",
+    summary: "Remove an entry from the diary (the receipt returns it as `removed`); status re-derives",
+    positionals: [ref, entryId],
+    flags: {},
+    examples: [ex(`unlog "${s.one}" n_abc123def0 --reason "logged twice" --actor codex --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, unlog, await ops(inv).unlog(inv.args[0]!, inv.args[1]!, inv.ctx())),
+  });
+
+  const relog: CommandDef = define(medium, {
+    name: "relog",
+    summary: `Move an entry to another ${medium} (the finish went on the wrong title); both re-derive in one transaction`,
+    positionals: [ref, entryId],
+    flags: { to: { kind: "value", type: "ref", help: `The title the entry belongs to: ${TITLE_REF}.`, ref: "title" } },
+    examples: [ex(`relog "${s.one}" n_abc123def0 --to "${s.two}" --reason "wrong title" --actor codex --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    async run(inv) {
+      const to = inv.flags.str("to");
+      if (to === undefined) throw new UsageError(`life ${medium} relog: pass --to <ref>`, { layer: layerOf(relog) });
+      return rendered(inv, relog, await ops(inv).relog(inv.args[0]!, inv.args[1]!, to, inv.ctx()));
+    },
+  });
+
+  const viewCommand = (name: "now" | "curious" | "backlog" | "buy-list" | "shelf", summary: string, flags: MediumFlagSpec, examples: string[]): CommandDef => {
+    const def: CommandDef = define(medium, {
+      name,
+      summary,
+      positionals: [],
+      flags: mediumFlags(medium, flags),
+      examples,
+      exits: [...EXITS.read],
+      mutates: false,
+      async run(inv) {
+        const f = inv.flags;
+        const opts = { full: f.bool("full") || undefined };
+        switch (name) {
+          case "now":
+            return renderedTitles(await media(inv).now(medium, opts), false, `Nothing active or paused among ${medium}s.`);
+          case "curious":
+            return renderedTitles(await media(inv).curious(medium, opts), false, `No curious ${medium}s.`);
+          case "backlog":
+            return renderedTitles(await media(inv).backlog(medium, compact({ ...opts, mood: f.str("mood"), fit: f.str("fit"), format: f.str("format"), service: f.str("service"), wantedAgain: f.bool("wanted-again") || undefined })), false, `Nothing in the ${medium} backlog he can start now.`);
+          case "buy-list": {
+            const items = await media(inv).buy(medium, opts);
+            return { code: EXIT.ok, result: items, text: () => (items.length ? buyText(items, false) : `Nothing to buy: every backlog ${medium} is owned, borrowed, or on a service.`) };
+          }
+          case "shelf": {
+            const view = await media(inv).shelf(medium, opts);
+            return { code: EXIT.ok, result: view, text: () => shelfText(view, false) };
+          }
+        }
+      },
+    });
+    return def;
+  };
+
+  const now = viewCommand("now", `The ${medium}s he is on: active first, then paused, by last entry`, { full: FULL_FLAG }, [ex("now --json")]);
+  const curious = viewCommand("curious", `${medium[0]!.toUpperCase()}${medium.slice(1)}s noticed but not wanted, newest first`, { full: FULL_FLAG }, [ex("curious --json")]);
+  const backlog = viewCommand("backlog", `Backlog ${medium}s he can start now (owned, borrowed, or on a service), by priority; --wanted-again adds replays`, BACKLOG_FLAGS, [ex("backlog --json"), ex(`backlog --fit short --mood low-energy --json`)]);
+  const buyList = viewCommand("buy-list", `Backlog ${medium}s he does not have yet, with where to get each and the lowest price`, { full: FULL_FLAG }, [ex("buy-list --json")]);
+  const shelf = viewCommand("shelf", `Owned ${medium}s in four buckets: done, in progress, untouched, dropped`, { full: FULL_FLAG }, [ex("shelf --json")]);
+
+  const deleteCmd: CommandDef = define(medium, {
+    name: "delete",
+    summary: "Delete a title (to the trash; `restore` undoes it); the way to dismiss a curious mention",
+    positionals: [ref],
+    flags: {},
+    examples: [ex(`delete "${s.one}" --reason "not interested after all" --actor codex --json`)],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, deleteCmd, await ops(inv).delete(inv.args[0]!, inv.ctx())),
+  });
+
+  const restore: CommandDef = define(medium, {
+    name: "restore",
+    summary: "Undelete a title (by id; deleted titles are in `life trash`)",
+    positionals: [POS.titleId],
+    flags: {},
+    examples: [ex("restore m_abc123def0 --actor neel --json")],
+    exits: [...EXITS.write],
+    mutates: true,
+    run: async (inv) => rendered(inv, restore, await ops(inv).restore(inv.args[0]!, inv.ctx())),
+  });
+
+  const history: CommandDef = define(medium, {
+    name: "history",
+    summary: "Every logged change to a title, oldest first (entry ids are in the patches)",
+    positionals: [ref],
+    flags: {},
+    examples: [ex(`history "${s.one}" --json`)],
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const found = await ops(inv).resolve(inv.args[0]!, { includeDeleted: true });
+      if (!found.ok) return unresolved(history, found, inv.args[0]!);
+      const entries = await ops(inv).history(found.title.id);
+      return plain(EXIT.ok, entries, historyText(entries));
+    },
+  });
+
+  return [add, get, list, update, want, start, resume, pause, progress, note, again, finish, drop, buy, borrow, returnCmd, service, rate, unrate, review, likeVerb("like"), likeVerb("unlike"), where, next, series, lookup, link, unlink, refresh, merge, amend, unlog, relog, now, curious, backlog, buyList, shelf, deleteCmd, restore, history];
+}
+
+// ------------------------------------------------------------------ library: life media
+
+function mediaCommands(): CommandDef[] {
+  const mediumOf = (inv: Setup): Medium | undefined => inv.flags.str("medium") as Medium | undefined;
+  const ref: Positional = { name: "ref", help: `The title, in any medium: ${TITLE_REF}.`, ref: "title" };
+
+  const list: CommandDef = define("media", {
+    name: "list",
+    summary: "List titles across media as compact summaries, by medium, status, ownership, priority, mood, fit, or text",
+    description: "Sorted by status (active, paused, backlog, curious, done, dropped), then priority, then name. Dropped titles are hidden unless --status names them.",
+    positionals: [],
+    flags: { medium: MEDIUM_FLAG, status: STATUS_LIST_FLAG, ownership: OWNERSHIP_LIST_FLAG, priority: PRIORITY_FLAG, mood: MOOD_FLAG, fit: FIT_FLAG, text: TEXT_FILTER_FLAG, deleted: { kind: "bool", help: "Include deleted titles." }, full: FULL_FLAG },
+    examples: ["life media list --json", "life media list --medium book --status active,paused --json", 'life media list --text "dune" --json'],
+    notes: MEDIA_NOTES,
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const f = inv.flags;
+      const criteria = compact({
+        medium: mediumOf(inv),
+        status: csvFlag(inv, "status"),
+        ownership: csvFlag(inv, "ownership"),
+        priority: f.str("priority"),
+        moodFit: f.str("mood"),
+        timeFit: f.str("fit"),
+        text: f.str("text"),
+        includeDeleted: f.bool("deleted") || undefined,
+        full: f.bool("full") || undefined,
+      });
+      return renderedTitles(await inv.tools.title.list(criteria as TitleList), true, "No titles.");
+    },
+  });
+
+  const get: CommandDef = define("media", {
+    name: "get",
+    summary: "Show one title of any medium in full (deleted included by id)",
+    positionals: [ref],
+    flags: {},
+    examples: ['life media get "Skyward" --json', "life media get m_abc123def0"],
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const found = await inv.tools.title.resolve(inv.args[0]!, { includeDeleted: true });
+      if (!found.ok) return unresolved(get, found, inv.args[0]!);
+      return { code: EXIT.ok, result: found.title, text: () => titleDetail(found.title) };
+    },
+  });
+
+  const viewCommand = (name: "now" | "curious" | "backlog" | "buy-list" | "shelf", summary: string, flags: FlagSpec, examples: string[]): CommandDef => {
+    const def: CommandDef = define("media", {
+      name,
+      summary,
+      positionals: [],
+      flags: { medium: MEDIUM_FLAG, ...flags },
+      examples,
+      exits: [...EXITS.read],
+      mutates: false,
+      async run(inv) {
+        const f = inv.flags;
+        const medium = mediumOf(inv);
+        const opts = { full: f.bool("full") || undefined };
+        switch (name) {
+          case "now":
+            return renderedTitles(await inv.tools.media.now(medium, opts), true, "Nothing active or paused.");
+          case "curious":
+            return renderedTitles(await inv.tools.media.curious(medium, opts), true, "No curious titles.");
+          case "backlog":
+            return renderedTitles(await inv.tools.media.backlog(medium, compact({ ...opts, mood: f.str("mood"), fit: f.str("fit"), format: f.str("format"), service: f.str("service"), wantedAgain: f.bool("wanted-again") || undefined })), true, "Nothing in the backlog he can start now.");
+          case "buy-list": {
+            const items = await inv.tools.media.buy(medium, opts);
+            return { code: EXIT.ok, result: items, text: () => (items.length ? buyText(items, true) : "Nothing to buy: every backlog title is owned, borrowed, or on a service.") };
+          }
+          case "shelf": {
+            const view = await inv.tools.media.shelf(medium, opts);
+            return { code: EXIT.ok, result: view, text: () => shelfText(view, true) };
+          }
+        }
+      },
+    });
+    return def;
+  };
+
+  const now = viewCommand("now", "What he is on across media: active first, then paused, by last entry (the current queue)", { full: FULL_FLAG }, ["life media now --json", "life media now --medium game"]);
+  const curious = viewCommand("curious", "Titles noticed but not wanted, newest first", { full: FULL_FLAG }, ["life media curious --json"]);
+  const backlog = viewCommand("backlog", "Backlog titles he can start now (owned, borrowed, or on a service), by priority", mediumFlags("book", BACKLOG_FLAGS), ["life media backlog --json", "life media backlog --fit short --mood low-energy --json"]);
+  const buyList = viewCommand("buy-list", "Backlog titles he does not have yet, with where to get each and the lowest price", { full: FULL_FLAG }, ["life media buy-list --json"]);
+  const shelf = viewCommand("shelf", "Owned titles in four buckets: done, in progress, untouched, dropped", { full: FULL_FLAG }, ["life media shelf --json", "life media shelf --medium book"]);
+
+  const diary: CommandDef = define("media", {
+    name: "diary",
+    summary: "Entries across titles, newest first, in a date range (entries dated ? are left out)",
+    positionals: [],
+    flags: { since: SINCE_FLAG, until: UNTIL_FLAG, medium: MEDIUM_FLAG, limit: { kind: "value", type: "integer", help: "At most this many entries." } },
+    examples: ["life media diary --since 2026-09 --json", "life media diary --since 2026-09-07~w --until 2026-09-07~w --medium book --limit 20 --json"],
+    notes: MEDIA_NOTES,
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const view = await inv.tools.media.diary(compact({ medium: mediumOf(inv), since: boundFlag(inv, "since"), until: boundFlag(inv, "until"), limit: inv.flags.int("limit") }));
+      return { code: EXIT.ok, result: view, text: () => diaryText(view) };
+    },
+  });
+
+  const time: CommandDef = define("media", {
+    name: "time",
+    summary: "Minutes and spend by ISO week and by title, over the last weeks or a date range",
+    positionals: [],
+    flags: { since: SINCE_FLAG, until: UNTIL_FLAG, weeks: { kind: "value", type: "integer", help: "How many weeks back from today, 1 to 520, when no range is given.", default: "8" }, medium: MEDIUM_FLAG },
+    examples: ["life media time --json", "life media time --since 2026-09 --json", "life media time --weeks 12 --medium game --json"],
+    notes: MEDIA_NOTES,
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const view = await inv.tools.media.time(compact({ medium: mediumOf(inv), since: boundFlag(inv, "since"), until: boundFlag(inv, "until"), weeks: inv.flags.int("weeks") }));
+      return { code: EXIT.ok, result: view, text: () => timeText(view) };
+    },
+  });
+
+  const year: CommandDef = define("media", {
+    name: "year",
+    summary: "Finishes and drops in a calendar year by medium, with ratings; again finishes counted",
+    positionals: [{ name: "yyyy", help: "The calendar year." }],
+    flags: { medium: MEDIUM_FLAG, full: FULL_FLAG },
+    examples: ["life media year 2026 --json", "life media year 2025 --medium movie"],
+    exits: [...EXITS.read],
+    mutates: false,
+    async run(inv) {
+      const raw = inv.args[0]!;
+      if (!/^\d{4}$/.test(raw)) throw new UsageError(`life media year: <yyyy> must be a four-digit year, got "${raw}"`, { layer: { kind: "command", command: year } });
+      const view = await inv.tools.media.year(Number(raw), mediumOf(inv), { full: inv.flags.bool("full") || undefined });
+      return { code: EXIT.ok, result: view, text: () => yearText(view) };
+    },
+  });
+
+  const search: CommandDef = define("media", {
+    name: "search",
+    summary: "Titles of any medium and status whose name, aliases, creators, notes, review, or any entry text contains the text",
+    positionals: [{ name: "text", help: "The text to look for, case-insensitive." }],
+    flags: { full: FULL_FLAG },
+    examples: ['life media search "difficulty" --json'],
+    exits: [...EXITS.read],
+    mutates: false,
+    run: async (inv) => renderedTitles(await inv.tools.media.search(inv.args[0]!, { full: inv.flags.bool("full") || undefined }), true, "No matches."),
+  });
+
+  const availability: CommandDef = define("media", {
+    name: "availability",
+    summary: "Re-pull availability from the catalogs for one title, or for every backlog title (--backlog), one transaction each",
+    description: "Over the backlog a source that fails stops nothing else: the result lists refreshed and failed titles, and the exit is 3 when every failure was a source that could not be reached, 1 otherwise.",
+    positionals: [{ ...ref, optional: true, help: `One title: ${TITLE_REF}. Or --backlog for every backlog title.` }],
+    flags: { backlog: { kind: "bool", help: "Every backlog title (with --medium, of that medium)." }, medium: MEDIUM_FLAG },
+    examples: ['life media availability "Skyward" --actor codex --json', "life media availability --backlog --medium movie --actor codex --json"],
+    exits: [EXIT.ok, EXIT.rejected, EXIT.catalog, EXIT.usage],
+    mutates: true,
+    async run(inv) {
+      const target = inv.args[0];
+      const backlog = inv.flags.bool("backlog");
+      if (target !== undefined && backlog) throw new UsageError("life media availability: pass a ref or --backlog, not both", { layer: { kind: "command", command: availability } });
+      if (target === undefined && !backlog) throw new UsageError("life media availability: pass a ref or --backlog", { layer: { kind: "command", command: availability } });
+      if (target !== undefined) return rendered(inv, availability, await inv.tools.title.catalog.availability(target, inv.ctx()));
+      const report = await inv.tools.title.catalog.availability(compact({ status: "backlog", medium: mediumOf(inv) }) as { status: "backlog"; medium?: Medium }, inv.ctx());
+      const issues = report.failed.flatMap((entry) => entry.issues.map((issue) => `${entry.id} (${entry.name}): ${issue}`));
+      const unreachable = report.failed.length > 0 && report.failed.every((entry) => entry.issues.some((issue) => issue.startsWith(`${CATALOG_UNAVAILABLE}:`)));
+      const code = report.failed.length === 0 ? EXIT.ok : unreachable ? EXIT.catalog : EXIT.rejected;
+      const error: EnvelopeError | undefined = report.failed.length
+        ? {
+            code: unreachable ? "catalog_unavailable" : "rejected",
+            message: `${report.failed.length} of ${report.failed.length + report.refreshed.length} titles failed: ${issues.join("; ")}`,
+            issues,
+            hint: unreachable ? "the catalog source could not be reached; the refreshed titles are stored, retry later or run `life doctor`" : "the refreshed titles are stored; the failed ones name their problem",
+          }
+        : undefined;
+      return { code, result: report, text: () => availabilityReportText(report), ...(error ? { error } : {}) };
+    },
+  });
+
+  return [list, get, now, curious, backlog, buyList, shelf, diary, time, year, search, availability];
+}
+
 // ------------------------------------------------------------------ views and maintenance
 
 const today: CommandDef = {
@@ -2304,7 +3436,7 @@ const search: CommandDef = {
 const trash: CommandDef = {
   group: null,
   name: "trash",
-  summary: "Every deleted task, project, section, label, filter, event, calendar, and account, newest deletion first",
+  summary: "Every deleted task, project, section, label, filter, event, calendar, account, and title, newest deletion first",
   positionals: [],
   flags: {},
   examples: ["life trash --json"],
@@ -2345,6 +3477,7 @@ const exportCommand: CommandDef = {
       accounts: dump.accounts.length,
       calendars: dump.calendars.length,
       events: dump.events.length,
+      titles: dump.titles.length,
       log: dump.log.length,
     };
     const summary = Object.entries(counts)
@@ -2404,11 +3537,11 @@ function databaseSource(flags: Flags, io: CliIo): DbSource {
 const doctor: CommandDef = {
   group: null,
   name: "doctor",
-  summary: "Check the setup: env file, database, migrations, Inbox, Google client, accounts and credentials, calendars, timezone, actor",
-  description: "Runs every check and reports each as ok, warn, or fail. Exit 0 when healthy, 3 when the database cannot be reached (or its URL is unset), 1 for any other failure. For the calendar: whether LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown), each account's status and credential file, whether its token still refreshes (one request to Google per connected account), each calendar's copy age, the primary account, and any credential file that belongs to no live account. Never migrates.",
+  summary: "Check the setup: env file, database, migrations, Inbox, Google client, accounts and credentials, calendars, catalog keys, region, timezone, actor",
+  description: "Runs every check and reports each as ok, warn, or fail. Exit 0 when healthy, 3 when the database cannot be reached (or its URL is unset), 1 for any other failure. For the calendar: whether LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown), each account's status and credential file, whether its token still refreshes (one request to Google per connected account), each calendar's copy age, the primary account, and any credential file that belongs to no live account. For the library: whether each catalog's variables are set (LIFE_TMDB_KEY; LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET; Open Library needs none), whether the IGDB token file is present and not expired, and LIFE_REGION; --online runs one live search per configured source. Never migrates.",
   positionals: [],
-  flags: {},
-  examples: ["life doctor", "life doctor --json", "life doctor --verbose --db postgres://life@localhost:5432/life"],
+  flags: { online: { kind: "bool", help: "Also run one live search per configured catalog source (TMDB, Open Library, IGDB); off by default so doctor stays offline." } },
+  examples: ["life doctor", "life doctor --json", "life doctor --online", "life doctor --verbose --db postgres://life@localhost:5432/life"],
   exits: [EXIT.ok, EXIT.rejected, EXIT.database, EXIT.usage],
   mutates: false,
   database: "none",
@@ -2519,6 +3652,8 @@ async function runDoctor(setup: Setup): Promise<DoctorReport> {
     checks.push(googleClientCheck(setup, false));
     checks.push({ name: "accounts", status: "warn", value: "unknown until connected" });
   }
+
+  checks.push(...(await catalogChecks(setup)));
 
   const envTz = setup.io.env.LIFE_TZ;
   const badTz = envTz !== undefined && envTz !== "" && !isValidTimezone(envTz);
@@ -2652,6 +3787,77 @@ async function credentialFilesCheck(setup: Setup, credentials: CredentialStore, 
   };
 }
 
+/** The variables each keyed source reads; Open Library needs none. */
+const CATALOG_VARIABLES: Record<CatalogSourceName, string[]> = { tmdb: ["LIFE_TMDB_KEY"], openlibrary: [], igdb: ["LIFE_IGDB_CLIENT_ID", "LIFE_IGDB_CLIENT_SECRET"] };
+type CatalogSourceName = keyof Catalogs;
+const CATALOG_SOURCES: readonly CatalogSourceName[] = ["tmdb", "openlibrary", "igdb"];
+/** What --online searches for at each source: a name every source knows. */
+const ONLINE_PROBE: Record<CatalogSourceName, string> = { tmdb: "Dune", openlibrary: "Dune", igdb: "Celeste" };
+
+/**
+ * The library half of doctor: each catalog's variables present or not (values
+ * never shown), the IGDB token file and its expiry, LIFE_REGION, and with
+ * --online one live search per configured source through the catalogs the CLI
+ * was given.
+ */
+async function catalogChecks(setup: Setup): Promise<Check[]> {
+  const checks: Check[] = [];
+  const env = setup.io.env;
+  const missing = (source: CatalogSourceName): string[] => CATALOG_VARIABLES[source].filter((variable) => readEnv(env, variable) === undefined);
+  const configured = (source: CatalogSourceName): boolean => missing(source).length === 0;
+  const media = (source: CatalogSourceName): string => MEDIA_BY_SOURCE[source].map((m) => `${m}s`).join(" and ");
+  for (const source of CATALOG_SOURCES) {
+    const name = `catalog ${source}`;
+    const variables = CATALOG_VARIABLES[source];
+    if (!variables.length) {
+      checks.push({ name, status: "ok", value: `${SOURCE_NAMES[source]} needs no key; ${media(source)} look up there` });
+      continue;
+    }
+    const absent = missing(source);
+    if (!absent.length) checks.push({ name, status: "ok", value: `${variables.join(" and ")} ${variables.length === 1 ? "is" : "are"} set (never shown); ${media(source)} look up at ${SOURCE_NAMES[source]}` });
+    else {
+      checks.push({
+        name,
+        status: "warn",
+        value: `${absent.join(" and ")} ${absent.length === 1 ? "is" : "are"} not set; ${media(source)} are created without a catalog (add warns, lookup is rejected)`,
+        hint: `put ${variables.join(" and ")} in ${ENV_FILE}${source === "tmdb" ? " (a TMDB v4 read access token)" : " (a Twitch developer app)"}; \`refresh\` links the titles added meanwhile`,
+      });
+    }
+  }
+
+  const tokenDir = setup.io.igdbTokenDir ?? IGDB_TOKEN_DIR;
+  const tokenPath = igdbTokenPath(tokenDir);
+  const token = await readIgdbToken(tokenDir);
+  const now = setup.io.clock?.now() ?? new Date();
+  if (!token) checks.push({ name: "igdb token", status: "ok", value: `no token file at ${tokenPath} yet; ${configured("igdb") ? "the first game lookup creates it" : "not needed until LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are set"}` });
+  else if (igdbTokenFresh(token, now)) checks.push({ name: "igdb token", status: "ok", value: `file present at ${tokenPath}; expires ${token.expiresAt}` });
+  else checks.push({ name: "igdb token", status: "warn", value: `file present at ${tokenPath}; ${Date.parse(token.expiresAt) <= now.getTime() ? "expired" : "expires within a day"} (${token.expiresAt}); the next game lookup refreshes it${configured("igdb") ? "" : ", once LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are set"}` });
+
+  const rawRegion = readEnv(env, "LIFE_REGION");
+  checks.push({ name: "region", status: "ok", value: `${normalizeRegion(rawRegion)} (${rawRegion === undefined ? "default; set LIFE_REGION to change it" : `LIFE_REGION${normalizeRegion(rawRegion) !== rawRegion ? `="${rawRegion}", normalized` : ""}`})` });
+
+  if (!setup.flags.bool("online")) return checks;
+  const catalogs = setup.io.catalogs ?? defaultCatalogs({ env });
+  for (const source of CATALOG_SOURCES) {
+    const name = `catalog ${source} online`;
+    if (!configured(source)) {
+      checks.push({ name, status: "warn", value: "skipped: not configured" });
+      continue;
+    }
+    const medium = MEDIA_BY_SOURCE[source][0]!;
+    const probe = ONLINE_PROBE[source];
+    try {
+      const hits = await catalogs[source].search(medium, probe);
+      checks.push({ name, status: "ok", value: `${SOURCE_NAMES[source]} answered: ${hits.length} candidate${hits.length === 1 ? "" : "s"} for "${probe}"` });
+    } catch (error) {
+      setup.trace(`doctor: ${source} search failed: ${messageOf(error)}`);
+      if (error instanceof CatalogUnconfigured) checks.push({ name, status: "warn", value: `skipped: ${error.variable} is not set`, hint: `put ${error.variable} in ${ENV_FILE}` });
+      else checks.push({ name, status: "fail", value: `${SOURCE_NAMES[source]} could not answer a search for "${probe}": ${messageOf(error)}`, hint: error instanceof HttpError ? "the source refused: check the key" : "check the network and the source's status, then run `life doctor --online` again" });
+    }
+  }
+  return checks;
+}
+
 function readJournal(): { entries: { tag: string; when: number }[] } {
   try {
     const parsed = JSON.parse(readFileSync(MIGRATIONS_JOURNAL, "utf8")) as { entries?: { tag?: unknown; when?: unknown }[] };
@@ -2678,6 +3884,11 @@ const GROUP_INFO: Record<GroupName, string> = {
   account: "Calendar accounts: connect a Google account, list, pick the primary, sync, remove",
   calendar: "Calendars of the connected accounts: list, labels, hidden, colour, order, sync",
   event: "Events: add, list, change, reschedule, move, answer invitations, cancel, delete, restore; every write goes through the provider",
+  movie: "Movies: the library and diary for films (TMDB); add, diary entries, take, catalog, series, views",
+  show: "Shows: the library and diary for TV (TMDB); the same commands as movie",
+  game: "Games: the library and diary for games (IGDB); the same commands, plus --platform",
+  book: "Books: the library and diary for books and audiobooks (Open Library); the same commands, plus --format",
+  media: "Across media: list, get, now, curious, backlog, buy-list, shelf, diary, time, year, search, availability",
 };
 const GROUP_NAMES = Object.keys(GROUP_INFO) as GroupName[];
 
@@ -2755,6 +3966,8 @@ const COMMAND_LIST: CommandDef[] = [
   eventRestore,
   eventDuplicate,
   eventHistory,
+  ...MEDIA.flatMap(mediumCommands),
+  ...mediaCommands(),
   today,
   week,
   slots,
@@ -2917,6 +4130,14 @@ function parseArgv(argv: string[]): Parsed {
     let value = inline;
     if (value === undefined) {
       const next = argv[i + 1];
+      if (def.accepts) {
+        // An optional value: taken only when the next token reads as one, else the flag stands alone as a bare `true`.
+        if (next !== undefined && !next.startsWith("--") && def.accepts(next)) {
+          flags.set(name, "value", next);
+          i++;
+        } else flags.set(name, "bool", undefined);
+        continue;
+      }
       if (next === undefined || next.startsWith("--")) throw new UsageError(`--${name} needs a value${def.type ? ` (${def.type})` : ""}`, { layer: layer() });
       value = next;
       i++;
@@ -2955,7 +4176,8 @@ function usageLine(command: CommandDef): string {
 
 function flagLines(flags: FlagSpec): string[] {
   const rows = Object.entries(flags).map(([name, def]) => {
-    const head = def.kind === "bool" ? `--${name}` : `--${name} <${def.values && !def.type ? def.values.join("|") : (def.type ?? "value")}>`;
+    const shape = def.values && !def.type ? def.values.join("|") : (def.type ?? "value");
+    const head = def.kind === "bool" ? `--${name}` : def.accepts ? `--${name} [${shape}]` : `--${name} <${shape}>`;
     const tail: string[] = [def.help];
     if (def.values && def.type) tail.push(`One of ${def.values.join(", ")}.`);
     if (def.default) tail.push(`Default: ${def.default}.`);
@@ -2972,7 +4194,7 @@ function positionalLines(positionals: Positional[]): string[] {
   return rows.map(([head, tail]) => `  ${head!.padEnd(width)}  ${tail}`);
 }
 
-const HEADER = "life: the Life-OS todo list and calendar from a shell. One JSON envelope on stdout when --json is passed or stdout is not a terminal; diagnostics on stderr; stable exit codes.";
+const HEADER = "life: the Life-OS todo list, calendar, and leisure library from a shell. One JSON envelope on stdout when --json is passed or stdout is not a terminal; diagnostics on stderr; stable exit codes.";
 
 export function topHelp(): string {
   const groupRows = GROUP_NAMES.map((g) => [`life ${g} <command>`, GROUP_INFO[g]]);
@@ -3005,11 +4227,17 @@ export function topHelp(): string {
     "  LIFE_GOOGLE_CLIENT_ID, LIFE_GOOGLE_CLIENT_SECRET  Life-OS's own Google OAuth desktop client, needed for `life account add google` and every sync; in the .env file.",
     "  LIFE_CAL_MAX_AGE   Seconds a calendar copy may be old before a view refreshes it first (default 300). --stale skips the refresh.",
     "  LIFE_CAL_HISTORY_MONTHS  How far back a first or --full sync reaches (default 12).",
+    "  LIFE_TMDB_KEY      A TMDB v4 read access token, for movie and show lookups; unset, those titles are created without a catalog (add warns, lookup is rejected).",
+    "  LIFE_IGDB_CLIENT_ID, LIFE_IGDB_CLIENT_SECRET  A Twitch developer app, for game lookups at IGDB; same rule when unset. Open Library (books) needs no key.",
+    "  LIFE_REGION        Two-letter region for availability and the default currency (default US).",
     `  .env file          ${ENV_FILE}`,
-    "  credentials        .local/google/<accountId>.json at the repository root; never in the database, a receipt, or the log",
+    "  credentials        .local/google/<accountId>.json and .local/igdb/token.json at the repository root; never in the database, a receipt, or the log",
     "",
     "references and formats:",
-    "  ids        t_ (task), p_ (project), s_ (section), l_ (label), f_ (filter), a_ (account), c_ (calendar), e_ (event), each followed by ten [a-z0-9] characters; every list and receipt shows them",
+    "  ids        t_ (task), p_ (project), s_ (section), l_ (label), f_ (filter), a_ (account), c_ (calendar), e_ (event), m_ (title), each followed by ten [a-z0-9] characters; n_ (a diary entry inside a title); every list and receipt shows them",
+    `  title      ${TITLE_REF}; \`life <medium> list --text\` and \`life media search\` find them`,
+    `  on         ${ON_FORMS}: the date-with-precision every library date flag takes (--on, --started-on, --finished-on, --since, --until)`,
+    `  rating     ${RATING_HELP}`,
     "  project    an id, a slug path from the root such as health/dental, or inbox; `life project tree` shows paths and ids",
     "  section    a name within the task's project, or an id; `life section list <project-ref>` shows them",
     "  label      a slug name such as health, or an id; `life label list` shows them",
@@ -3025,12 +4253,12 @@ export function topHelp(): string {
     "exit codes:",
     ...EXIT_LINES,
     "",
-    "JSON envelope (stdout, one object): { ok, command, exitCode, result?, error?: { code, message, issues, hint?, needs?, candidates? }, warnings? }",
-    "  error.code is one of usage, rejected, duplicate, needs, not_found, db_unavailable, provider_unavailable, provider_rejected, internal; result is the library's return value (receipt, record, list, or view) untouched.",
-    "  A `needs` error carries { field, options, message }: ask, then retry with --<field> <option>. A `duplicate` error carries the candidate tasks.",
-    "  provider_unavailable (exit 3): the calendar provider could not be reached and nothing was stored; provider_rejected (exit 1): it refused. Views carry `freshness` (copy age per calendar) and `warnings` (a refresh that failed).",
+    "JSON envelope (stdout, one object): { ok, command, exitCode, result?, error?: { code, message, issues, hint?, needs?, candidates?, candidateKind? }, warnings? }",
+    "  error.code is one of usage, rejected, duplicate, needs, not_found, db_unavailable, provider_unavailable, provider_rejected, catalog_unavailable, internal; result is the library's return value (receipt, record, list, or view) untouched.",
+    "  A `needs` error carries { field, options, message }: ask, then retry with --<field> <option>. error.candidates is Task[] | Title[] | Candidate[] with error.candidateKind task | title | catalog: tasks or titles on a `duplicate`, titles on a `needs` on ref (pass the id), catalog hits on a `needs` on catalog (retry with --catalog <id>, or --year when the message says year differs or several exact matches).",
+    "  provider_unavailable (exit 3): the calendar provider could not be reached and nothing was stored; provider_rejected (exit 1): it refused. catalog_unavailable (exit 3): a catalog source could not be reached on lookup, refresh, or availability; `add` never fails for it and warns instead. Views carry `freshness` (copy age per calendar) and `warnings` (a refresh that failed); a library receipt's warnings (a lookup that failed, the next in a series) are lifted into the envelope's `warnings`.",
     "",
-    "next: `life doctor` checks the setup; `life help task` lists the task commands; `life help task add` shows every flag with examples; `life help event` explains event refs, when formats, and scopes.",
+    "next: `life doctor` checks the setup; `life help task` lists the task commands; `life help task add` shows every flag with examples; `life help event` explains event refs, when formats, and scopes; `life help book` (or movie, show, game) explains title refs, date forms, ratings, and the entry types.",
   ].join("\n");
 }
 
@@ -3049,8 +4277,17 @@ export function groupHelp(group: GroupName): string {
   if (group === "account") lines.push("", `refs: ${ACCOUNT_REF}. The first account connected is primary; \`life account primary\` moves the flag. Credentials live in .local/google/<accountId>.json, never in the database.`);
   if (group === "calendar") lines.push("", `refs: ${CALENDAR_REF}. Name, timezone, and access come from the provider on sync; labels, hidden, colour, and order are Life-OS's and survive sync.`);
   if (group === "event") lines.push("", ...EVENT_NOTES);
+  const notes = groupNotes(group);
+  if (notes.length) lines.push("", ...notes);
   lines.push("", "global flags: see `life --help` (--actor is required for every write when not on a terminal).", "", "exit codes:", ...EXIT_LINES);
   return lines.join("\n");
+}
+
+/** The notes hook: what a group's help says beyond its command list (the library groups print their conventions here). */
+function groupNotes(group: GroupName): string[] {
+  if (isMedium(group)) return mediumNotes(group);
+  if (group === "media") return MEDIA_NOTES;
+  return [];
 }
 
 export function commandHelp(command: CommandDef): string {
@@ -3100,7 +4337,7 @@ function helpData(layer: Layer): unknown {
         groups: GROUP_NAMES.map((g) => ({ group: g, summary: GROUP_INFO[g], commands: commandsOf(g).map((c) => ({ command: commandName(c), summary: c.summary })) })),
         commands: TOP_COMMANDS.map((c) => ({ command: c.name, summary: c.summary })),
         globalFlags: flagData(GLOBAL_FLAGS),
-        environment: ["LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG", "LIFE_GOOGLE_CLIENT_ID", "LIFE_GOOGLE_CLIENT_SECRET", "LIFE_CAL_MAX_AGE", "LIFE_CAL_HISTORY_MONTHS"],
+        environment: ["LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG", "LIFE_GOOGLE_CLIENT_ID", "LIFE_GOOGLE_CLIENT_SECRET", "LIFE_CAL_MAX_AGE", "LIFE_CAL_HISTORY_MONTHS", "LIFE_TMDB_KEY", "LIFE_IGDB_CLIENT_ID", "LIFE_IGDB_CLIENT_SECRET", "LIFE_REGION"],
         envFile: ENV_FILE,
         exitCodes: Object.entries(EXIT_MEANING).map(([code, meaning]) => ({ code: Number(code), meaning })),
         filterGrammar: FILTER_GRAMMAR,
@@ -3112,7 +4349,7 @@ function helpData(layer: Layer): unknown {
         summary: GROUP_INFO[layer.group],
         commands: commandsOf(layer.group).map(commandData),
         ...(layer.group === "filter" ? { filterGrammar: FILTER_GRAMMAR } : {}),
-        ...(layer.group === "event" ? { notes: EVENT_NOTES } : {}),
+        ...(layer.group === "event" ? { notes: EVENT_NOTES } : groupNotes(layer.group).length ? { notes: groupNotes(layer.group) } : {}),
         text: groupHelp(layer.group),
       };
     case "command":
@@ -3223,16 +4460,16 @@ class Session {
         );
       }
       this.trace(`database: ${describeUrl(db.url)} (from ${db.source})${command.database === "migrate" ? "; migrating" : ""}`);
-      const tools = await Tools.open({ url: db.url, clock, migrate: command.database === "migrate", adapters: io.adapters, credentials: io.credentials });
+      const tools = await Tools.open({ url: db.url, clock, migrate: command.database === "migrate", adapters: io.adapters, credentials: io.credentials, catalogs: io.catalogs, region: regionOf(io) });
       try {
         const inv: Invocation = { ...setup, tools };
         if (this.#verbose) await traceRefs(inv, command);
         let result = await command.run(inv);
 
-        // HANDS D54: a `needs` rejection is a question on a terminal, and a rejection naming the flag otherwise.
+        // HANDS D54: a `needs` rejection is a question on a terminal, and a rejection naming the flag otherwise. A catalog question lists its candidates (LEISURE D94).
         const interactive = Boolean(io.stdin.isTTY && io.stdout.isTTY) && !this.#json;
         if (result.needs && interactive && command.flags[result.needs.field]?.kind === "value") {
-          const answer = await ask(io, result.needs);
+          const answer = await ask(io, result.needs, result.candidates);
           if (answer !== null) {
             flags.set(result.needs.field, "value", answer);
             result = await command.run(inv);
@@ -3282,6 +4519,21 @@ class Session {
       exitCode = EXIT.rejected;
       message = messageOf(error);
       hint = "run `life account add google` and pick the same Google account to sign in again";
+    } else if (error instanceof CatalogUnavailable) {
+      code = "catalog_unavailable";
+      exitCode = EXIT.catalog;
+      message = `catalog unavailable: ${messageOf(error)}`;
+      hint = "nothing was stored; retry later, or run `life doctor` (`add` never waits on a catalog: it creates the title and warns)";
+    } else if (error instanceof CatalogUnconfigured) {
+      code = "rejected";
+      exitCode = EXIT.rejected;
+      message = `catalog not configured: ${error.variable} is not set in the root .env`;
+      hint = `put ${error.variable} in ${ENV_FILE}; until then \`add --no-lookup\` creates a title without a catalog and \`refresh\` links it once the key exists`;
+    } else if (error instanceof HttpError) {
+      code = "rejected";
+      exitCode = EXIT.rejected;
+      message = `catalog refused the request: ${messageOf(error)}`;
+      hint = "nothing was stored; the message is the source's (a wrong id, a bad key)";
     } else if (isDatabaseError(error)) {
       code = "db_unavailable";
       exitCode = EXIT.database;
@@ -3432,6 +4684,11 @@ async function traceRefs(inv: Invocation, command: CommandDef): Promise<void> {
       } else if (ref.kind === "event") {
         const event = await inv.tools.event.get(ref.value);
         if (event) resolved = `${"occurrenceId" in event ? event.occurrenceId : event.id} ("${event.title}"${event.deletedAt ? ", deleted" : ""})`;
+      } else if (ref.kind === "title") {
+        const medium = command.group && isMedium(command.group) ? command.group : undefined;
+        const found = await inv.tools.title.resolve(ref.value, compact({ medium, includeDeleted: true }));
+        if (found.ok) resolved = `${found.title.id} ("${found.title.name}", ${found.title.medium}${found.title.deletedAt ? ", deleted" : ""})`;
+        else if (found.kind === "ambiguous") resolved = `${found.candidates.length} titles: ${found.candidates.map((t) => t.id).join(", ")}`;
       } else {
         const filter = await inv.tools.filter.get(ref.value);
         if (filter) resolved = `${filter.id} (${filter.name}: ${filter.query})`;
@@ -3444,11 +4701,16 @@ async function traceRefs(inv: Invocation, command: CommandDef): Promise<void> {
   }
 }
 
-/** Put the question to the terminal; null when the answer is not one of the options or the input ends first. */
-async function ask(io: CliIo, needs: Needs): Promise<string | null> {
+/**
+ * Put the question to the terminal; null when the answer is not one of the
+ * options or the input ends first. A catalog question lists its candidates as
+ * a numbered table and takes the id or the 1-based number (`options[i-1]`).
+ */
+async function ask(io: CliIo, needs: Needs, candidates?: Candidate[]): Promise<string | null> {
   const rl = createInterface({ input: io.stdin, terminal: false });
   try {
-    io.stdout.write(`${needs.message}\n${needs.field} [${needs.options.join("/")}]: `);
+    if (candidates?.length) io.stdout.write(`${needs.message}\n${candidateTable(candidates, "", true)}\n${needs.field} [1-${candidates.length}, or the id]: `);
+    else io.stdout.write(`${needs.message}\n${needs.field} [${needs.options.join("/")}]: `);
     // The first line wins; an input that ends without one (Ctrl-D) is no answer.
     const answer = await new Promise<string | null>((resolve) => {
       rl.once("line", (line) => resolve(line));
@@ -3458,8 +4720,13 @@ async function ask(io: CliIo, needs: Needs): Promise<string | null> {
       io.stdout.write("\n");
       return null;
     }
-    const chosen = answer.trim().toLowerCase();
-    return needs.options.includes(chosen) ? chosen : null;
+    const chosen = answer.trim();
+    // A number within the table picks that row; anything else (a numeric TMDB id such as 841 included) must be one of the ids.
+    if (candidates?.length && /^\d+$/.test(chosen)) {
+      const index = Number(chosen);
+      if (index >= 1 && index <= needs.options.length) return needs.options[index - 1]!;
+    }
+    return needs.options.find((option) => option.toLowerCase() === chosen.toLowerCase()) ?? null;
   } finally {
     rl.close();
   }
@@ -3526,7 +4793,8 @@ function taskTable(tasks: Task[], index: Projects, indent = ""): string {
   );
 }
 
-function describe(record: AnyRecord | CalendarRecord, tz: string): string {
+function describe(record: AnyRecord | CalendarRecord | Title, tz: string): string {
+  if (isTitle(record)) return `${record.name}${record.year ? ` (${record.year})` : ""}  ${record.medium}  ${record.status}${record.ownership !== "none" ? `, ${record.ownership}` : ""}${record.deletedAt ? "  deleted" : ""}`;
   if ("identity" in record) return `${record.identity}${record.label ? ` (${record.label})` : ""}${record.primary ? "  primary" : ""}`;
   if ("external" in record && "start" in record) return `${record.title}  ${rangeText(record, tz)}${record.status !== "confirmed" ? `  ${record.status}` : ""}`;
   if ("title" in record) return record.title;
@@ -3535,18 +4803,33 @@ function describe(record: AnyRecord | CalendarRecord, tz: string): string {
   return record.name;
 }
 
+/** Candidates as a table by their kind: tasks, titles, or catalog hits. */
+function candidatesTable(receipt: AnyReceipt, index: Projects, indent: string): string {
+  const candidates = candidatesOf(receipt);
+  switch (candidateKindOf(receipt)) {
+    case "catalog":
+      return candidateTable(candidates as Candidate[], indent, true);
+    case "title":
+      return titleTable(candidates as Title[], false, indent);
+    default:
+      return taskTable(candidates as Task[], index, indent);
+  }
+}
+
 function receiptText(receipt: AnyReceipt, index: Projects, tz: string, hint?: string): string {
-  if (receipt.ok) return `${receipt.outcome} ${receipt.id} v${receipt.version}  ${describe(receipt.record, tz)}`;
+  if (receipt.ok) {
+    const head = `${receipt.outcome} ${receipt.id} v${receipt.version}  ${describe(receipt.record, tz)}`;
+    if (receipt.removed) return `${head}\n  removed ${entryLine(receipt.removed).join("  ")}`;
+    return head;
+  }
   if (receipt.outcome === "duplicate") {
-    const n = receipt.candidates.length;
-    return [
-      `duplicate: ${n} similar open task${n === 1 ? "" : "s"}`,
-      taskTable(receipt.candidates as Task[], index, "  "),
-      "  pass --allow-duplicate to add anyway, or reuse one of them",
-    ].join("\n");
+    const n = candidatesOf(receipt).length;
+    const what = candidateKindOf(receipt) === "title" ? `title${n === 1 ? "" : "s"} named alike` : `similar open task${n === 1 ? "" : "s"}`;
+    return [`duplicate: ${n} ${what}`, candidatesTable(receipt, index, "  "), "  pass --allow-duplicate to add anyway, or reuse one of them"].join("\n");
   }
   const lines = [`rejected${receipt.id ? ` ${receipt.id}` : ""}`, ...receipt.issues.map((issue) => `  - ${issue}`)];
-  if (receipt.needs) lines.push(`  pass --${receipt.needs.field} ${receipt.needs.options.join("|")}`);
+  if (receipt.needs && candidatesOf(receipt).length) lines.push(candidatesTable(receipt, index, "  "), `  ${hint ?? `pass --${receipt.needs.field} ${receipt.needs.options.join("|")}`}`);
+  else if (receipt.needs) lines.push(`  pass --${receipt.needs.field} ${receipt.needs.options.join("|")}`);
   else if (hint) lines.push(`  ${hint}`);
   return lines.join("\n");
 }
@@ -3897,5 +5180,203 @@ function trashText(view: TrashView, index: Projects, calendars: Calendars, accou
   if (view.events.length) lines.push(`Events (${view.events.length})`, table(view.events.map((e) => [e.id, e.title, rangeText(e, tz), calendarName(calendars, e.calendarId), e.masterId ? `exception of ${e.masterId}` : "", deleted(e)]), "  "), "");
   if (view.calendars.length) lines.push(`Calendars (${view.calendars.length})`, table(view.calendars.map((c) => [c.id, c.name, accounts.get(c.accountId)?.identity ?? c.accountId, deleted(c)]), "  "), "");
   if (view.accounts.length) lines.push(`Accounts (${view.accounts.length})`, table(view.accounts.map((a) => [a.id, a.identity, a.label ?? "", deleted(a)]), "  "), "");
+  if (view.titles.length) lines.push(`Titles (${view.titles.length})`, titleTable(view.titles, true, "  "), "");
   return lines.length ? lines.join("\n").trimEnd() : "The trash is empty.";
+}
+
+// ------------------------------------------------------------------ library output
+
+/** An On with its precision marker: `2026-09-07`, `2026-09-07~w`, `2026-09~m`, `2026~y`, `?`. */
+function onText(on: On): string {
+  switch (on.precision) {
+    case "unknown":
+      return "?";
+    case "week":
+      return `${on.date}~w`;
+    case "month":
+      return `${on.date}~m`;
+    case "year":
+      return `${on.date}~y`;
+    default:
+      return on.date ?? "?";
+  }
+}
+
+const ratingText = (rating: Rating | null): string => (rating === null ? "" : `${rating}/5`);
+const moneyText = (money: { amount: number; currency: string } | null): string => (money ? `${money.amount} ${money.currency}` : "");
+const nameYear = (row: { name: string; year: number | null }): string => `${clip(oneLine(row.name), 60)}${row.year ? ` (${row.year})` : ""}`;
+
+/** The last entry of a summary or a full record, for the list column. */
+function lastOf(row: ViewTitle): { type: string; on: On } | null {
+  if (isTitle(row)) return lastEntry(row.entries);
+  return row.lastEntry;
+}
+
+function titleRow(row: ViewTitle, showMedium: boolean): string[] {
+  const last = lastOf(row);
+  return [
+    row.id,
+    showMedium ? row.medium : "",
+    row.status,
+    row.ownership === "none" ? "" : row.ownership,
+    nameYear(row),
+    row.priority ?? "",
+    ratingText(row.rating),
+    row.liked ? "liked" : "",
+    last ? `${last.type} ${onText(last.on)}` : "",
+    isTitle(row) && row.deletedAt ? `deleted ${row.deletedAt}` : "",
+  ];
+}
+
+/** One line per title: id, (medium), status, ownership, name (year), priority, rating, liked, last entry. */
+function titleTable(rows: ViewTitle[], showMedium: boolean, indent = ""): string {
+  return table(rows.map((row) => titleRow(row, showMedium)), indent);
+}
+
+/** One diary line: date with its precision marker, type, and what the entry carries. */
+function entryLine(entry: Entry): string[] {
+  const extras = [
+    entry.progress ? `at ${entry.progress}` : "",
+    entry.format ?? "",
+    ratingText(entry.rating),
+    entry.minutes !== null ? `${entry.minutes} min` : "",
+    entry.spend ? `${moneyText(entry.spend)} ${entry.spend.kind}` : "",
+    entry.where ? `@ ${entry.where}` : "",
+  ].filter(Boolean);
+  return [onText(entry.on), entry.type, entry.id, extras.join("  "), entry.text ? clip(oneLine(entry.text), 100) : ""];
+}
+
+/** The title page (LEISURE D90): name, year, medium, status and ownership on one line, the take, the fits, the facts, then the diary newest first. */
+function titleDetail(title: Title): string {
+  const field = (name: string, value: string | undefined | null): string[] => (value ? [`${name.padEnd(13)}${value}`] : []);
+  const length = title.length
+    ? [title.length.minutes ? `${title.length.minutes} min` : "", title.length.pages ? `${title.length.pages} pages` : "", title.length.hours ? `${title.length.hours} h` : "", title.length.seasons ? `${title.length.seasons} seasons` : "", title.length.episodes ? `${title.length.episodes} episodes` : ""].filter(Boolean).join(", ")
+    : null;
+  const series = title.series ?? (title.facts?.series ? { name: title.facts.series.name, position: title.facts.series.position } : null);
+  const detail = [title.detail.format ? `format ${title.detail.format}` : "", title.detail.platform ? `platform ${title.detail.platform}` : "", title.detail.where ? `watched on ${title.detail.where}` : ""].filter(Boolean).join("; ");
+  const owned = title.ownershipDetail;
+  const lines = [
+    `${title.id}  ${describe(title, "UTC")}`,
+    ...field("rating", ratingText(title.rating)),
+    ...field("liked", title.liked ? "yes" : null),
+    ...field("review", title.review ? clip(oneLine(title.review), 200) : null),
+    ...field("priority", title.priority),
+    ...field("fits", [title.moodFit.join(", "), title.timeFit ?? ""].filter(Boolean).join("; ")),
+    ...field("aliases", title.aliases.join(", ")),
+    ...field("creators", title.creators.join(", ")),
+    ...field("length", length),
+    ...field("series", series ? `${series.name}${series.position !== null ? ` #${series.position}` : ""}${title.series ? " (hand-set)" : ""}` : null),
+    ...field("detail", detail),
+    ...field("ownership", owned ? [title.ownership, owned.since ? `since ${onText(owned.since)}` : "", owned.where ? `at ${owned.where}` : "", owned.price ? `for ${moneyText(owned.price)}` : ""].filter(Boolean).join(" ") : null),
+    ...field("catalog", title.catalog ? `${SOURCE_NAMES[title.catalog.source]} ${title.catalog.externalId} (pulled ${title.catalog.pulledAt})` : "none (`refresh` looks it up)"),
+    ...field("edited", title.edited.join(", ")),
+    ...field("genres", title.facts?.genres.join(", ")),
+    ...field("released", title.facts?.released),
+    ...field("synopsis", title.facts?.synopsis ? clip(oneLine(title.facts.synopsis), 300) : null),
+    ...field("origin", `${title.origin.actor} at ${title.origin.at}${title.origin.reason ? `: ${title.origin.reason}` : ""}`),
+    ...field("evidence", title.origin.evidence.join(", ")),
+    ...field("created", title.createdAt),
+    ...field("updated", `${title.updatedAt} (v${title.version})`),
+    ...field("deleted", title.deletedAt),
+  ];
+  const availability = title.facts?.availability ?? [];
+  if (availability.length) lines.push(`availability (${availability.length})`, availabilityText(availability, "  "));
+  if (title.notes?.trim()) lines.push("notes", ...title.notes.trimEnd().split("\n").map((line) => `  ${line}`));
+  const entries = orderEntries(title.entries).reverse();
+  lines.push(entries.length ? `diary (${entries.length}), newest first` : "diary: empty (curious)");
+  if (entries.length) lines.push(table(entries.map(entryLine), "  "));
+  return lines.join("\n");
+}
+
+/** One line per availability row: kind, name, price, and a `*` on constructed search links. */
+function availabilityText(rows: Availability[], indent = ""): string {
+  return table(
+    rows.map((row) => [row.kind, row.name, moneyText(row.price), row.constructed ? "*" : "", row.region, row.url]),
+    indent,
+  );
+}
+
+/** Catalog candidates: `#  id  name (year)  creators  category`, numbered when the caller asks, with availability lines when a hit carries them. */
+function candidateTable(candidates: SearchCandidate[], indent = "", numbered = false): string {
+  const rows: string[][] = [];
+  if (numbered) rows.push(["#", "id", "name (year)", "creators", "category", "", ""]);
+  candidates.forEach((c, i) => {
+    rows.push([
+      numbered ? String(i + 1) : "",
+      c.externalId,
+      nameYear(c),
+      clip(c.creators.join(", "), 40),
+      c.category ?? "",
+      c.editionCount !== null ? `${c.editionCount} editions` : "",
+      c.inLibrary ? `in the library as ${c.inLibrary}` : "",
+    ]);
+  });
+  const lines = [table(rows, indent)];
+  for (const c of candidates) {
+    if (c.availability?.length) lines.push(`${indent}  ${c.externalId} ${c.name}:`, availabilityText(c.availability, `${indent}    `));
+  }
+  return lines.join("\n");
+}
+
+function nextText(title: Title, view: NextView): string {
+  const entry = view.seriesEntry;
+  const position = entry.position !== null ? ` (#${entry.position})` : entry.released ? ` (${entry.released})` : "";
+  const where = view.title ? `in the library as ${view.title.id}, ${view.title.status}` : "not in the library; pass --queue to add it to the backlog";
+  return `Next after ${title.name}: "${entry.name}"${position}${entry.externalId ? `, catalog ${entry.externalId}` : ""}; ${where}`;
+}
+
+function seriesText(view: SeriesView): string {
+  const rows = view.entries.map((entry) => [entry.position !== null ? `#${entry.position}` : "", entry.name, entry.released ?? "", entry.externalId ?? "", entry.title ? `${entry.title.id} ${entry.title.status}${entry.title.rating !== null ? ` ${ratingText(entry.title.rating)}` : ""}` : "not in the library"]);
+  return `${view.name}${view.position !== null ? ` (this title is #${view.position})` : ""}\n${table(rows, "  ")}`;
+}
+
+function buyText(items: BuyItem[], showMedium: boolean): string {
+  const lines: string[] = [];
+  for (const item of items) {
+    lines.push(`${titleRow(item.title, showMedium).filter(Boolean).join("  ")}${item.lowestPrice ? `  lowest ${moneyText(item.lowestPrice)}` : ""}`);
+    lines.push(item.availability.length ? availabilityText(item.availability, "  ") : "  (nowhere on record)");
+  }
+  return lines.join("\n");
+}
+
+function shelfText(view: ShelfView, showMedium: boolean): string {
+  const bucket = (name: string, rows: ViewTitle[]): string[] => (rows.length ? [`${name} (${rows.length})`, titleTable(rows, showMedium, "  "), ""] : []);
+  const lines = [...bucket("Done", view.done), ...bucket("In progress", view.inProgress), ...bucket("Untouched", view.untouched), ...bucket("Dropped", view.dropped)];
+  return lines.length ? lines.join("\n").trimEnd() : "Nothing owned.";
+}
+
+function diaryText(view: DiaryView): string {
+  if (!view.entries.length) return "No entries in the range.";
+  return table(view.entries.map((entry) => [onText(entry.on), entry.medium, clip(oneLine(entry.titleName), 40), entry.type, entry.titleId, entry.id, entry.progress ? `at ${entry.progress}` : "", entry.minutes !== null ? `${entry.minutes} min` : "", entry.text ? clip(oneLine(entry.text), 80) : ""]));
+}
+
+function bucketText(bucket: TimeView["total"]): string {
+  const minutes = Object.entries(bucket.minutes).map(([medium, n]) => `${medium} ${n} min`);
+  const spend = Object.entries(bucket.spend).map(([currency, kinds]) => [kinds.purchase ? `${kinds.purchase} ${currency} purchase` : "", kinds.iap ? `${kinds.iap} ${currency} iap` : "", kinds.rental ? `${kinds.rental} ${currency} rental` : ""].filter(Boolean).join(", "));
+  return [...minutes, ...spend].filter(Boolean).join("; ") || "nothing";
+}
+
+function timeText(view: TimeView): string {
+  const lines = [`Time ${view.from} to ${view.to}: ${bucketText(view.total)}${view.unplaced ? ` (${view.unplaced} entries at month, year, or ? precision not placed)` : ""}`];
+  for (const week of view.weeks) {
+    lines.push(`${week.from} to ${week.to}  ${bucketText(week)}`);
+    if (week.titles.length) lines.push(table(week.titles.map((t) => [t.id, clip(oneLine(t.name), 50), `${t.minutes} min`]), "  "));
+  }
+  return lines.join("\n");
+}
+
+function yearText(view: YearView): string {
+  const byMedium = Object.entries(view.byMedium).map(([medium, stat]) => `${medium} ${stat.count}${stat.avgRating !== null ? ` (avg ${stat.avgRating}/5)` : ""}`);
+  const lines = [`${view.year}: ${view.finished.length} finished (${view.again} again), ${view.dropped.length} dropped${byMedium.length ? `; ${byMedium.join(", ")}` : ""}`];
+  const rows = (items: YearView["finished"]): string => table(items.map((item) => [onText(item.entry.on), item.title.medium, nameYear(item.title), ratingText(item.entry.rating), item.title.id, item.entry.text ? clip(oneLine(item.entry.text), 60) : ""]), "  ");
+  if (view.finished.length) lines.push("Finished", rows(view.finished));
+  if (view.dropped.length) lines.push("Dropped", rows(view.dropped));
+  return lines.join("\n");
+}
+
+function availabilityReportText(report: AvailabilityReport): string {
+  const lines = [`Refreshed ${report.refreshed.length}, failed ${report.failed.length}.`];
+  if (report.refreshed.length) lines.push(table(report.refreshed.map((r) => [r.id, r.name, r.outcome]), "  "));
+  if (report.failed.length) lines.push("Failed", table(report.failed.map((r) => [r.id, r.name, r.issues.join("; ")]), "  "));
+  return lines.join("\n");
 }
