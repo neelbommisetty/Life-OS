@@ -117,7 +117,7 @@ function median(values: number[]): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  return Math.round(sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2);
 }
 
 /** The ISBN an edition is best identified by: the 13-digit one when it has it, else the 10-digit one, else null. */
@@ -174,7 +174,8 @@ export function mapDetail(work: OLWork, authorNames: string[], editions: OLEditi
   const summary = mapEditions(editions);
   const released = work.first_publish_date?.trim() || (summary.earliestYear !== null ? String(summary.earliestYear) : null);
   const year = yearOfDate(work.first_publish_date) ?? summary.earliestYear;
-  const pages = work.number_of_pages_median ?? summary.pages;
+  const rawPages = work.number_of_pages_median ?? summary.pages;
+  const pages = rawPages === null ? null : Math.round(rawPages);
   return {
     name: work.title ?? "",
     year,

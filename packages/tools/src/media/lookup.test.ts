@@ -8,7 +8,7 @@
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import type { Ctx, Title } from "../contract.ts";
+import type { Availability, Ctx, Title } from "../contract.ts";
 import { createTestDb, fixedClock, type TestDb } from "../db/testing.ts";
 import { CatalogUnavailable, CatalogUnconfigured, FakeCatalog, HttpError, type Candidate } from "./catalog/adapter.ts";
 import type { Catalogs } from "./catalog/index.ts";
@@ -22,6 +22,7 @@ import {
   normalizeLookup,
   pullChanged,
   resolve,
+  resolveAvailability,
   resolveTitle,
   type CatalogPull,
 } from "./lookup.ts";
@@ -180,7 +181,7 @@ test("markInLibrary fills inLibrary from non-deleted titles linked to the same s
   const linked = fixture({ id: "m_linked0001", catalog: { source: "tmdb", externalId: "1", pulledAt: now } });
   const gone = fixture({ id: "m_linked0002", catalog: { source: "tmdb", externalId: "2", pulledAt: now }, deletedAt: now });
   const otherSource = fixture({ id: "m_linked0003", catalog: { source: "igdb", externalId: "3", pulledAt: now } });
-  const marked = markInLibrary([candidate({ externalId: "1", name: "A" }), candidate({ externalId: "2", name: "B" }), candidate({ externalId: "3", name: "C" })], [linked, gone, otherSource]);
+  const marked = markInLibrary([candidate({ externalId: "1", name: "A" }), candidate({ externalId: "2", name: "B" }), candidate({ externalId: "3", name: "C" })], [linked, gone, otherSource], "movie");
   assert.deepEqual(
     marked.map((c) => c.inLibrary),
     ["m_linked0001", null, null],
@@ -188,6 +189,22 @@ test("markInLibrary fills inLibrary from non-deleted titles linked to the same s
 });
 
 // ------------------------------------------------------------------ resolve
+
+test("resolve and availability refresh preserve providers and access modes sharing a JustWatch URL", async () => {
+  const { catalogs, tmdb } = fakes();
+  const rows: Availability[] = [
+    { kind: "stream", name: "Netflix", url: "https://jw/example", region: "US", price: null, constructed: false },
+    { kind: "stream", name: "Hulu", url: "https://jw/example", region: "US", price: null, constructed: false },
+    { kind: "rent", name: "Amazon", url: "https://jw/example", region: "US", price: null, constructed: false },
+    { kind: "buy", name: "Amazon", url: "https://jw/example", region: "US", price: null, constructed: false },
+  ];
+  tmdb.seed("movie", [{ externalId: "providers", name: "Shared providers", availability: [...rows, rows[0]!] }]);
+  const linked = await resolve("movie", "Shared providers", { catalogs });
+  assert.equal(linked.outcome, "linked");
+  if (linked.outcome === "linked") assert.deepEqual(linked.availability, rows);
+  const refreshed = await resolveAvailability("movie", "providers", { catalogs });
+  assert.deepEqual(refreshed, { outcome: "ok", availability: rows });
+});
 
 test("resolve: search, confidence, detail, availability under one budget; the candidate rides along", async () => {
   const { catalogs, tmdb } = fakes();
@@ -199,7 +216,7 @@ test("resolve: search, confidence, detail, availability under one budget; the ca
   assert.equal(result.externalId, "329865");
   assert.equal(result.candidate?.name, "Arrival");
   assert.equal(result.detail.name, "Arrival");
-  assert.deepEqual(result.availability.map((row) => row.url), ["https://jw/arrival"], "deduped by URL, region normalized to US");
+  assert.deepEqual(result.availability.map((row) => row.url), ["https://jw/arrival"], "identical rows deduped, region normalized to US");
   assert.deepEqual(tmdb.calls.map((call) => call.method), ["search", "detail", "availability"]);
   const region = tmdb.callsTo("availability")[0]!.region;
   assert.equal(region, "US");

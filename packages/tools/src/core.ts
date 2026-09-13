@@ -74,6 +74,17 @@ function isStoredReceipt(value: unknown): value is StoredReceipt {
   return isPlainObject(value) && typeof value.kind === "string" && typeof value.op === "string" && "receipt" in value;
 }
 
+/** Replay a key before external preflight work, and again under the write lock. Callers validate their context first. */
+export async function replayReceipt<K extends Kind>(tx: Tx, kind: K, op: string, key: string | undefined): Promise<Receipt<RecordOf<K>> | null> {
+  if (key === undefined) return null;
+  const stored = await tx.getReceipt(key);
+  if (stored === null) return null;
+  // Receipts from before the kind/op envelope remain readable.
+  if (!isStoredReceipt(stored)) return stored as Receipt<RecordOf<K>>;
+  if (stored.kind !== kind || stored.op !== op) return rejected([`key: "${key}" was already used by ${stored.op}`]);
+  return stored.receipt as Receipt<RecordOf<K>>;
+}
+
 const SCHEMAS = {
   task: taskSchema,
   project: projectSchema,
@@ -239,15 +250,8 @@ export async function applyIn<K extends Kind>(
   if (!parsedCtx.success) return rejected(issuesOf(parsedCtx.error));
   const context = parsedCtx.data;
 
-  if (context.key !== undefined) {
-    const stored = await tx.getReceipt(context.key);
-    if (stored !== null) {
-      // A receipt stored before kind and op were recorded replays as it is.
-      if (!isStoredReceipt(stored)) return stored as Receipt<RecordOf<K>>;
-      if (stored.kind !== kind || stored.op !== op) return rejected([`key: "${context.key}" was already used by ${stored.op}`]);
-      return stored.receipt as Receipt<RecordOf<K>>;
-    }
-  }
+  const replay = await replayReceipt(tx, kind, op, context.key);
+  if (replay !== null) return replay;
 
   const now = nowIso(clock);
   const writesBefore = writesIn(tx);
@@ -280,6 +284,7 @@ export async function applyIn<K extends Kind>(
   writesByTx.set(tx, writesIn(tx) + 1);
 
   const receipt: Receipt<RecordOf<K>> = {
+    ...mutation.receipt,
     ok: true,
     outcome: mutation.receipt.outcome,
     id: record.id,

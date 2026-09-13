@@ -527,3 +527,17 @@ test("series reads through the title operations; a bad medium is refused by ever
   await assert.rejects(views.backlog("game", { service: "" }), /backlog: service/);
   await assert.rejects(views.now("game", { full: "yes" as unknown as boolean }), /now: full/);
 });
+
+
+test("wanted-again backlog orders priorities across statuses, then names", async () => {
+  try {
+    okRecord(await titles.update(ownedGame.id, { priority: "later" }, neel));
+    okRecord(await titles.update(replay.id, { priority: "now" }, neel));
+    assert.deepEqual(ids(await views.backlog("game", { wantedAgain: true })), [replay.id, ownedGame.id]);
+    okRecord(await titles.update(replay.id, { priority: "later" }, neel));
+    assert.deepEqual(ids(await views.backlog("game", { wantedAgain: true })), [ownedGame.id, replay.id]);
+  } finally {
+    okRecord(await titles.update(ownedGame.id, { priority: "now" }, neel));
+    okRecord(await titles.update(replay.id, { priority: "later" }, neel));
+  }
+});

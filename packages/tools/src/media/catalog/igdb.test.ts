@@ -244,7 +244,7 @@ test("availability: a lighter query for just the store fields, region-tagged row
     const rows = await drain(adapter.availability("game", "1942", "DE"), timer);
     assert.ok(rows.length > 0);
     assert.ok(rows.every((row) => row.region === "DE"));
-    assert.match(sent[0]!.body ?? "", /^fields external_games\.uid, external_games\.external_game_source, external_games\.category, websites\.url, websites\.type; where id = 1942;$/);
+    assert.match(sent[0]!.body ?? "", /^fields external_games\.uid, external_games\.external_game_source, external_games\.category, websites\.url, websites\.type, websites\.category; where id = 1942;$/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -383,7 +383,7 @@ test("detail: no game at that id is an HttpError 404 naming the id, the same not
   }
 });
 
-test("concurrent calls go through one lane: every send is at least 250ms after the last, token call included, in call order", async () => {
+test("concurrent calls go through one lane: every send is at least 250ms after the last, token call included", async () => {
   const dir = await tempDir();
   try {
     const timer = new FakeTimer();
@@ -400,9 +400,9 @@ test("concurrent calls go through one lane: every send is at least 250ms after t
     assert.equal(sent.length, 4, "one token call, then the three searches");
     assert.ok(sent[0]!.url.startsWith("https://id.twitch.tv"));
     assert.deepEqual(
-      sent.slice(1).map((request) => /search "(\w)"/.exec(request.body ?? "")?.[1]),
+      sent.slice(1).map((request) => /search "(\w)"/.exec(request.body ?? "")?.[1]).sort(),
       ["a", "b", "c"],
-      "sends keep the callers' order",
+      "each caller sends once; asynchronous token-file reads may reorder callers",
     );
     for (let i = 1; i < sentAt.length; i++) assert.ok(sentAt[i]! - sentAt[i - 1]! >= IGDB_RATE_LIMIT_MS, `send ${i} came ${sentAt[i]! - sentAt[i - 1]!}ms after the previous`);
   } finally {
@@ -426,4 +426,15 @@ test("readIgdbToken and igdbTokenFresh: the doctor's view of the token file, nul
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+
+test("availability accepts deprecated website categories and prefers the current type", () => {
+  const url = "https://store.steampowered.com/app/123";
+  const legacy = mapAvailability({ id: 123, websites: [{ category: 13, url }] }, "US");
+  const current = mapAvailability({ id: 123, websites: [{ type: 13, category: 1, url }] }, "US");
+  assert.equal(legacy.length, 1);
+  assert.equal(legacy[0]!.name, "Steam");
+  assert.equal(legacy[0]!.url, url);
+  assert.deepEqual(current, legacy);
 });

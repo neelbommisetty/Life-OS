@@ -88,7 +88,7 @@ type RawCompany = { company?: { name?: string | null } | null; developer?: boole
 type RawCollectionGame = { id?: number | null; name?: string | null; first_release_date?: number | null };
 type RawCollection = { name?: string | null; games?: RawCollectionGame[] | null };
 type RawExternalGame = { uid?: string | null; external_game_source?: number | null; category?: number | null };
-type RawWebsite = { url?: string | null; type?: number | null };
+type RawWebsite = { url?: string | null; type?: number | null; category?: number | null };
 type RawGame = {
   id: number;
   name?: string | null;
@@ -178,7 +178,7 @@ function externalGamesOf(game: RawGame): ExternalGame[] {
 }
 
 function websitesOf(game: RawGame): Website[] {
-  return (game.websites ?? []).map((row) => ({ type: row.type ?? null, url: row.url ?? null }));
+  return (game.websites ?? []).map((row) => ({ type: row.type ?? row.category ?? null, url: row.url ?? null }));
 }
 
 /** Store rows through `links.ts`'s templates, falling back to `websites`, as the brief directs; links.ts marks them `constructed: false` since IGDB lists the game there. */
@@ -374,7 +374,7 @@ export class IgdbAdapter implements CatalogAdapter {
     assertCovers(this, medium);
     throwIfAborted(opts.signal, NAME);
     const id = idOf(externalId);
-    const body = `fields external_games.uid, external_games.external_game_source, external_games.category, websites.url, websites.type; where id = ${id};`;
+    const body = `fields external_games.uid, external_games.external_game_source, external_games.category, websites.url, websites.type, websites.category; where id = ${id};`;
     const games = await this.#call<RawGame[]>(GAMES_URL, body, opts.signal);
     const game = games[0];
     if (!game) throw notFound(externalId);

@@ -776,6 +776,109 @@ test("every mutation logs once with the ctx; unchanged logs nothing and stores n
   assert.equal((await logCount()) - before, 3);
 });
 
+test("TMDB ids and inLibrary matches are scoped to movie or show", async () => {
+  tmdb.seed("movie", [{ externalId: "cross-medium-42", name: "Identity movie" }]);
+  tmdb.seed("show", [{ externalId: "cross-medium-42", name: "Identity show" }]);
+  const movie = okRecord(await titles.add({ medium: "movie", name: "Identity movie" }, neel));
+  assert.equal((await titles.catalog.search("show", "Identity show"))[0]!.inLibrary, null);
+  const show = okRecord(await titles.add({ medium: "show", name: "Identity show" }, neel));
+  assert.equal((await titles.catalog.search("show", "Identity show"))[0]!.inLibrary, show.id);
+  assert.equal((await titles.catalog.search("movie", "Identity movie"))[0]!.inLibrary, movie.id);
+  await titles.catalog.unlink(show.id, neel);
+  okRecord(await titles.catalog.link(show.id, "cross-medium-42", neel));
+  const duplicate = await mk("show", "Duplicate identity show");
+  rejectedWith(await titles.catalog.link(duplicate.id, "cross-medium-42", neel), /already linked/);
+});
+
+test("add retries return the full receipt before duplicate checks or catalog calls", async () => {
+  const input = { medium: "movie" as const, name: "Retry addition" };
+  const ctx = { ...neel, key: "retry-add-before-preflight" };
+  tmdb.failNext(new CatalogUnavailable("offline"));
+  const first = await titles.add(input, ctx);
+  const title = okRecord(first);
+  assert.ok(first.warnings?.length);
+  const calls = tmdb.calls.length;
+  assert.deepEqual(await titles.add(input, ctx), first);
+  assert.equal(tmdb.calls.length, calls, "no catalog work on replay");
+  await titles.update(title.id, { name: "Renamed retry addition" }, neel);
+  await titles.delete(title.id, neel);
+  assert.deepEqual(await titles.add(input, ctx), first, "replay survives a rename and deletion");
+  assert.equal(tmdb.calls.length, calls);
+  rejectedWith(await titles.catalog.refresh(title.id, ctx), /already used by title.add/);
+});
+
+test("catalog link, refresh, and availability retry before refs and remote preflight", async () => {
+  const fake = new FakeCatalog({ source: "tmdb" });
+  const ops = createTitles(db.store, clock, { catalogs: { ...catalogs, tmdb: fake } });
+  const row = { kind: "stream" as const, name: "Stream", url: "https://stream/example", region: "US", price: null, constructed: false };
+  fake.seed("movie", [{ externalId: "retry-catalog", name: "Retry catalog" }]);
+  const title = okRecord(await ops.add({ medium: "movie", name: "Retry catalog", lookup: false }, neel));
+  const linkCtx = { ...neel, key: "retry-catalog-link" };
+  const linked = await ops.catalog.link(title.id, "retry-catalog", linkCtx);
+  okRecord(linked);
+  fake.seed("movie", [{ externalId: "retry-catalog", name: "Retry catalog", year: 2020 }]);
+  const refreshCtx = { ...neel, key: "retry-catalog-refresh" };
+  const refreshed = await ops.catalog.refresh(title.id, refreshCtx);
+  okRecord(refreshed);
+  fake.seed("movie", [{ externalId: "retry-catalog", name: "Retry catalog", year: 2020, availability: [row] }]);
+  const availabilityCtx = { ...neel, key: "retry-catalog-availability" };
+  const availability = await ops.catalog.availability(title.id, availabilityCtx);
+  okRecord(availability);
+  await ops.delete(title.id, neel);
+  const calls = fake.calls.length;
+  fake.failAlways(new CatalogUnavailable("offline"));
+  assert.deepEqual(await ops.catalog.link(title.id, "retry-catalog", linkCtx), linked);
+  assert.deepEqual(await ops.catalog.refresh(title.id, refreshCtx), refreshed);
+  assert.deepEqual(await ops.catalog.availability(title.id, availabilityCtx), availability);
+  assert.equal(fake.calls.length, calls);
+});
+
+test("a keyed add replays a concurrent commit observed by its duplicate check", async () => {
+  const input = { medium: "game" as const, name: "Concurrent keyed addition", lookup: false };
+  const ctx = { ...neel, key: "concurrent-keyed-addition" };
+  let reads = 0;
+  let committed: TitleReceipt | undefined;
+  const interleaved = createTitles({
+    transaction: (work) => db.store.transaction(work),
+    close: () => db.store.close(),
+    async read(work) {
+      // The first key read is empty. The other caller commits before our name-duplicate snapshot begins.
+      if (++reads === 2) committed = await titles.add(input, ctx);
+      return db.store.read(work);
+    },
+  }, clock, { catalogs });
+  const receipt = await interleaved.add(input, ctx);
+  assert.ok(committed?.ok);
+  assert.deepEqual(receipt, committed);
+  assert.equal((await titles.list({ text: input.name })).length, 1);
+});
+
+test("entry receipt extras replay verbatim, including removed entries and next-in-series", async () => {
+  const title = await mk("game", "Removed receipt", { started: true });
+  const ctx = { ...neel, key: "removed-receipt" };
+  const first = await titles.unlog(title.id, title.entries[0]!.id, ctx);
+  assert.deepEqual(first.removed, title.entries[0]);
+  assert.deepEqual(await titles.unlog(title.id, title.entries[0]!.id, ctx), first);
+
+  const fake = new FakeCatalog({ source: "tmdb" });
+  const ops = createTitles(db.store, clock, { catalogs: { ...catalogs, tmdb: fake } });
+  fake.seed("movie", [{ externalId: "receipt-first", name: "Receipt first", facts: { series: { name: "Receipt series", position: 1, entries: [
+    { externalId: "receipt-first", name: "Receipt first", position: 1, released: "2020-01-01" },
+    { externalId: "receipt-next", name: "Receipt next", position: 2, released: "2021-01-01" },
+  ] } } }, { externalId: "receipt-next", name: "Receipt next" }]);
+  const movie = okRecord(await ops.add({ medium: "movie", name: "Receipt first" }, neel));
+  const finishCtx = { ...neel, key: "series-receipt" };
+  const finished = await ops.finish(movie.id, {}, finishCtx, { queueNext: true });
+  okRecord(finished);
+  assert.ok(finished.next?.titleId);
+  assert.ok(finished.warnings?.length);
+  const calls = fake.calls.length;
+  fake.failAlways(new CatalogUnavailable("offline"));
+  assert.deepEqual(await ops.finish(movie.id, {}, finishCtx, { queueNext: true }), finished);
+  assert.equal(fake.calls.length, calls);
+  assert.equal((await ops.list({ text: "Receipt next" })).length, 1);
+});
+
 test("relog checks the version guard before anything is written to either title", async () => {
   const from = await mk("book", "Cascade from", { started: true });
   const into = await mk("book", "Cascade into");

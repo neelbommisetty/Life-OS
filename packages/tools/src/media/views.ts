@@ -34,7 +34,7 @@ import type { Store } from "../store.ts";
 import { addDays, todayIn } from "../time.ts";
 import { isOwnershipEntry, lastEntry, orderEntries } from "./derive.ts";
 import { compareOn, isoWeekEnd, isoWeekStart, onRange, yearOf } from "./on.ts";
-import { sortTitles, summarize, type SeriesView, type TitleOps } from "./titles.ts";
+import { PRIORITY_ORDER, sortTitles, summarize, type SeriesView, type TitleOps } from "./titles.ts";
 
 // ------------------------------------------------------------------ types
 
@@ -327,8 +327,9 @@ export function createMediaViews(store: Store, clock: Clock, titles: TitleOps): 
         if (q.service !== undefined && !onService(title, q.service)) return false;
         return true;
       });
-      // sortTitles is status, priority, name; the two statuses here (backlog, done) keep that order too.
-      return present(sortTitles(found), q.full);
+      // Replay priority competes with the backlog on equal terms.
+      found.sort((a, b) => PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority) || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      return present(found, q.full);
     },
 
     async buy(medium, opts = {}) {

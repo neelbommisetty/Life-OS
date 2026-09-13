@@ -329,3 +329,16 @@ test("Candidate and Detail from mapping fit the shared contract shapes end to en
   const parsed = factsSchema.safeParse({ ...detail.facts, availability: [] });
   assert.ok(parsed.success);
 });
+
+
+test("fractional page medians remain valid whole-page catalog facts", () => {
+  const editions = [{ number_of_pages: 300 }, { number_of_pages: 301 }];
+  assert.equal(mapEditions(editions).pages, 301);
+  for (const work of [workString, { ...workString, number_of_pages_median: 300.5 }]) {
+    const detail = mapDetail(work, [], editions);
+    assert.equal(detail.facts.pages, 301);
+    assert.deepEqual(detail.length, { pages: 301 });
+    assert.ok(factsSchema.safeParse({ ...detail.facts, availability: [] }).success);
+    assert.ok(titleLength.safeParse(detail.length).success);
+  }
+});

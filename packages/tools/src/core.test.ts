@@ -1,7 +1,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import type { Ctx, Label, Task } from "./contract.ts";
-import { ITEM_KEY_SEPARATOR, applyIn, bump, checkVersion, diff, duplicate, fail, itemCtx, mutate, newId, nowIso, okMutation, rejected } from "./core.ts";
+import { ITEM_KEY_SEPARATOR, applyIn, bump, checkVersion, diff, duplicate, fail, itemCtx, mutate, newId, nowIso, okMutation, rejected, replayReceipt } from "./core.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
 import type { Tx } from "./store.ts";
 
@@ -291,6 +291,22 @@ test("the persisted record is the schema's normalized form", async () => {
   assert.equal((await db.store.read((tx) => tx.get("task", "t_normal0001")))?.title, "Book the dentist");
   const [entry] = await db.store.read((tx) => tx.history("task", "t_normal0001"));
   assert.deepEqual(entry!.patch.title, { from: null, to: "Book the dentist" });
+});
+
+test("receipt extensions are persisted with the validated record and available to preflight replay", async () => {
+  const ctx = { ...neel, key: "receipt-extensions" };
+  const result = await mutate(db.store, clock, "label", "label.add", ctx, async () => {
+    const mutation = okMutation("created", null, label("l_receiptex1", { name: "normalized" }));
+    return { ...mutation, receipt: { ...mutation.receipt, version: 99, record: label("l_receiptex1", { name: "stale" }), warnings: ["kept on retry"] } };
+  });
+  assert.ok(result.ok);
+  assert.equal(result.record.name, "normalized");
+  assert.equal(result.version, 1, "validated bookkeeping remains authoritative over receipt extensions");
+  assert.deepEqual((result as typeof result & { warnings: string[] }).warnings, ["kept on retry"]);
+  assert.deepEqual(await db.store.read((tx) => replayReceipt(tx, "label", "label.add", ctx.key)), result);
+  const mismatch = await db.store.read((tx) => replayReceipt(tx, "label", "label.update", ctx.key));
+  assert.equal(mismatch?.ok, false);
+  assert.match(mismatch!.issues.join("; "), /already used by label.add/);
 });
 
 test("applyIn works inside an open transaction, honors ifVersion, and a throw rolls the batch back", async () => {

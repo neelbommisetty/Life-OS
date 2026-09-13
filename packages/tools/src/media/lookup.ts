@@ -86,10 +86,10 @@ export function judge(candidates: Candidate[], text: string, year?: number): Con
 }
 
 /** The candidates with `inLibrary` filled: the non-deleted title already linked to each externalId, when there is one. */
-export function markInLibrary(candidates: Candidate[], titles: Title[]): Candidate[] {
+export function markInLibrary(candidates: Candidate[], titles: Title[], medium: Medium): Candidate[] {
   const linked = new Map<string, string>();
   for (const title of titles) {
-    if (title.deletedAt || !title.catalog) continue;
+    if (title.deletedAt || !title.catalog || title.medium !== medium) continue;
     linked.set(`${title.catalog.source}:${title.catalog.externalId}`, title.id);
   }
   return candidates.map((candidate) => ({ ...candidate, inLibrary: linked.get(`${candidate.source}:${candidate.externalId}`) ?? null }));
@@ -128,10 +128,15 @@ function candidatesMessage(source: CatalogSource, text: string, count: number, r
   return `${count} ${SOURCE_NAMES[source]} candidates for "${text}" (${reason}); pass catalog with one of their ids${narrow}`;
 }
 
-/** One row per URL, first wins. */
-function dedupeByUrl(rows: Availability[]): Availability[] {
+/** Keep distinct providers and access modes even when a source supplies one shared landing-page URL. */
+function dedupeAvailability(rows: Availability[]): Availability[] {
   const seen = new Set<string>();
-  return rows.filter((row) => (seen.has(row.url) ? false : (seen.add(row.url), true)));
+  return rows.filter((row) => {
+    const key = JSON.stringify([row.kind, row.name, row.url, row.region, row.price, row.constructed]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** A source error as a `failed` outcome; anything that is not a source error is a bug and is rethrown. */
@@ -173,7 +178,7 @@ export async function resolve(medium: Medium, text: string, opts: LookupOptions)
     }
     const detail = await adapter.detail(medium, externalId, { signal });
     const availability = await adapter.availability(medium, externalId, region, { signal });
-    return { outcome: "linked", source, externalId, detail, availability: dedupeByUrl(availability), candidate };
+    return { outcome: "linked", source, externalId, detail, availability: dedupeAvailability(availability), candidate };
   } catch (error) {
     return failureOf(error, source, medium, externalId, budget);
   } finally {
@@ -187,7 +192,7 @@ export async function resolveAvailability(medium: Medium, externalId: string, op
   const budget = new Budget(opts.budgetMs ?? BUDGET_MS, opts.timer ?? realTimer);
   try {
     const availability = await adapter.availability(medium, externalId, normalizeRegion(opts.region), { signal: budget.signal });
-    return { outcome: "ok", availability: dedupeByUrl(availability) };
+    return { outcome: "ok", availability: dedupeAvailability(availability) };
   } catch (error) {
     return failureOf(error, adapter.source, medium, externalId, budget) as Extract<Resolution, { outcome: "failed" }>;
   } finally {

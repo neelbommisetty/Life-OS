@@ -46,7 +46,7 @@ import {
   type TitleSummary,
   type TitleUpdate,
 } from "../contract.ts";
-import { RejectedAfterWrites, applyIn, bump, checkVersion, diff, duplicate as duplicateMutation, fail, itemCtx, mutate, newId, okMutation, randomSuffix, rejected, type Clock, type Mutation } from "../core.ts";
+import { RejectedAfterWrites, applyIn, bump, checkVersion, diff, duplicate as duplicateMutation, fail, itemCtx, mutate, newId, okMutation, randomSuffix, rejected, replayReceipt, type Clock, type Mutation } from "../core.ts";
 import { cascadeCtx } from "../organize.ts";
 import type { Store, Tx } from "../store.ts";
 import { todayIn } from "../time.ts";
@@ -278,8 +278,8 @@ export function findDuplicateTitles(name: string, titles: Title[], medium: Mediu
 }
 
 /** The non-deleted title, other than `except`, linked to the same source and externalId. */
-function linkedElsewhere(titles: Title[], source: string, externalId: string, except?: string): Title | undefined {
-  return titles.find((title) => !title.deletedAt && title.id !== except && title.catalog?.source === source && title.catalog.externalId === externalId);
+function linkedElsewhere(titles: Title[], medium: Medium, source: string, externalId: string, except?: string): Title | undefined {
+  return titles.find((title) => !title.deletedAt && title.medium === medium && title.id !== except && title.catalog?.source === source && title.catalog.externalId === externalId);
 }
 
 /** The last closing entry (`finish` or `drop`) in diary order: what `rate` and `review` address without `entry`. */
@@ -426,12 +426,28 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
       const meta: Meta = { warnings: [] };
       let receipt: Receipt<Title>;
       try {
-        receipt = await mutate(store, clock, "title", op, ctx, (tx, c, now) => work(tx, c, now, meta));
+        receipt = await mutate(store, clock, "title", op, ctx, (tx, c, now) => workWithMeta(work, tx, c, now, meta));
       } catch (error) {
         if (!(error instanceof CascadeRejected)) throw error;
         receipt = rejected<Title>(error.issues);
       }
       return withRefCandidates(decorate(receipt, meta));
+    }
+
+    /** Successful receipt extras must be present when core stores the receipt, inside the same transaction. */
+    async function workWithMeta(work: Work, tx: Tx, ctx: Ctx, now: string, meta: Meta): Promise<Mutation<Title>> {
+      const mutation = await work(tx, ctx, now, meta);
+      if (mutation.receipt.ok) mutation.receipt = decorate(mutation.receipt, meta) as Receipt<Title>;
+      return mutation;
+    }
+
+    /** A retry answers from its receipt before duplicate checks, ref resolution, or catalog calls. Item contexts have already been validated by their caller. */
+    async function preflight(op: string, ctx: Ctx, item = false): Promise<TitleReceipt | null> {
+      const parsed = item ? null : ctxSchema.safeParse(ctx);
+      if (parsed && !parsed.success) return reject(issuesOf(parsed.error));
+      const context = parsed?.success ? parsed.data : ctx;
+      if (context.key === undefined) return null;
+      return store.read((tx) => replayReceipt(tx, "title", op, context.key));
     }
 
     /**
@@ -443,7 +459,7 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
       const meta: Meta = { warnings: [] };
       let receipt: Receipt<Title>;
       try {
-        receipt = await store.transaction((tx) => applyIn(tx, clock, "title", op, ctx, (t, c, now) => work(t, c, now, meta)));
+        receipt = await store.transaction((tx) => applyIn(tx, clock, "title", op, ctx, (t, c, now) => workWithMeta(work, t, c, now, meta)));
       } catch (error) {
         if (error instanceof RejectedAfterWrites) receipt = error.receipt as Receipt<Title>;
         else if (error instanceof CascadeRejected) receipt = rejected<Title>(error.issues);
@@ -500,8 +516,8 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
     }
 
     /** The `needs` rejection for several candidates, with the candidates marked `inLibrary`. */
-    async function candidatesRejection(result: Extract<Resolution, { outcome: "candidates" }>): Promise<TitleReceipt> {
-      const marked = markInLibrary(result.candidates, await store.read((tx) => tx.all("title")));
+    async function candidatesRejection(result: Extract<Resolution, { outcome: "candidates" }>, medium: Medium): Promise<TitleReceipt> {
+      const marked = markInLibrary(result.candidates, await store.read((tx) => tx.all("title")), medium);
       const needs: Needs = { field: "catalog", options: marked.map((candidate) => candidate.externalId), message: result.message };
       return reject([`catalog: ${result.message}`], { needs, candidates: marked });
     }
@@ -691,7 +707,7 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
       if (input.lookup === false) return { ok: true, pull: null };
       const result = await resolve(input.medium, input.name, { ...lookupOptions, ...(input.year !== undefined ? { year: input.year } : {}) });
       if (result.outcome === "linked") return { ok: true, pull: result };
-      if (result.outcome === "candidates") return { ok: false, receipt: await candidatesRejection(result) };
+      if (result.outcome === "candidates") return { ok: false, receipt: await candidatesRejection(result, input.medium) };
       warnings.push(lookupWarning(result, input.medium));
       return { ok: true, pull: null };
     }
@@ -718,7 +734,7 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
       meta.warnings.push(...warnings);
       const titles = await tx.all("title");
       if (pull) {
-        const other = linkedElsewhere(titles, pull.source, pull.externalId);
+        const other = linkedElsewhere(titles, input.medium, pull.source, pull.externalId);
         if (other) return duplicateMutation([other], [`${other.id} ("${other.name}") is already linked to ${pull.source} ${pull.externalId}; use it, or merge`]);
       }
       if (!input.allowDuplicate) {
@@ -777,10 +793,15 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
       const value = parsed.data;
       const detail = detailIssues(value.medium, value.detail);
       if (detail.length) return reject(detail);
+      const replay = await preflight("title.add", parsedCtx.data);
+      if (replay) return replay;
       // (1) The name duplicate check in a read, before any lookup is spent.
       if (!value.allowDuplicate) {
         const dups = await store.read(async (tx) => findDuplicateTitles(value.name, await tx.all("title"), value.medium));
         if (dups.length) {
+          // Another call with this key may have committed between the first replay read and this duplicate snapshot.
+          const replay = await preflight("title.add", parsedCtx.data);
+          if (replay) return replay;
           return decorate(duplicateMutation(dups, [`A ${value.medium} named "${value.name}" exists (${dups.map((t) => t.id).join(", ")}); pass allowDuplicate to add anyway`]).receipt, { warnings: [] });
         }
       }
@@ -939,7 +960,7 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
       const before = found.record;
       const mismatch = checkVersion(before, ctx);
       if (mismatch) return mismatch;
-      const other = linkedElsewhere(await tx.all("title"), pull.source, pull.externalId, before.id);
+      const other = linkedElsewhere(await tx.all("title"), before.medium, pull.source, pull.externalId, before.id);
       if (other) return fail([`catalog: ${pull.source} ${pull.externalId} is already linked to ${other.id} ("${other.name}"); merge them, or pick another id`], { id: before.id, record: before });
       return writePull(tx, before, pull, now);
     }
@@ -948,6 +969,8 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
     async function link(ref: string, externalId: string, ctx: Ctx): Promise<TitleReceipt> {
       const id = externalId.trim();
       if (!id) return reject(["externalId: Required"]);
+      const replay = await preflight("title.link", ctx);
+      if (replay) return replay;
       const first = await findFirst(ref);
       if (!first.ok) return first.receipt;
       const result = await resolve(first.title.medium, first.title.name, { ...lookupOptions, externalId: id });
@@ -966,13 +989,15 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
 
     /** `refresh`: re-pull a linked title; run the whole lookup for one without a catalog, with `add`'s `needs` path. */
     async function refresh(ref: string, ctx: Ctx): Promise<TitleReceipt> {
+      const replay = await preflight("title.refresh", ctx);
+      if (replay) return replay;
       const first = await findFirst(ref);
       if (!first.ok) return first.receipt;
       const title = first.title;
       const result = title.catalog
         ? await resolve(title.medium, title.name, { ...lookupOptions, externalId: title.catalog.externalId })
         : await resolve(title.medium, title.name, { ...lookupOptions, ...(title.year !== null ? { year: title.year } : {}) });
-      if (result.outcome === "candidates") return candidatesRejection(result);
+      if (result.outcome === "candidates") return candidatesRejection(result, title.medium);
       if (result.outcome !== "linked") return reject(failureIssues(result));
       return write("title.refresh", ctx, (tx, c, now) => linkOp(tx, ref, c, now, result));
     }
@@ -992,6 +1017,8 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
     }
 
     async function availabilityOne(ref: string, ctx: Ctx, writer: Writer = write): Promise<TitleReceipt> {
+      const replay = await preflight("title.availability", ctx, writer === writeItem);
+      if (replay) return replay;
       const first = await findFirst(ref);
       if (!first.ok) return first.receipt;
       const title = first.title;
@@ -1025,7 +1052,7 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
       try {
         const signal = budget.signal;
         const found = await adapter.search(medium, text, { ...(parsed.data.year !== undefined ? { year: parsed.data.year } : {}), signal });
-        const candidates: SearchCandidate[] = markInLibrary(found, await store.read((tx) => tx.all("title")));
+        const candidates: SearchCandidate[] = markInLibrary(found, await store.read((tx) => tx.all("title")), medium);
         if (parsed.data.availability && candidates.length) {
           const verdict = judge(candidates, text, parsed.data.year);
           const targets = verdict.ok ? candidates.filter((c) => c.externalId === verdict.candidate.externalId) : candidates.slice(0, 3);
@@ -1194,6 +1221,8 @@ export function createTitles(store: Store, clock: Clock, deps: TitleDeps): Title
         if (!parsedOpts.success) return reject(issuesOf(parsedOpts.error));
         const parsed = entryInputSchema.safeParse(input ?? {});
         if (!parsed.success) return reject(issuesOf(parsed.error));
+        const replay = await preflight("title.finish", ctx);
+        if (replay) return replay;
         const pull = await prefetchNext(ref, parsedOpts.data);
         return write("title.finish", ctx, (tx, c, now, meta) => finishOp(tx, ref, parsed.data, c, now, meta, parsedOpts.data, pull));
       },
