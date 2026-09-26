@@ -17,3 +17,6 @@ test-results/
 playwright-report/
 **/playwright-report/
 .DS_Store
+
+# Local design-tool session state
+.impeccable/

@@ -15,3 +15,9 @@ The attached Life vault is separate and shared, not isolated by a code branch or
 ## Shared tools API
 
 The September 17 API milestone is authorized by the user; see `docs/vision/API.md` and `packages/tools/API.md`. All existing tools functionality is exposed through the Hono API. The `life` CLI consumes HTTP and must not regain direct database or provider access. `Tools` remains the server-side business layer. Use established libraries for routing, validation, OpenAPI, and transport. `bun run api` starts the local Node API on port 4319. Database and provider credentials belong to the API server; clients use `LIFE_API_URL` and `LIFE_API_TOKEN`. Tests use fake providers and disposable database schemas, with CLI tests going through loopback HTTP. This authorization does not include deployment or deferred product features.
+
+## Life-OS web
+
+The September 25 web milestone is the independent website in `apps/web`, with its todo slice at `/todo`. It uses the existing tools HTTP API only, through a server-side same-origin bridge; database and provider access stays in `packages/tools`. Use Life-OS branding and shared shell/theme tokens so future project, calendar, and other slices can join this cohesive web app. Todoist is the functional reference, not the visual brand. Future slices are not authorized by this milestone. See `apps/web/README.md` for run commands and verification. Keep the API token server-side, bind local web services to loopback, and run browser mutation checks only against disposable data.
+
+Before creating or changing a web slice, read `docs/DESIGN.md`. Reuse its finalized ocean-blue Life-OS palette, fonts, shell, and shared components. Primary controls use pale blue fills with readable blue text; do not reintroduce green or dark primary fills through slice-specific overrides. Keep that guide and `docs/DESIGN.json` in sync with intentional shared-design changes.

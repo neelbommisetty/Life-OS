@@ -1,8 +1,10 @@
 # Life-OS planning
 
-The active implementation is the tools package and [shared tools API](API.md): one backend for existing tools functionality and an HTTP-based `life` CLI. Hosting remains deferred. The Health web prototype and its dedicated design and local-slice documents have been removed.
+The active implementation is the tools package, [shared tools API](API.md), and the [Life-OS web todo slice](../../apps/web/README.md): one backend for existing tools functionality, an HTTP-based `life` CLI, and a website at `/todo`. Hosting remains deferred. The Health web prototype and its dedicated design and local-slice documents have been removed.
 
 Start with [Current Vision](VISION.md), adopted September 5, 2026. It captures the longer-term Codex-and-vault direction, connected application experiences, and proposed publishing bridge. It does not authorize additional implementation.
+
+[Life-OS design system](../DESIGN.md) defines the finalized ocean-blue visual system for current and future web slices.
 
 [Data and adaptive views](DATA-AND-VIEWS.md) preserves the proposed shared-record and focus-plan model for future interfaces.
 

@@ -1,0 +1,37 @@
+{
+  "name": "@life-os/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.ts",
+    "build": "vite build",
+    "start": "node server/index.ts --production",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test server/*.test.ts src/*.test.ts",
+    "test:preview": "node tests/preview.ts",
+    "design:dev": "vite --host 127.0.0.1 --port 4322",
+    "design:tokens": "node scripts/design-tokens.ts",
+    "design:check": "node scripts/design-tokens.ts --check"
+  },
+  "dependencies": {
+    "@fontsource-variable/dm-sans": "^5.3.0",
+    "@fontsource-variable/manrope": "^5.3.0",
+    "@hono/node-server": "^2.1.1",
+    "@life-os/tools": "workspace:*",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@tanstack/react-query": "^5.90.0",
+    "hono": "^4.13.8",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@types/node": "26.4.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.1.7",
+    "@vitejs/plugin-react": "^5.0.4"
+  }
+}
