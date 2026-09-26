@@ -13,6 +13,9 @@ import { fromGoogleEvent, toGoogleInsert } from "./calendar/google/map.ts";
 import { NeedsReauth } from "./calendar/google/oauth.ts";
 import type { Availability, EventWrite, When } from "./contract.ts";
 import type { Clock } from "./core.ts";
+import { serveTestApi } from "./api/testing.ts";
+import type { DiagnosticsOptions } from "./api/diagnostics.ts";
+import type { ToolsOptions } from "./tools.ts";
 import { databaseUrl } from "./db/client.ts";
 import { createTestDb, fixedClock, type TestDb } from "./db/testing.ts";
 import { COMMANDS, ENV_FILE, EXIT, FILTER_GRAMMAR, commandHelp, describeUrl, groupHelp, main, suggest, topHelp, version, type CliIo, type Envelope, type ErrorCode } from "./cli.ts";
@@ -39,18 +42,20 @@ after(async () => {
 });
 
 /** `node bin/life.js ...` with stdin and stdout piped (no terminal), LIFE_ACTOR=neel unless overridden. */
-function life(args: string[], opts: { env?: Record<string, string | undefined>; input?: string } = {}): Promise<Run> {
+async function life(args: string[], opts: { env?: Record<string, string | undefined>; input?: string } = {}): Promise<Run> {
+  const api = await serveTestApi({ url: opts.env?.LIFE_DATABASE_URL || url, env: opts.env });
   const env: Record<string, string> = {};
   const wanted: Record<string, string | undefined> = {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
-    LIFE_DATABASE_URL: url,
+    LIFE_API_URL: api.url,
+    LIFE_API_TOKEN: api.token,
     LIFE_ACTOR: "neel",
     LIFE_TZ: TZ,
     ...opts.env,
   };
   for (const [key, value] of Object.entries(wanted)) if (value !== undefined) env[key] = value;
-  return new Promise((resolve, reject) => {
+  try { return await new Promise<Run>((resolve, reject) => {
     const child = spawn(process.execPath, [BIN, ...args], { env, stdio: ["pipe", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
@@ -59,7 +64,7 @@ function life(args: string[], opts: { env?: Record<string, string | undefined>; 
     child.on("error", reject);
     child.on("close", (code) => resolve({ code: code ?? -1, stdout, stderr }));
     child.stdin.end(opts.input ?? "");
-  });
+  }); } finally { await api.close(); }
 }
 
 type Tty = PassThrough & { isTTY?: boolean };
@@ -72,7 +77,7 @@ type InProcessOptions = {
   env?: Record<string, string | undefined>;
   db?: string;
   /** The calendar's injection points (adapters, credentials, the browser opener, doctor's token check) and the library's (catalogs, the IGDB token directory). */
-  io?: Pick<CliIo, "adapters" | "credentials" | "openUrl" | "refreshToken" | "catalogs" | "igdbTokenDir">;
+  io?: Pick<CliIo, "openUrl"> & Pick<ToolsOptions, "adapters" | "credentials" | "catalogs"> & Pick<DiagnosticsOptions, "refreshToken" | "igdbTokenDir">;
 };
 
 /** `main()` in this process with fake streams: a terminal or not, an optional typed answer, a fixed clock. LIFE_ACTOR=neel unless overridden. */
@@ -89,8 +94,11 @@ async function inProcess(args: string[], opts: InProcessOptions = {}): Promise<R
   if (opts.input !== undefined) stdin.write(opts.input);
   stdin.end();
   const env: Record<string, string | undefined> = { LIFE_TZ: TZ, LIFE_ACTOR: "neel", ...opts.env };
-  const code = await main([...args, "--db", opts.db ?? url], { env, stdin, stdout, stderr, ...(opts.clock ? { clock: opts.clock } : {}), ...opts.io });
-  return { code, stdout: out, stderr: err };
+  const api = await serveTestApi({ url: opts.db ?? url, env, clock: opts.clock, region: env.LIFE_REGION, ...opts.io });
+  try {
+    const code = await main(args, { env: { ...env, LIFE_API_URL: api.url, LIFE_API_TOKEN: api.token }, stdin, stdout, stderr, ...(opts.clock ? { clock: opts.clock } : {}), openUrl: opts.io?.openUrl });
+    return { code, stdout: out, stderr: err };
+  } finally { await api.close(); }
 }
 
 /** The one JSON object on stdout: parsing the whole stream proves nothing else was printed there. */
@@ -170,7 +178,7 @@ test("help at the top, group, and command layers, through --help, -h, and the he
   for (const name of ["LIFE_GOOGLE_CLIENT_ID", "LIFE_CAL_MAX_AGE", "LIFE_CAL_HISTORY_MONTHS"]) assert.ok(top.stdout.includes(name), `environment variable ${name}`);
   assert.match(top.stdout, /provider_unavailable/, "documents the provider error codes");
   assert.match(top.stdout, /e_xxxxxxxxxx@2026-09-10T16:00:00Z/, "shows the occurrence ref format");
-  for (const flag of ["--actor", "--reason", "--evidence", "--key", "--if-version", "--json", "--tz", "--db", "--verbose"]) assert.match(top.stdout, new RegExp(`^  ${flag}\\b`, "m"), `global flag ${flag}`);
+  for (const flag of ["--actor", "--reason", "--evidence", "--key", "--if-version", "--json", "--tz", "--api-url", "--verbose"]) assert.match(top.stdout, new RegExp(`^  ${flag}\\b`, "m"), `global flag ${flag}`);
   for (const name of ["LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG"]) assert.match(top.stdout, new RegExp(`^  ${name} `, "m"), `environment variable ${name}`);
   assert.ok(top.stdout.includes(ENV_FILE), "the .env path is named");
   for (const code of ["0 ", "1 ", "2 ", "3 ", "64 "]) assert.match(top.stdout, new RegExp(`^  ${code}`, "m"), `exit code ${code.trim()}`);
@@ -913,25 +921,18 @@ test("export writes a file, or JSON to stdout", async () => {
 
 // ------------------------------------------------------------------ the database
 
-test("an unreachable database exits 3 as db_unavailable, naming the variable, the host without the password, and life doctor", async () => {
-  const read = await life(["task", "list", "--db", UNREACHABLE]);
-  const error = failed(read, "db_unavailable", EXIT.database);
-  assert.match(error.message, /^database unavailable: .*ECONNREFUSED/);
-  assert.equal(error.hint, "read LIFE_DATABASE_URL from --db; tried postgres://life@127.0.0.1:1/life; run `life doctor`");
-  assert.ok(!read.stdout.includes("s3cretpw") && !read.stderr.includes("s3cretpw"), "the password is never printed");
-  assert.match(read.stderr, /database unavailable/);
-
-  const write = await life(["task", "add", "Nowhere to go", "--db", UNREACHABLE]);
-  assert.equal(failed(write, "db_unavailable", EXIT.database).code, "db_unavailable");
-
-  const migrate = await life(["migrate", "--db", UNREACHABLE]);
-  assert.equal(failed(migrate, "db_unavailable", EXIT.database).message.includes("ECONNREFUSED"), true, "migrate connects eagerly");
-
-  const viaEnv = await life(["today"], { env: { LIFE_DATABASE_URL: UNREACHABLE } });
-  assert.match(failed(viaEnv, "db_unavailable", EXIT.database).hint!, /^read LIFE_DATABASE_URL from LIFE_DATABASE_URL in the environment; tried postgres:\/\/life@127\.0\.0\.1:1\/life/);
-
+test("database failures come from the API and never disclose database credentials", async () => {
+  for (const args of [["task", "list"], ["task", "add", "Nowhere to go"], ["migrate"], ["today"]]) {
+    const run = await life(args, { env: { LIFE_DATABASE_URL: UNREACHABLE } });
+    const error = failed(run, "db_unavailable", EXIT.database);
+    assert.match(error.message, /API server.*database/);
+    assert.match(error.hint!, /life doctor/);
+    assert.doesNotMatch(run.stdout + run.stderr, /s3cretpw|postgres:\/\//);
+  }
   assert.equal(describeUrl("postgres://u:p@h:5/d?x=1"), "postgres://u@h:5/d");
   assert.equal(describeUrl("nonsense"), "(not a parseable URL)");
+  const legacy = await life(["task", "list", "--db", UNREACHABLE]);
+  failed(legacy, "usage", EXIT.usage);
 });
 
 test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other problems", async () => {
@@ -950,24 +951,24 @@ test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other
   assert.match(check("accounts").value, /^none connected; .*life account add google/);
   assert.equal(check("credential files").value, `none yet in ${noCredentials.dir}; the first account add creates one`);
   assert.ok(check("env file").value.includes(ENV_FILE));
-  assert.match(check("database url").value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from --db\)$/);
+  assert.match(check("database url").value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from API server configuration\)$/);
   const fromEnv = await life(["doctor"]);
   assert.equal(fromEnv.code, EXIT.ok, fromEnv.stdout + fromEnv.stderr);
-  assert.match(result<Report>(fromEnv).checks.find((c) => c.name === "database url")!.value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from LIFE_DATABASE_URL in the environment\)$/);
+  assert.match(result<Report>(fromEnv).checks.find((c) => c.name === "database url")!.value, /^postgres:\/\/\S+@127\.0\.0\.1:\d+\/\S+ \(from API server configuration\)$/);
   assert.match(check("connectivity").value, /PostgreSQL \d+/);
   assert.ok(check("connectivity").value.includes(db.schema), "connected to the throwaway schema");
   assert.match(check("migrations").value, /^current \(3 applied, latest 0002_library\)$/);
   assert.match(check("inbox").value, /^p_[a-z0-9]{10} \(Inbox\)$/);
-  assert.equal(check("timezone").value, `${TZ} (LIFE_TZ)`);
-  assert.equal(check("actor").value, "neel (LIFE_ACTOR)");
+  assert.equal(check("timezone").value, `${TZ} (API request)`);
+  assert.equal(check("actor").value, "neel (API request)");
 
   const human = await inProcess(["doctor"], { tty: true, io: { credentials: noCredentials } });
   assert.equal(human.code, EXIT.ok);
   assert.match(human.stdout, /^env file +ok /m);
-  assert.match(human.stdout, /^database url +ok +postgres:\/\/\S+ \(from --db\)/m);
+  assert.match(human.stdout, /^database url +ok +postgres:\/\/\S+ \(from API server configuration\)/m);
   assert.match(human.stdout, /^Healthy\.$/m);
 
-  const down = await life(["doctor", "--db", UNREACHABLE], { env: { LIFE_ACTOR: undefined, LIFE_TZ: "Mars/Olympus" } });
+  const down = await life(["doctor"], { env: { LIFE_DATABASE_URL: UNREACHABLE, LIFE_ACTOR: undefined, LIFE_TZ: "Mars/Olympus" } });
   const error = failed(down, "db_unavailable", EXIT.database);
   const downReport = result<Report>(down);
   assert.equal(downReport.healthy, false);
@@ -985,7 +986,7 @@ test("doctor reports every check and exits 0 healthy, 3 unreachable, 1 for other
   const noUrl = await life(["doctor"], { env: { LIFE_DATABASE_URL: undefined, HOME: scratch } });
   // Without the variable the CLI falls back to the repository .env file, which sets it; the check says which.
   const noUrlReport = result<Report>(noUrl);
-  assert.match(noUrlReport.checks.find((c) => c.name === "database url")!.value, /from LIFE_DATABASE_URL in .*\.env\)$|is not set/);
+  assert.match(noUrlReport.checks.find((c) => c.name === "database url")!.value, /from API server configuration\)$/);
 
   const badTz = await life(["doctor"], { env: { LIFE_TZ: "Mars/Olympus" } });
   assert.equal(failed(badTz, "rejected", EXIT.rejected).message, "1 check failed: timezone");
@@ -999,17 +1000,17 @@ test("--verbose and LIFE_DEBUG put stack traces, SQL details, and resolved refs 
   assert.match(refs.stderr, /^life: resolved project --project "health" -> p_[a-z0-9]{10} \(health\)$/m);
   assert.match(refs.stderr, /^life: resolved section --section "Nope" -> nothing$/m);
   assert.match(refs.stderr, /^life: resolved label --label "health" -> l_[a-z0-9]{10} \(@health\)$/m);
-  assert.match(refs.stderr, /^life: database: postgres:\/\/\S+ \(from LIFE_DATABASE_URL in the environment\)$/m);
+  assert.match(refs.stderr, /^life: api: http:\/\/127\.0\.0\.1:\d+$/m);
 
   const quiet = await life(["task", "add", "Quiet add", "--project", "nope"]);
   failed(quiet, "rejected", EXIT.rejected);
   assert.ok(quiet.stderr.split("\n").filter(Boolean).length <= 2, `without --verbose stderr stays short:\n${quiet.stderr}`);
   assert.doesNotMatch(quiet.stderr, /resolved|at .*\.ts:/);
 
-  const stack = await life(["task", "list", "--db", UNREACHABLE], { env: { LIFE_DEBUG: "1" } });
+  const stack = await life(["task", "list"], { env: { LIFE_DATABASE_URL: UNREACHABLE, LIFE_DEBUG: "1" } });
   failed(stack, "db_unavailable", EXIT.database);
-  assert.match(stack.stderr, /ECONNREFUSED/);
-  assert.match(stack.stderr, /^life: sql: .*code=ECONNREFUSED/m, "the driver's error code");
+  assert.match(stack.stderr, /API server.*database/);
+  assert.doesNotMatch(stack.stderr, /life: sql:/, "server SQL diagnostics stay on the server");
   assert.match(stack.stderr, /^\s+at /m, "a stack trace");
   assert.ok(!stack.stderr.includes("s3cretpw"));
 
@@ -2064,7 +2065,7 @@ test("lookup exits 3 when the source is down and 1 when its key is unset; add wa
   tmdb.failNext(new CatalogUnconfigured("LIFE_TMDB_KEY"), "search");
   const unset = await lib(["movie", "lookup", "Arrival"]);
   const unconfigured = failed(unset, "rejected", EXIT.rejected);
-  assert.equal(unconfigured.message, "catalog not configured: LIFE_TMDB_KEY is not set in the root .env");
+  assert.equal(unconfigured.message, "LIFE_TMDB_KEY is not configured on the API server");
   assert.ok(unconfigured.hint!.includes(ENV_FILE) && /add --no-lookup/.test(unconfigured.hint!));
 
   tmdb.failNext(new CatalogUnconfigured("LIFE_TMDB_KEY"), "search");

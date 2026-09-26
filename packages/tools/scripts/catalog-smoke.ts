@@ -1,5 +1,5 @@
 // Manually run smoke test against the real catalog sources (TMDB, Open
-// Library, IGDB) with the keys in the root .env: runs one whole lookup for a
+// Library, IGDB) through the shared API (keys stay on the server): runs one whole lookup for a
 // medium and a name the way `life <medium> add` would (search, confidence
 // rule, detail, availability for LIFE_REGION), then a live availability call
 // for the id it settled on, printing each result. Not part of `bun run test`
@@ -14,10 +14,8 @@
 // Refuses to run without both arguments so it can never fire by accident.
 
 import type { Medium } from "../src/contract.ts";
-import { readEnv } from "../src/media/catalog/adapter.ts";
-import { defaultCatalogs } from "../src/media/catalog/index.ts";
-import { normalizeRegion } from "../src/media/catalog/links.ts";
-import { resolve, resolveAvailability } from "../src/media/lookup.ts";
+import { createClient } from "../src/api/client.ts";
+import { clientConfig } from "../src/api/config.ts";
 
 const MEDIA = ["movie", "show", "game", "book"] as const;
 const [medium, text, ...rest] = process.argv.slice(2);
@@ -31,11 +29,11 @@ if (!medium || !text || !(MEDIA as readonly string[]).includes(medium) || (rest.
 }
 
 async function main(): Promise<void> {
-  const catalogs = defaultCatalogs();
-  const region = normalizeRegion(readEnv(process.env, "LIFE_REGION"));
+  const client = createClient(await clientConfig(process.env));
+  const { region } = await client.info();
   console.error(`catalog-smoke: ${medium} "${text}"${year !== undefined ? ` (${year})` : ""} in ${region}`);
 
-  const resolution = await resolve(medium as Medium, text!, { catalogs, region, ...(year !== undefined ? { year } : {}) });
+  const resolution = await client.catalog.resolve(medium as Medium, text!, { ...(year !== undefined ? { year } : {}) });
   console.log("resolve:", JSON.stringify(resolution, (key, value: unknown) => (key === "error" && value instanceof Error ? value.message : value), 2));
 
   if (resolution.outcome === "failed") {
@@ -48,7 +46,7 @@ async function main(): Promise<void> {
     console.error("catalog-smoke: nothing to ask availability for");
     return;
   }
-  const availability = await resolveAvailability(medium as Medium, externalId, { catalogs, region });
+  const availability = await client.catalog.availability(medium as Medium, externalId);
   console.log("availability:", JSON.stringify(availability, (key, value: unknown) => (key === "error" && value instanceof Error ? value.message : value), 2));
   if (availability.outcome === "failed") process.exitCode = 1;
 }

@@ -413,3 +413,43 @@ test("constructing without a config does not need the environment; only the firs
     else delete process.env.LIFE_GOOGLE_CLIENT_SECRET;
   }
 });
+
+test("API-hosted callback supports a browser on another device and keeps state, PKCE and tokens server-side", async () => {
+  const { OAuthCallback } = await import("../../api/oauth-callback.ts");
+  const { createApi } = await import("../../api/app.ts");
+  const callback = new OAuthCallback("https://life.example/oauth/google/callback");
+  const google = fakeGoogle();
+  const oauth = new GoogleOAuth({ credentials: await tempStore(), config, fetch: google.fetch, callback });
+  const app = createApi({ token: "test-token-123456789012345678901234", oauthCallback: callback, tools: async () => { throw new Error("not used"); }, migrate: async () => {} });
+  let consent: URL | undefined;
+  const authorized = await oauth.authorize({ open: async (url) => {
+    consent = new URL(url);
+    assert.equal(consent.searchParams.get("redirect_uri"), callback.redirectUri);
+    const bad = await app.request("/oauth/google/callback?state=wrong&code=stolen");
+    assert.equal(bad.status, 400);
+    const params = new URLSearchParams({ state: consent.searchParams.get("state")!, code: "consent-code" });
+    const result = await app.request(`/oauth/google/callback?${params}`);
+    assert.equal(result.status, 200);
+    assert.doesNotMatch(await result.text(), /refresh|access-token|consent-code/);
+    assert.equal((await app.request(`/oauth/google/callback?${params}`)).status, 400, "one-use state");
+  } });
+  assert.equal(authorized.identity, "neel@example.com");
+  const tokenRequest = google.sent.find((entry) => entry.url === GOOGLE_ENDPOINTS.token)!;
+  assert.equal(tokenRequest.form!.get("redirect_uri"), callback.redirectUri);
+  assert.equal(tokenRequest.form!.get("code"), "consent-code");
+  const verifier = tokenRequest.form!.get("code_verifier")!;
+  assert.equal(createHash("sha256").update(verifier).digest("base64url"), consent!.searchParams.get("code_challenge"));
+});
+
+test("API OAuth callbacks expire, fail on denial, and reject unsafe redirect URIs", async () => {
+  const { OAuthCallback } = await import("../../api/oauth-callback.ts");
+  const callback = new OAuthCallback("https://life.example/oauth/google/callback");
+  await assert.rejects(callback.waitForCode({ state: "expires", timeoutMs: 5, open: () => {} }), /timed out/);
+  assert.equal(callback.receive(new URL(`${callback.redirectUri}?state=expires&code=late`)).ok, false);
+  const denied = callback.waitForCode({ state: "denied", timeoutMs: 1000, open: () => {
+    callback.receive(new URL(`${callback.redirectUri}?state=denied&error=access_denied`));
+  } });
+  await assert.rejects(denied, /declined/);
+  assert.throws(() => new OAuthCallback("http://life.example/oauth/google/callback"), /HTTPS/);
+  assert.throws(() => new OAuthCallback("https://life.example/arbitrary"), /must end/);
+});

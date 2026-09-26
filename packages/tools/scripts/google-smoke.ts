@@ -12,7 +12,8 @@
 // calendar on that account, matched the way the CLI matches --calendar.
 // Refuses to run without both arguments so it can never fire by accident.
 
-import { Tools } from "../src/tools.ts";
+import { createClient } from "../src/api/client.ts";
+import { clientConfig } from "../src/api/config.ts";
 
 const [accountRef, calendarName] = process.argv.slice(2);
 
@@ -25,7 +26,7 @@ if (!accountRef || !calendarName) {
 const ctx = { actor: "codex", reason: "google-smoke: manual adapter check" };
 
 async function main(): Promise<void> {
-  const tools = await Tools.open();
+  const tools = createClient(await clientConfig(process.env));
   try {
     const account = await tools.account.get(accountRef);
     if (!account) throw new Error(`no connected account "${accountRef}"; run \`life account list\` first`);

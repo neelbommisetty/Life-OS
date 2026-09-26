@@ -9,7 +9,7 @@ Every event lives on a real Google (or, later, iCloud) calendar; Life-OS keeps
 a synced copy in Postgres and every read comes from that copy. The `life` CLI
 is the only sanctioned way for Codex or any agent to read or write it. Never
 write to the database directly, and never talk to Google's API directly —
-every write goes through the provider from inside the CLI.
+every write goes through the API server and its provider adapter.
 
 This skill says when to use the CLI and what Neel expects of you. It is not
 the manual: the CLI documents itself. Start from `life --help`, then
@@ -19,6 +19,13 @@ codes. `life help event` also prints the `When` formats and the scope rules
 for repeating events. `life doctor` checks the setup when anything looks
 wrong (Google client id present, each account's status and token refresh,
 calendar copy ages).
+
+The CLI uses the shared Life-OS API. Start it from the repository root with
+`bun run api`; the local default uses `.local/api/token` automatically. For a
+remote API set `LIFE_API_URL` and `LIFE_API_TOKEN`. Database and provider
+credentials belong to the server. `api_unavailable` exits 3; a lost response
+may follow a completed write, so read back or retry with the same `--key`.
+See [API setup](../../packages/tools/API.md).
 
 ## When to use it
 

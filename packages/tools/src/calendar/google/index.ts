@@ -32,9 +32,10 @@ import {
   type GoogleEventBody as MapEventBody,
   type MapContext,
 } from "./map.ts";
-import { GOOGLE_ENDPOINTS, GoogleOAuth, type FetchLike, type GoogleClientConfig } from "./oauth.ts";
+import { GOOGLE_ENDPOINTS, GoogleOAuth, type FetchLike, type GoogleClientConfig, type AuthorizationCallback } from "./oauth.ts";
 
 export type GoogleAdapterOptions = {
+  callback?: AuthorizationCallback;
   credentials: CredentialStore;
   /** Defaults to the system clock in the machine's timezone; pass a fixed one in tests. */
   clock?: Clock;
@@ -94,6 +95,7 @@ export class GoogleAdapter implements CalendarAdapter {
       config: opts.config,
       fetch: opts.fetch,
       now: () => this.#clock.now(),
+      callback: opts.callback,
       endpoints: opts.endpoints,
       timeoutMs: opts.timeoutMs,
     });

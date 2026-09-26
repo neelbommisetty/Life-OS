@@ -1,15 +1,15 @@
 # Life-OS planning
 
-The active implementation milestone is [Local first slice](LOCAL-FIRST-SLICE.md): one local app, one validated data file, and Perspective and Plan views. It deliberately defers the proposed backend and hosting work.
+The active implementation is the tools package and [shared tools API](API.md): one backend for existing tools functionality and an HTTP-based `life` CLI. Hosting remains deferred. The Health web prototype and its dedicated design and local-slice documents have been removed.
 
-Start with [Current Vision](VISION.md), adopted September 5, 2026. It captures the current Codex-and-vault direction, connected application experiences, proposed publishing bridge, and suggested first slice.
+Start with [Current Vision](VISION.md), adopted September 5, 2026. It captures the longer-term Codex-and-vault direction, connected application experiences, and proposed publishing bridge. It does not authorize additional implementation.
 
-[Health home — first design sketch](HEALTH-HOME.md) grounds the initial phone experience and its overall-home summary in a small set of existing Health evidence. It is a content and layout draft, not an implemented application.
+[Data and adaptive views](DATA-AND-VIEWS.md) preserves the proposed shared-record and focus-plan model for future interfaces.
 
-[Data and adaptive views](DATA-AND-VIEWS.md) explains shared records, the structured focus plan, and an independently refreshed task/calendar operating view.
+[Hands: the todo list and calendar core](HANDS.md) specifies the implemented todo list and calendar in `packages/tools`.
 
-[Hands: the todo list and calendar core](HANDS.md) is a September 6 working design for a Life-OS-owned, agent-agnostic todo list and calendar with one contract used by a CLI, the app, and skills. It is orthogonal to the Health work and awaits Neel's review before it becomes an authorized milestone.
+[Leisure: the library and the diary](LEISURE.md) specifies the movie, TV, game, and book library. The first cut described in `packages/tools/README.md` is authorized; the second cut remains deferred.
 
-[Leisure: the library and the diary](LEISURE.md) is a September 12 first-altitude working design for a Letterboxd/Goodreads-like library and diary over movies, TV shows, games, and books, owned by Life-OS and reachable through the `life` CLI. It awaits Neel's review; the Health slice app is set aside until later.
+[API setup and contract](../../packages/tools/API.md) documents local operation and verification.
 
-The [August 28 legacy planning set](legacy/2026-08-28/README.md) is preserved for historical reference. Its PRD, architecture, and implementation choices do not govern the current direction. There is no replacement detailed PRD or finalized technical specification yet.
+The [August 28 legacy planning set](legacy/2026-08-28/README.md) is preserved for historical reference. Its PRD, architecture, and implementation choices do not govern the current direction.

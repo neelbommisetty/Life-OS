@@ -11,6 +11,13 @@ database directly. Title reflections belong here; cross-title standards
 remain in the vault. This skill does not perform the deferred vault backfill
 or imports from other services, and leisure interest does not create a task.
 
+The CLI uses the shared Life-OS API. Start it from the repository root with
+`bun run api`; the local default uses `.local/api/token` automatically. For a
+remote API set `LIFE_API_URL` and `LIFE_API_TOKEN`. Database and provider
+credentials belong to the server. `api_unavailable` exits 3; a lost response
+may follow a completed write, so read back or retry with the same `--key`.
+See [API setup](../../packages/tools/API.md).
+
 ## When to use it
 
 - Neel mentions a title with interest, says he wants it, or reports starting,

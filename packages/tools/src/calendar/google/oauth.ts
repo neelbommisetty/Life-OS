@@ -109,7 +109,14 @@ export type AuthorizeResult = {
   obtainedAt: string;
 };
 
+export type AuthorizationCallback = {
+  redirectUri: string;
+  waitForCode(opts: { state: string; timeoutMs: number; open: () => void | Promise<void> }): Promise<string>;
+};
+
 export type GoogleOAuthOptions = {
+  /** A server callback for clients on other devices; defaults to desktop loopback. */
+  callback?: AuthorizationCallback;
   credentials: CredentialStore;
   /** Defaults to `googleClientConfig()` on first use, so construction never needs the env. */
   config?: GoogleClientConfig;
@@ -138,11 +145,13 @@ export class GoogleOAuth implements TokenSource {
   #now: () => Date;
   #endpoints: typeof GOOGLE_ENDPOINTS;
   #timeoutMs: number;
+  #callback?: AuthorizationCallback;
   #cache = new Map<string, AccessToken>();
   #inflight = new Map<string, Promise<AccessToken>>();
 
   constructor(opts: GoogleOAuthOptions) {
     this.#credentials = opts.credentials;
+    this.#callback = opts.callback;
     this.#config = opts.config ?? null;
     this.#fetch = opts.fetch ?? ((input, init) => fetch(input, init));
     this.#now = opts.now ?? (() => new Date());
@@ -170,16 +179,12 @@ export class GoogleOAuth implements TokenSource {
     const challenge = base64url(createHash("sha256").update(verifier).digest());
     const state = base64url(randomBytes(16));
 
-    const server = createServer();
-    await new Promise<void>((resolve, reject) => {
+    const server = this.#callback ? undefined : createServer();
+    if (server) await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
-      });
+      server.listen(0, "127.0.0.1", () => { server.off("error", reject); resolve(); });
     });
-    const { port } = server.address() as AddressInfo;
-    const redirectUri = `http://127.0.0.1:${port}/callback`;
+    const redirectUri = this.#callback?.redirectUri ?? `http://127.0.0.1:${(server!.address() as AddressInfo).port}/callback`;
 
     const url = new URL(this.#endpoints.auth);
     url.searchParams.set("client_id", config.clientId);
@@ -195,9 +200,10 @@ export class GoogleOAuth implements TokenSource {
 
     let code: string;
     try {
-      code = await waitForCode(server, { state, timeoutMs: opts.timeoutMs ?? DEFAULT_AUTHORIZE_TIMEOUT_MS, open: () => opts.open(url.toString()) });
+      const receive = { state, timeoutMs: opts.timeoutMs ?? DEFAULT_AUTHORIZE_TIMEOUT_MS, open: () => opts.open(url.toString()) };
+      code = this.#callback ? await this.#callback.waitForCode(receive) : await waitForCode(server!, receive);
     } finally {
-      await closeServer(server);
+      if (server) await closeServer(server);
     }
 
     const token = await this.#postToken({

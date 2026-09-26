@@ -3,19 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Life-OS tools: the todo list core (and later the calendar), with the life CLI.",
+  "description": "Life-OS tools: shared API and HTTP client for tasks, calendars and the leisure library.",
   "bin": {
     "life": "./bin/life.js"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/api/client.ts",
+    "./client": "./src/api/client.ts",
+    "./api": "./src/api/app.ts",
+    "./server": "./src/index.ts"
   },
   "scripts": {
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@hono/zod-openapi": "^1.6.3",
     "drizzle-orm": "^0.45.2",
+    "hono": "^4.13.8",
     "pg": "8.16.3",
     "rrule": "^2.8.1",
     "zod": "4.5.4"

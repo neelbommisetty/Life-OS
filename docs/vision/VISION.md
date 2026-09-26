@@ -1,6 +1,6 @@
 # Life-OS — Current Vision
 
-Status: Current planning direction, adopted September 5, 2026. This document replaces the August planning set as the basis for further design. It describes intent and boundaries; proposed technology and build order remain revisable. The authorized implementation is the smaller [local file-backed slice](LOCAL-FIRST-SLICE.md); the broader architecture below is not its implementation checklist.
+Status: Current planning direction, adopted September 5, 2026. This document replaces the August planning set as the basis for further design. It describes intent and boundaries; proposed technology and build order remain revisable. The authorized implementation is the tools package and [shared tools API](API.md); the broader architecture below is not its implementation checklist. The Health web prototype has been removed.
 
 ## What Life-OS is for
 
@@ -48,9 +48,9 @@ Every homepage, including the overall home and each area's home, needs both a pe
 
 The operating view shows relevant upcoming calendar events with their actual times and locations, open tasks with their actual status and due dates, and stated intentions with their distinct status. An intention to work out is not a booked session; a calendar event is not attendance evidence; a past task due date is not proof that the underlying activity never happened.
 
-The first prototype calls these views **Perspective** and **Plan**, with a compact upcoming-commitment summary visible from Perspective. Names and exact layout remain revisable. Calendar and task data refresh through ordinary provider adapters independently of when Codex last considered the reflective focus. A stale or failed source refresh remains visible. Focus selection cannot suppress due or scheduled commitments merely because another topic is more salient.
+The proposed interfaces call these views **Perspective** and **Plan**, with a compact upcoming-commitment summary visible from Perspective. Names and exact layout remain revisable. Calendar and task data refresh through ordinary provider adapters independently of when Codex last considered the reflective focus. A stale or failed source refresh remains visible. Focus selection cannot suppress due or scheduled commitments merely because another topic is more salient.
 
-Neel confirmed this as the scope for now: adaptive perspective plus actual tasks and calendar commitments. Other kinds of information or functionality may be added later, but are not part of this initial scope.
+Adaptive perspective plus actual tasks and calendar commitments remain design guidance for future interfaces, not the current implementation scope.
 
 ### Overall home
 
@@ -61,12 +61,6 @@ Its central story follows the shared theme: past context, current situation, des
 It may also surface new opportunities from outside the vault. Suggestions remain visibly distinct from commitments. Time, location, and current activity may improve relevance when those signals are actually available; the design must not pretend to have them.
 
 Briefings and suggestions need clear freshness. A considered recommendation from an earlier day should not silently appear to be a current assessment.
-
-### Health
-
-A Health home should connect what Neel has been doing, his latest stated situation, what he intended to do, and the progress evidence available. Evidence includes metrics, feelings, reflections, and relevant history. Not everything meaningful should be forced into a metric.
-
-Missing, partial, or stale evidence remains visible as a gap. The experience should preserve uncertainty and factual context without inventing progress, diagnoses, or commitments.
 
 ### Relationships
 
@@ -139,15 +133,9 @@ One repository could contain `apps/web`, `packages/data`, `packages/cli`, and `s
 
 The code repository is the primary project folder. The vault can be attached as a secondary folder while remaining separate. Project attachment is not yet verified. Project instructions should explicitly require reading applicable vault rules before any vault work; isolation of the code checkout does not isolate a shared vault.
 
-## A first meaningful slice
+## Current implementation
 
-The suggested first slice is a useful Health home plus a minimal overall homepage, backed by a small selection of real existing Health material. Include one actual stated intention and a related Todoist task if one exists.
-
-For the current local milestone, prove that replacing the data file updates the page and that a correction is visible without changing app code. Keep missing data and invalid-file errors explicit. The later publishing integration should prove the longer path from conversational update through the vault workflow to the page, including safe retries and recoverable publication failures.
-
-This slice tests whether the bridge and experiences are useful. It does not reduce the whole vision to a Health tracker. Broad imports, task ownership migration, calendar ownership migration, and a complete catalog of specialized views are future work.
-
-The interactive design prototype established the Perspective and Plan behavior. Neel then authorized a smaller first implementation: a local app reading one validated structured data file, using the selected evidence already reviewed. Codex prepares that file; the app renders focus plans and independently displays task/calendar snapshots. Database, publishing service, automatic sync, sign-in, deployment, broad imports, and task or calendar migrations remain outside this milestone. See [Local first slice](LOCAL-FIRST-SLICE.md) for the executable scope.
+The tools package provides tasks, calendars, and the first leisure-library cut through the [shared tools API](API.md) and HTTP-based `life` CLI. The former Health web app, sample data, and local snapshot workflow have been removed. Future web interfaces and the publishing bridge require separate scope and authorization.
 
 ## Principles to carry forward
 
@@ -162,7 +150,7 @@ The interactive design prototype established the Perspective and Plan behavior. 
 
 ## Decisions still to make
 
-- Which specific Health material and homepage content make the first slice useful?
+- Which homepage content would make a future interface useful?
 - What is the smallest publication contract that supports those views and corrections?
 - Which workflow inputs, permitted operations, and outputs must be explicit to support a future executor change?
 - How will website edits be routed as particular direct interactions are introduced?

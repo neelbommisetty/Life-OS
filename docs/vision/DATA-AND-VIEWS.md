@@ -52,7 +52,7 @@ The operating view is a deterministic query over normalized tasks and events for
 - Open tasks retain due dates and status. A due date that passed is a source fact; it does not establish that Neel failed to perform an activity.
 - Undated tasks remain undated. Intentions without accepted tasks or scheduled events remain intentions.
 - Task/event relationships can connect a plan to a booking without duplicating it or treating a booking as completion.
-- Health relevance initially follows verified labels, links, and explicit mappings. A production view must disclose incomplete mapping or calendar coverage rather than presenting keyword matches as exhaustive.
+- Area relevance follows verified labels, links, and explicit mappings. A production view must disclose incomplete mapping or calendar coverage rather than presenting keyword matches as exhaustive.
 - Ordering follows actual schedule and explicit task attributes. Reflective focus can add contextual links but cannot make due or scheduled obligations disappear.
 
 The UI offers Perspective and Plan as complementary views, and keeps a compact commitment summary visible in Perspective. The same pattern applies across homepages. All-area Home can eventually aggregate records across areas without duplicating them.
@@ -61,7 +61,7 @@ The UI offers Perspective and Plan as complementary views, and keeps a compact c
 
 The focus can be reconsidered during existing Codex workflows or after an explicit correction. Tasks and events refresh through conventional code on their own cadence or on opening the view. A calendar reschedule should appear without waiting for another model-generated briefing.
 
-A later adapter can fetch the provider's current records into a normalized read model. The view includes source-check times and distinguishes a successful empty result from a failed, partial, or stale read. The current [local milestone](LOCAL-FIRST-SLICE.md) reads prepared snapshots from one validated file; it does not implement these provider adapters or automatic synchronization.
+A later adapter can fetch the provider's current records into a normalized read model. The view includes source-check times and distinguishes a successful empty result from a failed, partial, or stale read. The former local file-backed web prototype has been removed; this document remains a proposal for future interfaces.
 
 Writes route to the current authority. Completing a task or rescheduling an event requires an actual provider operation and readback, with pending/failure feedback. A checkbox in a local prototype must not pretend to complete a real task. In the eventual native-task or native-calendar migration, the adapter changes behind the same application-facing contracts.
 
@@ -74,9 +74,3 @@ Writes route to the current authority. Completing a task or rescheduling an even
 5. Corrections update or supersede the relevant records and invalidate stale derived text or plans. Both Perspective and Plan use the revised shared identities and ownership rules.
 
 Narrative interpretations cannot be assumed current merely because a measurement updated. Retain source versions or equivalent dependencies so a correction can mark affected commentary for refresh. An operational source outage does not justify changing a narrative into a claim that there are no tasks or appointments.
-
-## What the prototype proves
-
-The prototype uses fixed, reviewed evidence and hand-authored focus plans. It demonstrates adaptive presentation and a separate operating view; it does not perform automatic focus inference, refresh providers in the background, or write to the vault, Todoist, or Google Calendar.
-
-The operating examples were read directly on September 5: four active tasks labeled Health, and an accepted Gym training event on September 8, 9–10 AM Pacific at Forma Gym. Calendar scope was primary-calendar gym matches from late September 5 through September 19, followed by an individual event read. That is an example set, not an exhaustive health-calendar inventory. The prototype preserves this checkpoint date.

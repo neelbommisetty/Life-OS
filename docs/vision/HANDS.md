@@ -221,7 +221,7 @@ Each its own pass, in no fixed order. The core starts empty; nothing here is a p
 - **Import from Todoist.** One-way, dry-run first. The mapping is direct because the model matches.
 - **Other task integrations.** iCloud Reminders and Google Tasks, after Todoist, by the same import-then-mirror route (D57).
 - **Phone surfaces.** Today, Upcoming, project list and board, as library clients inside the app.
-- **Health's Plan tab** becomes a `label` view over the core instead of snapshot records in the data file.
+- **Future area Plan views** can use a `label` view over the core.
 - **Mirrors.** Todoist as a two-way mirror per D15, with reconciliation designed before enabling.
 - **Reminders**, a notification interface over `due` and `deadline`.
 - **Agent gates.** Bucket enforcement (D14).

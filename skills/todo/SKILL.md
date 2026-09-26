@@ -16,6 +16,13 @@ manual: the CLI documents itself. Start from `life --help`, then
 examples, and exit codes. `life help filter` prints the query grammar.
 `life doctor` checks the setup when anything looks wrong.
 
+The CLI uses the shared Life-OS API. Start it from the repository root with
+`bun run api`; the local default uses `.local/api/token` automatically. For a
+remote API set `LIFE_API_URL` and `LIFE_API_TOKEN`. Database and provider
+credentials belong to the server. `api_unavailable` exits 3; a lost response
+may follow a completed write, so read back or retry with the same `--key`.
+See [API setup](../../packages/tools/API.md).
+
 ## When to use it
 
 - Neel asks you to add, change, schedule, complete, cancel, or delete a task.

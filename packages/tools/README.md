@@ -1,12 +1,14 @@
 # @life-os/tools
 
-The todo list and calendar core of Life-OS, plus the `life` CLI. The product spec is `docs/vision/HANDS.md` at the repository root; read it first. This file is the implementation brief: conventions, module map, and the fixed interfaces that let the modules be built independently.
+The todo list, calendar, and leisure core of Life-OS, exposed through the shared HTTP API and the `life` CLI. The product spec is `docs/vision/HANDS.md` at the repository root; read it first. This file is the implementation brief: conventions, module map, and the fixed interfaces that let the modules be built independently.
+
+See [API setup and contract](API.md) for the current transport boundary. The API server owns database/provider access; `life` is its HTTP client.
 
 ## Conventions
 
 - **Runtime.** Node 26 runs TypeScript directly, so there is no build step. Write erasable syntax only: no `enum`, no `namespace`, no constructor parameter properties. Relative imports carry the `.ts` extension. `verbatimModuleSyntax` is on: use `import type` for types. `tsconfig.json` enforces all of this; `npx tsc --noEmit` must pass.
 - **Tests.** `node:test` in `src/**/*.test.ts`. Run `node --test "src/**/*.test.ts"` from this directory (or `bun run test`). Tests that touch the database use `createTestDb()` from `src/db/testing.ts`, which creates a throwaway Postgres schema, migrates it, and drops it afterwards. Tests never touch the `public` schema. Inject a fixed clock; never depend on wall-clock time.
-- **Environment.** `LIFE_DATABASE_URL` is the only setting. It lives in the repository root `.env` (git-ignored). `src/db/client.ts` reads `process.env.LIFE_DATABASE_URL` and, if unset, loads the root `.env` with `process.loadEnvFile`, resolving the root from `import.meta.url`. `LIFE_TZ` optionally sets the timezone; otherwise the machine's.
+- **Environment.** `LIFE_DATABASE_URL` is the required backend setting; API and client configuration is documented in [API.md](API.md). It lives in the repository root `.env` (git-ignored). `src/db/client.ts` reads `process.env.LIFE_DATABASE_URL` and, if unset, loads the root `.env` with `process.loadEnvFile`, resolving the root from `import.meta.url`. `LIFE_TZ` optionally sets the timezone; otherwise the machine's.
 - **Database.** Postgres through the `pg` Pool and Drizzle ORM (`drizzle-orm/node-postgres`). The schema is declared in `src/db/schema.ts`; migration SQL in `drizzle/` is generated with `npx drizzle-kit generate` and applied by `migrate()` in `src/db/migrate.ts`, which accepts a schema name so tests can migrate a throwaway schema (Drizzle's `migrate` supports `migrationsSchema`). Tables are unqualified, so `search_path` decides where they live; without a schema name the migration journal follows `search_path` too (`public` on a plain URL), so a URL that sets `search_path` never records a migration in `public`.
 - **Storage shape.** One table per record kind (`tasks`, `projects`, `sections`, `labels`, `filters`), each `id text primary key, version integer, json jsonb, updated_at timestamptz, deleted_at timestamptz null`, plus `log` (`seq bigserial`, `at`, `actor`, `op`, `record_kind`, `record_id`, `patch jsonb`, `reason`, `evidence jsonb`, `key`) and `receipts` (`key text primary key`, `receipt jsonb`, `at`). Add expression indexes where a query needs them (tasks: `(json->>'status')`, `(json->>'projectId')`, `(json->'due'->>'date')`). Filtering happens in SQL for `deleted_at` and obvious columns, in JS otherwise. Single user; thousands of rows, not millions.
 - **Writers are serialized.** Every write transaction starts with `select pg_advisory_xact_lock(4242)` so a CLI call and the app never interleave read-modify-write on the same rows. Reads do not take the lock; each `read` runs in one `REPEATABLE READ READ ONLY` transaction, so a multi-table read (export, trash, tree, list) sees one snapshot rather than a writer's commit landing between its queries.
@@ -141,7 +143,7 @@ To build a `FilterSubject` for a task: `status`, `dueDate: due?.date ?? null`, `
 
 ### CLI
 
-`life <group> <command> [args] [flags]`. Global flags: `--actor` (or `LIFE_ACTOR`; defaults to `neel` only when stdin is a TTY, otherwise required), `--reason`, `--evidence` (repeatable), `--key`, `--if-version`, `--json` (default when stdout is not a TTY), `--tz`, `--db <url>`. Exit codes: 0 ok, 1 rejected or invalid, 2 duplicate candidates, 3 database unavailable, 64 usage. On a TTY, a `needs` rejection becomes a question with the offered options; without a TTY it is a rejection whose message names the flag to pass.
+`life <group> <command> [args] [flags]`. Global flags: `--actor` (or `LIFE_ACTOR`; defaults to `neel` only when stdin is a TTY, otherwise required), `--reason`, `--evidence` (repeatable), `--key`, `--if-version`, `--json` (default when stdout is not a TTY), `--tz`, `--api-url <url>`. Exit codes: 0 ok, 1 rejected or invalid, 2 duplicate candidates, 3 API or database unavailable, 64 usage. On a TTY, a `needs` rejection becomes a question with the offered options; without a TTY it is a rejection whose message names the flag to pass.
 
 ```text
 life task add <title> [--notes] [--project ref] [--section name|id] [--parent id] [--due date|today|tomorrow|+Nd] [--time HH:MM] [--tz] [--deadline date] [--duration min] [--repeat RRULE] [--priority 1-4] [--label name]... [--executor] [--bucket] [--status proposed|accepted] [--allow-duplicate]
@@ -493,7 +495,7 @@ First cut (D101): titles and entries, derivation, catalog lookup for all four me
 
 Each module has a matching `*.test.ts`. `derive.ts`, `links.ts`, and each adapter's mapping functions are pure and get the densest tests.
 
-`Tools.open({ catalogs })` defaults to one adapter per source, each reading its variables lazily and throwing `CatalogUnconfigured` on first use; tests pass `FakeCatalog` through the same option, and the CLI through a new `CliIo.catalogs`.
+`Tools.open({ catalogs })` defaults to one adapter per source, each reading its variables lazily and throwing `CatalogUnconfigured` on first use; tests pass `FakeCatalog` through the same option, and CLI integration tests through the API server fixture.
 
 ### Records
 

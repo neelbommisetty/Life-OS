@@ -49,7 +49,7 @@ without imposing FIFO ordering on asynchronous token-file reads.
 
 The leisure skill's 15 worked commands were checked against actual CLI help;
 the skill-creator validator passed. Automated tests use fakes and disposable
-schemas and make no catalog requests. Final gates passed:
+schemas and make no catalog requests. The following historical gates passed before the Health web prototype was removed; current verification uses `bun run typecheck` and `bun run test`:
 
 - `bun run typecheck`
 - `bun run test`: 625 tools tests and 5 web tests, zero failures or skips

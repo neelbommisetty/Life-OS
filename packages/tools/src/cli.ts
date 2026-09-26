@@ -1,9 +1,9 @@
-// The `life` CLI: a thin client of the Tools facade for a shell, usable by a
+// The `life` CLI: an HTTP client of the Life-OS API for a shell, usable by a
 // program. Every command maps onto one library call; the CLI adds argument
 // parsing, the actor rule, relative dates, the sub-task, scope, and catalog
 // questions on a terminal, human or JSON output, and stable exit codes.
-// Nothing here writes a record; calendar writes go through the provider inside
-// the library, and catalog lookups through the adapters it was opened with.
+// Nothing here writes a record; the API server performs database and provider
+// operations. This process handles arguments, questions, local files and output.
 //
 // One declarative command table (COMMANDS) drives parsing, validation, and
 // help at every layer, so the three cannot drift. The four medium groups
@@ -17,19 +17,15 @@
 //               3 database, provider, or catalog unavailable, 64 usage
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import type { AccountAddReceipt } from "./calendar/accounts.ts";
-import { ProviderRejected, ProviderUnavailable } from "./calendar/adapter.ts";
-import { CredentialStore } from "./calendar/credentials.ts";
 import { PROVIDER_REJECTED, PROVIDER_UNAVAILABLE, SCOPES, type EventReceipt, type EventResponse, type Scope } from "./calendar/events.ts";
 import { isOccurrenceRef, type Occurrence } from "./calendar/expand.ts";
-import { GoogleOAuth, NeedsReauth, googleClientIdPresent } from "./calendar/google/oauth.ts";
 import { maxAgeFromEnv, type Day, type Freshness, type ScheduleEntry, type SlotsView, type WeekView } from "./calendar/schedule.ts";
-import type { Adapters, SyncReport } from "./calendar/sync.ts";
 import {
   RATINGS,
   isTimedWhen,
@@ -75,20 +71,21 @@ import {
   type When,
 } from "./contract.ts";
 import type { Clock } from "./core.ts";
-import { createPool, databaseUrl } from "./db/client.ts";
-import { CatalogUnavailable, CatalogUnconfigured, HttpError, MEDIA_BY_SOURCE, SOURCE_BY_MEDIUM, readEnv, type Candidate } from "./media/catalog/adapter.ts";
-import { IGDB_TOKEN_DIR, igdbTokenFresh, igdbTokenPath, readIgdbToken } from "./media/catalog/igdb.ts";
-import { defaultCatalogs, type Catalogs } from "./media/catalog/index.ts";
-import { SOURCE_NAMES, normalizeRegion } from "./media/catalog/links.ts";
+import { SOURCE_BY_MEDIUM, type Candidate } from "./media/catalog/adapter.ts";
+import { SOURCE_NAMES } from "./media/catalog/links.ts";
 import { lastEntry, orderEntries } from "./media/derive.ts";
 import { ON_FORMS, parseOn } from "./media/on.ts";
 import { CATALOG_UNAVAILABLE, type AvailabilityReport, type CandidateKind, type NextInSeries, type NextView, type SearchCandidate, type SeriesView, type TitleOps, type TitleReceipt } from "./media/titles.ts";
 import type { BuyItem, DiaryView, ShelfView, TimeView, ViewTitle, YearView } from "./media/views.ts";
-import { effectiveLabels, findInbox, indexProjects, projectPath, type ProjectContents, type ProjectNode, type SectionTasks } from "./organize.ts";
-import { PgStore } from "./store.ts";
+import { effectiveLabels, indexProjects, projectPath, type ProjectContents, type ProjectNode, type SectionTasks } from "./organize.ts";
 import type { CompleteOptions, DeleteOptions, ImportResult, TaskAssign } from "./tasks.ts";
 import { addDays, isValidDate, isValidTimezone, localDate, localTime, localWall, parseInstant, relativeDate, toInstant, todayIn, zonedToInstant } from "./time.ts";
-import { Tools } from "./tools.ts";
+import type { SyncReport } from "./calendar/sync.ts";
+import { createClient, ApiError, type ToolsClient } from "./api/client.ts";
+import { clientConfig } from "./api/config.ts";
+import type { DoctorReport } from "./api/diagnostics.ts";
+import { messageOf, isInternalError } from "./api/errors.ts";
+export { describeUrl } from "./api/errors.ts";
 import type { TodayView, TrashView, UpcomingView } from "./views.ts";
 
 // ------------------------------------------------------------------ public surface
@@ -97,7 +94,7 @@ import type { TodayView, TrashView, UpcomingView } from "./views.ts";
 export const EXIT = { ok: 0, rejected: 1, duplicate: 2, database: 3, provider: 3, catalog: 3, usage: 64 } as const;
 
 /** The error codes an envelope can carry; each maps onto one exit code. */
-export type ErrorCode = "usage" | "rejected" | "duplicate" | "needs" | "not_found" | "db_unavailable" | "provider_unavailable" | "provider_rejected" | "catalog_unavailable" | "internal";
+export type ErrorCode = "api_unavailable" | "unauthorized" | "usage" | "rejected" | "duplicate" | "needs" | "not_found" | "db_unavailable" | "provider_unavailable" | "provider_rejected" | "catalog_unavailable" | "internal";
 
 /** What a `duplicate` or `needs` error's `candidates` hold: tasks, library titles, or catalog hits (LEISURE D94). */
 export type EnvelopeCandidateKind = "task" | CandidateKind;
@@ -130,24 +127,14 @@ export type CliIo = {
   stderr: NodeJS.WritableStream;
   /** Replaces the wall clock; `--tz` and LIFE_TZ still decide the timezone. */
   clock?: Clock;
-  /** Replaces the calendar provider adapters (tests pass a FakeAdapter); default the Google adapter. */
-  adapters?: Adapters;
-  /** Replaces the credential files' directory; default `.local/google/` at the repository root. */
-  credentials?: CredentialStore;
-  /** Replaces how `account add` shows the sign-in URL; default opens the browser on macOS, and the URL is always printed on stderr. */
+  /** Opens the consent URL received from the API. */
   openUrl?: (url: string) => void;
-  /** Replaces doctor's token check; default trades the account's refresh token for an access token through Google. */
-  refreshToken?: (accountId: string) => Promise<void>;
-  /** Replaces the catalog adapters (tests pass FakeCatalogs); default one real adapter per source, each reading its key on first use. */
-  catalogs?: Catalogs;
-  /** Replaces where doctor looks for the IGDB token file; default `.local/igdb/` at the repository root. */
-  igdbTokenDir?: string;
+
 };
 
-/** Mirrors db/client.ts: the repository root .env, loaded when LIFE_DATABASE_URL is unset. */
+/** Backend configuration location named in help; the CLI never loads it. */
 export const ENV_FILE = fileURLToPath(new URL("../../../.env", import.meta.url));
 /** Mirrors db/migrate.ts: the journal of the migrations `life migrate` applies. */
-const MIGRATIONS_JOURNAL = fileURLToPath(new URL("../drizzle/meta/_journal.json", import.meta.url));
 const PACKAGE_JSON = fileURLToPath(new URL("../package.json", import.meta.url));
 
 /** The package version; "0.0.0-dev" until package.json carries a version field. */
@@ -187,105 +174,6 @@ class UsageError extends Error {
     super(message);
     this.layer = opts.layer;
     this.hint = opts.hint;
-  }
-}
-
-/** A failure the CLI diagnosed itself (a database that cannot be reached, an unset URL) with the hint already written. */
-class CliFailure extends Error {
-  readonly code: ErrorCode;
-  readonly exitCode: number;
-  readonly hint: string;
-  override readonly cause: unknown;
-
-  constructor(code: ErrorCode, exitCode: number, message: string, hint: string, cause?: unknown) {
-    super(message);
-    this.code = code;
-    this.exitCode = exitCode;
-    this.hint = hint;
-    this.cause = cause;
-  }
-}
-
-const DB_ERROR_CODES = new Set([
-  // Sockets and DNS.
-  "ECONNREFUSED",
-  "ECONNRESET",
-  "ENOTFOUND",
-  "EAI_AGAIN",
-  "ETIMEDOUT",
-  "EHOSTUNREACH",
-  "ENETUNREACH",
-  "EPIPE",
-  // Postgres: authentication, missing database, missing tables (not migrated), too many connections, shutdown.
-  "28000",
-  "28P01",
-  "3D000",
-  "42P01",
-  "53300",
-  "57P01",
-  "57P02",
-  "57P03",
-  "08000",
-  "08003",
-  "08006",
-]);
-
-function messageOf(error: unknown): string {
-  if (error instanceof AggregateError && error.errors.length) return error.errors.map(messageOf).join("; ");
-  return error instanceof Error ? error.message : String(error);
-}
-
-/** Connection, authentication, missing-database, and not-migrated failures: the database is not usable. */
-function isDatabaseError(error: unknown): boolean {
-  if (error instanceof AggregateError) return error.errors.some(isDatabaseError);
-  if (!(error instanceof Error)) return false;
-  const code = (error as { code?: unknown }).code;
-  if (typeof code === "string" && DB_ERROR_CODES.has(code)) return true;
-  if (/LIFE_DATABASE_URL is not set/.test(error.message)) return true;
-  if (/timeout exceeded when trying to connect|Connection terminated|the database system is (starting|shutting)/i.test(error.message)) return true;
-  const cause = (error as { cause?: unknown }).cause;
-  return cause !== undefined && cause !== error && isDatabaseError(cause);
-}
-
-/** The pg driver's diagnostics on a database error, for --verbose. */
-function sqlDetails(error: unknown): string[] {
-  const lines: string[] = [];
-  const visit = (e: unknown) => {
-    if (e instanceof AggregateError) return e.errors.forEach(visit);
-    if (!(e instanceof Error)) return;
-    const pg = e as { code?: unknown; detail?: unknown; hint?: unknown; severity?: unknown; routine?: unknown; syscall?: unknown; address?: unknown; port?: unknown; cause?: unknown };
-    const fields: [string, unknown][] = [
-      ["code", pg.code],
-      ["severity", pg.severity],
-      ["detail", pg.detail],
-      ["hint", pg.hint],
-      ["routine", pg.routine],
-      ["syscall", pg.syscall],
-      ["address", pg.address],
-      ["port", pg.port],
-    ];
-    const known = fields.filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => `${k}=${String(v)}`);
-    if (known.length) lines.push(`${e.name}: ${known.join(" ")}`);
-    if (pg.cause !== undefined && pg.cause !== e) visit(pg.cause);
-  };
-  visit(error);
-  return lines;
-}
-
-/** A thrown error that is a bug in the CLI or the library rather than a rejection meant for the caller. */
-function isInternalError(error: unknown): boolean {
-  if (!(error instanceof Error)) return true;
-  return error instanceof TypeError || error instanceof RangeError || error instanceof ReferenceError || error instanceof SyntaxError;
-}
-
-/** The URL with its password removed: scheme, user, host, port, database. */
-export function describeUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    const user = parsed.username ? `${decodeURIComponent(parsed.username)}@` : "";
-    return `${parsed.protocol}//${user}${parsed.host}${parsed.pathname}`;
-  } catch {
-    return "(not a parseable URL)";
   }
 }
 
@@ -353,12 +241,12 @@ type Setup = {
   json: boolean;
   verbose: boolean;
   io: CliIo;
-  db: DbSource;
+  region: string;
   /** A diagnostic line on stderr, only with --verbose or LIFE_DEBUG=1. */
   trace: (line: string) => void;
   warnings: string[];
 };
-type Invocation = Setup & { tools: Tools };
+type Invocation = Setup & { tools: ToolsClient };
 
 type CommandBase = {
   group: GroupName | null;
@@ -457,8 +345,8 @@ const GLOBAL_FLAGS: FlagSpec = {
   "if-version": { kind: "value", type: "integer", help: "Only apply when the record is at this version; otherwise the change is rejected with the current record." },
   json: { kind: "bool", help: "Print the JSON envelope. Default whenever stdout is not a terminal." },
   tz: { kind: "value", type: "timezone", help: "IANA timezone for today, relative dates, and due times. Else LIFE_TZ, else the machine's." },
-  db: { kind: "value", type: "url", help: "Postgres URL. Else LIFE_DATABASE_URL from the environment or the repository .env file." },
-  verbose: { kind: "bool", help: "Stack traces, SQL error details, and resolved refs on stderr. Or LIFE_DEBUG=1." },
+  "api-url": { kind: "value", type: "url", help: "Life-OS API URL. Else LIFE_API_URL, default http://127.0.0.1:4319. Set LIFE_API_TOKEN for authentication." },
+  verbose: { kind: "bool", help: "Client stack traces, API errors, and resolved refs on stderr. Or LIFE_DEBUG=1." },
   help: { kind: "bool", help: "Print help for this layer and exit 0. Also -h, and `life help [group] [command]`." },
   version: { kind: "bool", help: "Print the package version and exit 0." },
 };
@@ -2412,8 +2300,7 @@ const REGION_CURRENCY: Readonly<Record<string, string>> = {
   US: "USD", GB: "GBP", IN: "INR", CA: "CAD", AU: "AUD", NZ: "NZD", JP: "JPY", KR: "KRW", CH: "CHF", SE: "SEK", NO: "NOK", DK: "DKK", BR: "BRL", MX: "MXN", SG: "SGD",
   DE: "EUR", FR: "EUR", ES: "EUR", IT: "EUR", NL: "EUR", IE: "EUR", PT: "EUR", AT: "EUR", BE: "EUR", FI: "EUR",
 };
-const regionOf = (io: CliIo): string => normalizeRegion(readEnv(io.env, "LIFE_REGION"));
-const defaultCurrency = (inv: Setup): string => REGION_CURRENCY[regionOf(inv.io)] ?? "USD";
+const defaultCurrency = (inv: Setup): string => REGION_CURRENCY[inv.region] ?? "USD";
 
 /** `--price n [--currency XXX] [--kind purchase|iap|rental]` as a spend; the two options need the price. */
 function spendFlags(inv: Setup): EntryInput["spend"] | undefined {
@@ -2867,12 +2754,12 @@ function mediumCommands(medium: Medium): CommandDef[] {
       if (target === undefined && catalog === undefined) throw new UsageError(`life ${medium} where: pass a ref or --catalog <id>`, { layer: layerOf(where) });
       if (catalog !== undefined) {
         const rows = await ops(inv).where({ catalog, medium });
-        return { code: EXIT.ok, result: rows, text: () => (rows.length ? availabilityText(rows) : `No availability for ${source} ${catalog} in ${inv.tools.region}.`) };
+        return { code: EXIT.ok, result: rows, text: () => (rows.length ? availabilityText(rows) : `No availability for ${source} ${catalog} in ${inv.region}.`) };
       }
       const found = await ops(inv).resolve(target!, { includeDeleted: true });
       if (!found.ok) return unresolved(where, found, target!);
       const rows = found.title.facts?.availability ?? [];
-      const empty = found.title.catalog ? `No availability on record for ${found.title.name} in ${inv.tools.region}; \`life media availability ${found.title.id}\` re-pulls it.` : `${found.title.name} has no catalog; \`life ${medium} refresh ${found.title.id}\` links one.`;
+      const empty = found.title.catalog ? `No availability on record for ${found.title.name} in ${inv.region}; \`life media availability ${found.title.id}\` re-pulls it.` : `${found.title.name} has no catalog; \`life ${medium} refresh ${found.title.id}\` links one.`;
       return { code: EXIT.ok, result: rows, text: () => (rows.length ? availabilityText(rows) : empty) };
     },
   });
@@ -3493,46 +3380,15 @@ const migrate: CommandDef = {
   summary: "Apply pending database migrations",
   positionals: [],
   flags: {},
-  examples: ["life migrate", "life migrate --db postgres://life@localhost:5432/life --json"],
+  examples: ["life migrate", "life migrate --api-url http://127.0.0.1:4319 --json"],
   exits: [EXIT.ok, EXIT.database, EXIT.usage],
   mutates: false,
-  // The dispatcher opens Tools with migrate: true for this command; by the time run() is called the schema is current.
+  // Migration runs on the API server using its configured database.
   database: "migrate",
-  run: async () => plain(EXIT.ok, { migrated: true }, "Database migrated."),
+  run: async (inv) => plain(EXIT.ok, await inv.tools.migrate(), "Database migrated."),
 };
 
 // ------------------------------------------------------------------ doctor
-
-type CheckStatus = "ok" | "warn" | "fail";
-type Check = { name: string; status: CheckStatus; value: string; hint?: string };
-type DoctorReport = { healthy: boolean; checks: Check[] };
-
-/** Where the database URL came from, for doctor and for database-failure hints. */
-type DbSource = {
-  url: string | undefined;
-  /** "--db", "LIFE_DATABASE_URL in the environment", or the .env file. */
-  source: string;
-  envFile: string;
-  envFileExists: boolean;
-  /** True when the .env file supplied the URL. */
-  envFileRead: boolean;
-};
-
-function databaseSource(flags: Flags, io: CliIo): DbSource {
-  const envFile = ENV_FILE;
-  const envFileExists = existsSync(envFile);
-  const flag = flags.str("db");
-  if (flag !== undefined) return { url: flag, source: "--db", envFile, envFileExists, envFileRead: false };
-  const fromEnv = io.env.LIFE_DATABASE_URL;
-  if (fromEnv) return { url: fromEnv, source: "LIFE_DATABASE_URL in the environment", envFile, envFileExists, envFileRead: false };
-  // The library loads the .env file when the variable is unset; ask it the same way.
-  try {
-    const url = databaseUrl();
-    return { url, source: `LIFE_DATABASE_URL in ${envFile}`, envFile, envFileExists, envFileRead: true };
-  } catch {
-    return { url: undefined, source: "unset", envFile, envFileExists, envFileRead: false };
-  }
-}
 
 const doctor: CommandDef = {
   group: null,
@@ -3541,12 +3397,12 @@ const doctor: CommandDef = {
   description: "Runs every check and reports each as ok, warn, or fail. Exit 0 when healthy, 3 when the database cannot be reached (or its URL is unset), 1 for any other failure. For the calendar: whether LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown), each account's status and credential file, whether its token still refreshes (one request to Google per connected account), each calendar's copy age, the primary account, and any credential file that belongs to no live account. For the library: whether each catalog's variables are set (LIFE_TMDB_KEY; LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET; Open Library needs none), whether the IGDB token file is present and not expired, and LIFE_REGION; --online runs one live search per configured source. Never migrates.",
   positionals: [],
   flags: { online: { kind: "bool", help: "Also run one live search per configured catalog source (TMDB, Open Library, IGDB); off by default so doctor stays offline." } },
-  examples: ["life doctor", "life doctor --json", "life doctor --online", "life doctor --verbose --db postgres://life@localhost:5432/life"],
+  examples: ["life doctor", "life doctor --json", "life doctor --online", "life doctor --verbose"],
   exits: [EXIT.ok, EXIT.rejected, EXIT.database, EXIT.usage],
   mutates: false,
-  database: "none",
+  database: "connect",
   async run(setup) {
-    const report = await runDoctor(setup);
+    const report = await setup.tools.doctor({ online: setup.flags.bool("online"), actor: setup.actor });
     const failed = report.checks.filter((c) => c.status === "fail");
     const dbDown = failed.some((c) => c.name === "database url" || c.name === "connectivity");
     const code = dbDown ? EXIT.database : failed.length ? EXIT.rejected : EXIT.ok;
@@ -3561,312 +3417,6 @@ const doctor: CommandDef = {
     return { code, result: report, text: () => doctorText(report), ...(error ? { error } : {}) };
   },
 };
-
-async function runDoctor(setup: Setup): Promise<DoctorReport> {
-  const checks: Check[] = [];
-  const db = setup.db;
-
-  checks.push({
-    name: "env file",
-    status: "ok",
-    value: db.envFileRead ? `read ${db.envFile}` : db.envFileExists ? `${db.envFile} (present, not needed: ${db.source})` : `${db.envFile} not found (not needed: ${db.source})`,
-  });
-
-  if (!db.url) {
-    checks[0] = { name: "env file", status: "warn", value: db.envFileExists ? `${db.envFile} read but it sets no LIFE_DATABASE_URL` : `${db.envFile} not found` };
-    checks.push({
-      name: "database url",
-      status: "fail",
-      value: "LIFE_DATABASE_URL is not set",
-      hint: `set LIFE_DATABASE_URL in the environment or in ${db.envFile}, or pass --db <url>`,
-    });
-  } else {
-    checks.push({ name: "database url", status: "ok", value: `${describeUrl(db.url)} (from ${db.source})` });
-  }
-
-  let connected = false;
-  let migrated = false;
-  if (db.url) {
-    const pool = createPool(db.url, { connectionTimeoutMillis: 5000, max: 1 });
-    try {
-      try {
-        const version = await pool.query<{ version: string; schema: string | null }>("select version() as version, current_schema() as schema");
-        const row = version.rows[0]!;
-        connected = true;
-        const server = /PostgreSQL [\d.]+/.exec(row.version)?.[0] ?? row.version;
-        checks.push({ name: "connectivity", status: "ok", value: `connected to ${describeUrl(db.url)}; ${server}; schema ${row.schema ?? "(none on search_path)"}` });
-      } catch (error) {
-        setup.trace(`doctor: connect failed: ${messageOf(error)}`);
-        for (const line of sqlDetails(error)) setup.trace(`  ${line}`);
-        checks.push({
-          name: "connectivity",
-          status: "fail",
-          value: `cannot connect to ${describeUrl(db.url)}: ${messageOf(error)}`,
-          hint: "check that Postgres is running and that the URL's host, port, database, user, and password are right",
-        });
-      }
-
-      if (!connected) checks.push({ name: "migrations", status: "warn", value: "unknown until connected" });
-      else {
-        const journal = readJournal();
-        try {
-          const applied = await pool.query<{ n: number; latest: string | null }>('select count(*)::int as n, max(created_at)::text as latest from "__drizzle_migrations"');
-          const row = applied.rows[0]!;
-          const latest = row.latest === null ? 0 : Number(row.latest);
-          const pending = journal.entries.filter((e) => e.when > latest);
-          if (!pending.length) {
-            migrated = true;
-            checks.push({ name: "migrations", status: "ok", value: `current (${row.n} applied, latest ${journal.entries.at(-1)?.tag ?? "none"})` });
-          } else {
-            checks.push({ name: "migrations", status: "fail", value: `${pending.length} pending: ${pending.map((e) => e.tag).join(", ")}`, hint: "run `life migrate`" });
-          }
-        } catch (error) {
-          const code = (error as { code?: unknown }).code;
-          if (code === "42P01") checks.push({ name: "migrations", status: "fail", value: "not migrated (no __drizzle_migrations table in this schema)", hint: "run `life migrate`" });
-          else checks.push({ name: "migrations", status: "fail", value: `cannot read the migration journal: ${messageOf(error)}`, hint: "run `life migrate`" });
-          setup.trace(`doctor: migrations check failed: ${messageOf(error)}`);
-          for (const line of sqlDetails(error)) setup.trace(`  ${line}`);
-        }
-      }
-
-      if (migrated) {
-        try {
-          const inbox = await new PgStore(pool).read((tx) => findInbox(tx));
-          checks.push(inbox ? { name: "inbox", status: "ok", value: `${inbox.id} (${inbox.name})` } : { name: "inbox", status: "ok", value: "not created yet; the first task or `life project get inbox` creates it" });
-        } catch (error) {
-          checks.push({ name: "inbox", status: "fail", value: `cannot read projects: ${messageOf(error)}`, hint: "run `life migrate`" });
-        }
-        await calendarChecks(setup, new PgStore(pool), checks);
-      } else {
-        checks.push({ name: "inbox", status: "warn", value: connected ? "unknown until migrated" : "unknown until connected" });
-        checks.push(googleClientCheck(setup, false));
-        checks.push({ name: "accounts", status: "warn", value: connected ? "unknown until migrated" : "unknown until connected" });
-      }
-    } finally {
-      await pool.end().catch(() => undefined);
-    }
-  } else {
-    checks.push({ name: "connectivity", status: "fail", value: "no URL to connect to", hint: "run `life doctor` again once LIFE_DATABASE_URL is set" });
-    checks.push({ name: "migrations", status: "warn", value: "unknown until connected" });
-    checks.push({ name: "inbox", status: "warn", value: "unknown until connected" });
-    checks.push(googleClientCheck(setup, false));
-    checks.push({ name: "accounts", status: "warn", value: "unknown until connected" });
-  }
-
-  checks.push(...(await catalogChecks(setup)));
-
-  const envTz = setup.io.env.LIFE_TZ;
-  const badTz = envTz !== undefined && envTz !== "" && !isValidTimezone(envTz);
-  checks.push(
-    badTz && setup.tzSource !== "--tz"
-      ? { name: "timezone", status: "fail", value: `LIFE_TZ="${envTz}" is not an IANA timezone; using ${setup.tz} (${setup.tzSource})`, hint: "set LIFE_TZ to a zone such as America/Los_Angeles, or unset it" }
-      : { name: "timezone", status: "ok", value: `${setup.tz} (${setup.tzSource})` },
-  );
-
-  checks.push(
-    setup.actor === undefined
-      ? { name: "actor", status: "warn", value: "none: reads work, every write needs --actor or LIFE_ACTOR", hint: "pass --actor codex (or agent:<name>) or set LIFE_ACTOR" }
-      : { name: "actor", status: "ok", value: `${setup.actor} (${setup.actorSource})` },
-  );
-
-  const healthy = checks.every((c) => c.status !== "fail");
-  return { healthy, checks };
-}
-
-/** LIFE_GOOGLE_CLIENT_ID present or not; the secret is never read here. A missing id is a warning: the token check below is what fails when an account really cannot refresh. */
-function googleClientCheck(setup: Setup, accountsConnected: boolean): Check {
-  if (googleClientIdPresent(setup.io.env)) return { name: "google client", status: "ok", value: "LIFE_GOOGLE_CLIENT_ID is set (the secret is never shown)" };
-  return {
-    name: "google client",
-    status: "warn",
-    value: `LIFE_GOOGLE_CLIENT_ID is not set${accountsConnected ? "; the connected accounts cannot refresh their tokens through Google" : " (needed for `life account add google` and every sync)"}`,
-    hint: `put Life-OS's Google OAuth desktop client in ${ENV_FILE} as LIFE_GOOGLE_CLIENT_ID and LIFE_GOOGLE_CLIENT_SECRET`,
-  };
-}
-
-/** The calendar half of doctor: the Google client, each account with its credential and token, each calendar's copy age, the primary account. */
-async function calendarChecks(setup: Setup, store: PgStore, checks: Check[]): Promise<void> {
-  let accounts: Account[];
-  let calendars: Calendar[];
-  try {
-    ({ accounts, calendars } = await store.read(async (tx) => ({ accounts: await tx.all("account"), calendars: await tx.all("calendar") })));
-  } catch (error) {
-    checks.push(googleClientCheck(setup, false));
-    checks.push({ name: "accounts", status: "fail", value: `cannot read accounts: ${messageOf(error)}`, hint: "run `life migrate`" });
-    return;
-  }
-  accounts.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
-  checks.push(googleClientCheck(setup, accounts.some((account) => account.status === "connected")));
-  const credentials = setup.io.credentials ?? new CredentialStore();
-  if (!accounts.length) {
-    checks.push({ name: "accounts", status: "ok", value: "none connected; the schedule shows tasks only until `life account add google`" });
-    checks.push(await credentialFilesCheck(setup, credentials, accounts));
-    return;
-  }
-  const refresh = setup.io.refreshToken ?? (async (accountId: string) => void (await new GoogleOAuth({ credentials }).refreshAccessToken(accountId)));
-  const now = (setup.io.clock?.now() ?? new Date()).getTime();
-  const maxAge = maxAgeFromEnv(setup.io.env);
-  const primary = accounts.find((account) => account.primary);
-  checks.push(primary ? { name: "primary account", status: "ok", value: `${primary.identity} (${primary.id})` } : { name: "primary account", status: "fail", value: "no account is primary", hint: "run `life account primary <ref>`" });
-
-  for (const account of accounts) {
-    const summary = `${account.id}; ${account.status}${account.primary ? "; primary" : ""}; ${account.syncedAt ? `synced ${account.syncedAt}` : "never synced"}`;
-    checks.push(
-      account.status === "connected"
-        ? { name: `account ${account.identity}`, status: "ok", value: summary }
-        : account.status === "needs_reauth"
-          ? { name: `account ${account.identity}`, status: "fail", value: summary, hint: "run `life account add google` and pick this account to sign in again" }
-          : { name: `account ${account.identity}`, status: "warn", value: summary },
-    );
-
-    const credentialName = `credential ${account.identity}`;
-    let present = false;
-    try {
-      present = await credentials.exists(account.id);
-    } catch (error) {
-      setup.trace(`doctor: credential check failed for ${account.id}: ${messageOf(error)}`);
-    }
-    if (!present) {
-      checks.push({ name: credentialName, status: "fail", value: `no credential file at ${credentials.path(account.id)}`, hint: "run `life account add google` and pick this account to sign in again" });
-    } else if (account.status !== "connected") {
-      checks.push({ name: credentialName, status: "warn", value: `file present; token refresh not tried while the account is ${account.status}` });
-    } else {
-      try {
-        await refresh(account.id);
-        checks.push({ name: credentialName, status: "ok", value: "file present; token refresh works" });
-      } catch (error) {
-        setup.trace(`doctor: token refresh failed for ${account.id}: ${messageOf(error)}`);
-        checks.push({ name: credentialName, status: "fail", value: `file present; token refresh failed: ${messageOf(error)}`, hint: error instanceof NeedsReauth ? "run `life account add google` and pick this account to sign in again" : "check LIFE_GOOGLE_CLIENT_ID and LIFE_GOOGLE_CLIENT_SECRET and the network, then run `life doctor` again" });
-      }
-    }
-
-    const own = calendars.filter((calendar) => calendar.accountId === account.id).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-    if (!own.length) checks.push({ name: `calendars ${account.identity}`, status: "warn", value: "none synced yet", hint: "run `life account sync`" });
-    for (const calendar of own) {
-      const age = calendar.syncedAt === null ? null : Math.max(0, Math.floor((now - Date.parse(calendar.syncedAt)) / 1000));
-      const copy = age === null ? "copy never synced" : `copy ${age}s old`;
-      const value = `${calendar.id}; ${copy}${calendar.hidden ? "; hidden" : ""}${calendar.writable ? "" : "; read-only"}${calendar.syncError ? `; last sync failed: ${calendar.syncError}` : ""}`;
-      const name = `calendar ${account.identity}/${calendar.name}`;
-      if (calendar.syncError) checks.push({ name, status: "fail", value, hint: "run `life sync`; if it keeps failing, `life account add google` reconnects the account" });
-      else if (age === null || age > maxAge) checks.push({ name, status: "warn", value: `${value}; older than LIFE_CAL_MAX_AGE (${maxAge}s), the next view refreshes it`, hint: "run `life sync`" });
-      else checks.push({ name, status: "ok", value });
-    }
-  }
-  checks.push(await credentialFilesCheck(setup, credentials, accounts));
-}
-
-/**
- * The credential directory against the live accounts. A `pending-*` file is a
- * sign-in that never became an account (account add failed after the browser
- * step); any other file no live account owns was left behind by a failed or
- * removed account. Each holds a refresh token Google still honours, so they
- * are named with the command that removes them.
- */
-async function credentialFilesCheck(setup: Setup, credentials: CredentialStore, accounts: Account[]): Promise<Check> {
-  const name = "credential files";
-  let ids: string[];
-  try {
-    ids = await credentials.list();
-  } catch (error) {
-    setup.trace(`doctor: cannot list ${credentials.dir}: ${messageOf(error)}`);
-    return { name, status: "warn", value: `cannot list ${credentials.dir}: ${messageOf(error)}`, hint: "check the directory's permissions" };
-  }
-  if (!ids.length) return { name, status: "ok", value: `none yet in ${credentials.dir}; the first account add creates one` };
-  const live = new Set(accounts.map((account) => account.id));
-  const orphans = ids.filter((id) => !live.has(id));
-  if (!orphans.length) return { name, status: "ok", value: `${ids.length} in ${credentials.dir}, each a live account's` };
-  const pending = orphans.filter((id) => id.startsWith("pending-")).length;
-  const plural = orphans.length === 1 ? "" : "s";
-  const why = pending ? `; pending-* is a sign-in that never became an account` : "";
-  const files = orphans.map((id) => `${id}.json`);
-  return {
-    name,
-    status: "warn",
-    value: `${orphans.length} of ${ids.length} file${ids.length === 1 ? "" : "s"} in ${credentials.dir} belong${plural ? "" : "s"} to no live account: ${files.join(", ")}${why}`,
-    hint: `each holds a live refresh token; delete the file${plural}: rm ${orphans.map((id) => JSON.stringify(credentials.path(id))).join(" ")}; then revoke Life-OS under https://myaccount.google.com/permissions if that Google account keeps no other connection here`,
-  };
-}
-
-/** The variables each keyed source reads; Open Library needs none. */
-const CATALOG_VARIABLES: Record<CatalogSourceName, string[]> = { tmdb: ["LIFE_TMDB_KEY"], openlibrary: [], igdb: ["LIFE_IGDB_CLIENT_ID", "LIFE_IGDB_CLIENT_SECRET"] };
-type CatalogSourceName = keyof Catalogs;
-const CATALOG_SOURCES: readonly CatalogSourceName[] = ["tmdb", "openlibrary", "igdb"];
-/** What --online searches for at each source: a name every source knows. */
-const ONLINE_PROBE: Record<CatalogSourceName, string> = { tmdb: "Dune", openlibrary: "Dune", igdb: "Celeste" };
-
-/**
- * The library half of doctor: each catalog's variables present or not (values
- * never shown), the IGDB token file and its expiry, LIFE_REGION, and with
- * --online one live search per configured source through the catalogs the CLI
- * was given.
- */
-async function catalogChecks(setup: Setup): Promise<Check[]> {
-  const checks: Check[] = [];
-  const env = setup.io.env;
-  const missing = (source: CatalogSourceName): string[] => CATALOG_VARIABLES[source].filter((variable) => readEnv(env, variable) === undefined);
-  const configured = (source: CatalogSourceName): boolean => missing(source).length === 0;
-  const media = (source: CatalogSourceName): string => MEDIA_BY_SOURCE[source].map((m) => `${m}s`).join(" and ");
-  for (const source of CATALOG_SOURCES) {
-    const name = `catalog ${source}`;
-    const variables = CATALOG_VARIABLES[source];
-    if (!variables.length) {
-      checks.push({ name, status: "ok", value: `${SOURCE_NAMES[source]} needs no key; ${media(source)} look up there` });
-      continue;
-    }
-    const absent = missing(source);
-    if (!absent.length) checks.push({ name, status: "ok", value: `${variables.join(" and ")} ${variables.length === 1 ? "is" : "are"} set (never shown); ${media(source)} look up at ${SOURCE_NAMES[source]}` });
-    else {
-      checks.push({
-        name,
-        status: "warn",
-        value: `${absent.join(" and ")} ${absent.length === 1 ? "is" : "are"} not set; ${media(source)} are created without a catalog (add warns, lookup is rejected)`,
-        hint: `put ${variables.join(" and ")} in ${ENV_FILE}${source === "tmdb" ? " (a TMDB v4 read access token)" : " (a Twitch developer app)"}; \`refresh\` links the titles added meanwhile`,
-      });
-    }
-  }
-
-  const tokenDir = setup.io.igdbTokenDir ?? IGDB_TOKEN_DIR;
-  const tokenPath = igdbTokenPath(tokenDir);
-  const token = await readIgdbToken(tokenDir);
-  const now = setup.io.clock?.now() ?? new Date();
-  if (!token) checks.push({ name: "igdb token", status: "ok", value: `no token file at ${tokenPath} yet; ${configured("igdb") ? "the first game lookup creates it" : "not needed until LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are set"}` });
-  else if (igdbTokenFresh(token, now)) checks.push({ name: "igdb token", status: "ok", value: `file present at ${tokenPath}; expires ${token.expiresAt}` });
-  else checks.push({ name: "igdb token", status: "warn", value: `file present at ${tokenPath}; ${Date.parse(token.expiresAt) <= now.getTime() ? "expired" : "expires within a day"} (${token.expiresAt}); the next game lookup refreshes it${configured("igdb") ? "" : ", once LIFE_IGDB_CLIENT_ID and LIFE_IGDB_CLIENT_SECRET are set"}` });
-
-  const rawRegion = readEnv(env, "LIFE_REGION");
-  checks.push({ name: "region", status: "ok", value: `${normalizeRegion(rawRegion)} (${rawRegion === undefined ? "default; set LIFE_REGION to change it" : `LIFE_REGION${normalizeRegion(rawRegion) !== rawRegion ? `="${rawRegion}", normalized` : ""}`})` });
-
-  if (!setup.flags.bool("online")) return checks;
-  const catalogs = setup.io.catalogs ?? defaultCatalogs({ env });
-  for (const source of CATALOG_SOURCES) {
-    const name = `catalog ${source} online`;
-    if (!configured(source)) {
-      checks.push({ name, status: "warn", value: "skipped: not configured" });
-      continue;
-    }
-    const medium = MEDIA_BY_SOURCE[source][0]!;
-    const probe = ONLINE_PROBE[source];
-    try {
-      const hits = await catalogs[source].search(medium, probe);
-      checks.push({ name, status: "ok", value: `${SOURCE_NAMES[source]} answered: ${hits.length} candidate${hits.length === 1 ? "" : "s"} for "${probe}"` });
-    } catch (error) {
-      setup.trace(`doctor: ${source} search failed: ${messageOf(error)}`);
-      if (error instanceof CatalogUnconfigured) checks.push({ name, status: "warn", value: `skipped: ${error.variable} is not set`, hint: `put ${error.variable} in ${ENV_FILE}` });
-      else checks.push({ name, status: "fail", value: `${SOURCE_NAMES[source]} could not answer a search for "${probe}": ${messageOf(error)}`, hint: error instanceof HttpError ? "the source refused: check the key" : "check the network and the source's status, then run `life doctor --online` again" });
-    }
-  }
-  return checks;
-}
-
-function readJournal(): { entries: { tag: string; when: number }[] } {
-  try {
-    const parsed = JSON.parse(readFileSync(MIGRATIONS_JOURNAL, "utf8")) as { entries?: { tag?: unknown; when?: unknown }[] };
-    const entries = (parsed.entries ?? []).map((e) => ({ tag: String(e.tag ?? "?"), when: Number(e.when ?? 0) }));
-    return { entries };
-  } catch {
-    return { entries: [] };
-  }
-}
 
 function doctorText(report: DoctorReport): string {
   const rows = report.checks.map((c) => [c.name, c.status, c.value, c.hint ? `-> ${c.hint}` : ""]);
@@ -4220,10 +3770,14 @@ export function topHelp(): string {
     ...flagLines(GLOBAL_FLAGS),
     "",
     "environment:",
-    "  LIFE_DATABASE_URL  Postgres URL; when unset it is read from the repository .env file. --db overrides it.",
+    "  LIFE_API_URL       API base URL (default http://127.0.0.1:4319); --api-url overrides it.",
+    "  LIFE_API_TOKEN     API bearer token; the default local API uses .local/api/token when unset.",
     "  LIFE_ACTOR         The actor when --actor is not passed. Without either, a terminal defaults to neel and a program must pass --actor.",
     "  LIFE_TZ            IANA timezone when --tz is not passed; else the machine's timezone.",
     "  LIFE_DEBUG         Set to 1 for the same output as --verbose.",
+    "",
+    "API server environment (the CLI never reads backend credentials):",
+    "  LIFE_DATABASE_URL  Postgres URL on the API server; loaded from its root .env when unset.",
     "  LIFE_GOOGLE_CLIENT_ID, LIFE_GOOGLE_CLIENT_SECRET  Life-OS's own Google OAuth desktop client, needed for `life account add google` and every sync; in the .env file.",
     "  LIFE_CAL_MAX_AGE   Seconds a calendar copy may be old before a view refreshes it first (default 300). --stale skips the refresh.",
     "  LIFE_CAL_HISTORY_MONTHS  How far back a first or --full sync reaches (default 12).",
@@ -4295,7 +3849,7 @@ export function commandHelp(command: CommandDef): string {
   if (command.description) lines.push("", command.description);
   if (command.positionals.length) lines.push("", "positionals:", ...positionalLines(command.positionals));
   lines.push("", Object.keys(command.flags).length ? "flags:" : "flags: none of its own", ...flagLines(command.flags));
-  lines.push("", `global flags: --actor --reason --evidence --key --if-version --json --tz --db --verbose (see \`life --help\`)${command.mutates ? "; this command writes, so --actor (or LIFE_ACTOR) is required when not on a terminal" : ""}`);
+  lines.push("", `global flags: --actor --reason --evidence --key --if-version --json --tz --api-url --verbose (see \`life --help\`)${command.mutates ? "; this command writes, so --actor (or LIFE_ACTOR) is required when not on a terminal" : ""}`);
   lines.push("", "examples:", ...command.examples.map((e) => `  ${e}`));
   if (command.notes?.length) lines.push("", ...command.notes);
   lines.push("", "exit codes:", ...command.exits.map((code) => `  ${String(code).padEnd(4)}${EXIT_MEANING[code]}`));
@@ -4337,7 +3891,7 @@ function helpData(layer: Layer): unknown {
         groups: GROUP_NAMES.map((g) => ({ group: g, summary: GROUP_INFO[g], commands: commandsOf(g).map((c) => ({ command: commandName(c), summary: c.summary })) })),
         commands: TOP_COMMANDS.map((c) => ({ command: c.name, summary: c.summary })),
         globalFlags: flagData(GLOBAL_FLAGS),
-        environment: ["LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG", "LIFE_GOOGLE_CLIENT_ID", "LIFE_GOOGLE_CLIENT_SECRET", "LIFE_CAL_MAX_AGE", "LIFE_CAL_HISTORY_MONTHS", "LIFE_TMDB_KEY", "LIFE_IGDB_CLIENT_ID", "LIFE_IGDB_CLIENT_SECRET", "LIFE_REGION"],
+        environment: ["LIFE_API_URL", "LIFE_API_TOKEN", "LIFE_DATABASE_URL", "LIFE_ACTOR", "LIFE_TZ", "LIFE_DEBUG", "LIFE_GOOGLE_CLIENT_ID", "LIFE_GOOGLE_CLIENT_SECRET", "LIFE_CAL_MAX_AGE", "LIFE_CAL_HISTORY_MONTHS", "LIFE_TMDB_KEY", "LIFE_IGDB_CLIENT_ID", "LIFE_IGDB_CLIENT_SECRET", "LIFE_REGION"],
         envFile: ENV_FILE,
         exitCodes: Object.entries(EXIT_MEANING).map(([code, meaning]) => ({ code: Number(code), meaning })),
         filterGrammar: FILTER_GRAMMAR,
@@ -4386,7 +3940,6 @@ class Session {
   #args: string[] = [];
   #commandDef: CommandDef | null = null;
   #layer: Layer = { kind: "top" };
-  #db: DbSource | null = null;
 
   constructor(argv: string[], io: CliIo) {
     this.#argv = argv;
@@ -4441,9 +3994,7 @@ class Session {
     // Resolve the actor before touching the database, so a missing one is a plain usage error.
     if (command.mutates) ctx();
 
-    const db = databaseSource(flags, io);
-    this.#db = db;
-    const setup: Setup = { args, flags, ctx, today: todayIn(tz, clock.now()), tz, tzSource, actor, actorSource, json: this.#json, verbose: this.#verbose, io, db, trace: this.trace, warnings: this.#warnings };
+    const setup: Setup = { args, flags, ctx, today: todayIn(tz, clock.now()), tz, tzSource, actor, actorSource, json: this.#json, verbose: this.#verbose, io, region: "US", trace: this.trace, warnings: this.#warnings };
     this.trace(`command: life ${this.#command}${args.length ? ` ${args.map((a) => JSON.stringify(a)).join(" ")}` : ""}`);
     this.trace(`timezone: ${tz} (${tzSource}); today: ${setup.today}; actor: ${actor ?? "none"} (${actorSource})`);
 
@@ -4451,17 +4002,11 @@ class Session {
     try {
       if (command.database === "none") return await this.emitRendered(await command.run(setup));
 
-      if (!db.url) {
-        throw new CliFailure(
-          "db_unavailable",
-          EXIT.database,
-          `LIFE_DATABASE_URL is not set (checked --db, the environment, and ${db.envFileExists ? db.envFile : `${db.envFile}, which does not exist`})`,
-          `set LIFE_DATABASE_URL in the environment or in ${db.envFile}, or pass --db <url>; run \`life doctor\``,
-        );
-      }
-      this.trace(`database: ${describeUrl(db.url)} (from ${db.source})${command.database === "migrate" ? "; migrating" : ""}`);
-      const tools = await Tools.open({ url: db.url, clock, migrate: command.database === "migrate", adapters: io.adapters, credentials: io.credentials, catalogs: io.catalogs, region: regionOf(io) });
+      const config = await clientConfig(io.env, flags.str("api-url") ?? io.env.LIFE_API_URL);
+      this.trace(`api: ${config.url}`);
+      const tools = createClient({ ...config, timezone: tz });
       try {
+        if (command.name !== "doctor" && command.name !== "migrate") setup.region = (await tools.info()).region;
         const inv: Invocation = { ...setup, tools };
         if (this.#verbose) await traceRefs(inv, command);
         let result = await command.run(inv);
@@ -4499,49 +4044,34 @@ class Session {
       message = error.message;
       layer = error.layer ?? this.#layer;
       hint = error.hint ?? `run \`life ${[layerName(layer), "--help"].filter(Boolean).join(" ")}\``;
-    } else if (error instanceof CliFailure) {
-      code = error.code;
-      exitCode = error.exitCode;
-      message = error.message;
-      hint = error.hint;
-    } else if (error instanceof ProviderUnavailable) {
-      code = "provider_unavailable";
-      exitCode = EXIT.provider;
-      message = `calendar provider unavailable: ${messageOf(error)}`;
-      hint = "nothing was stored; retry later (with the same --key for a write), or run `life doctor`";
-    } else if (error instanceof ProviderRejected) {
-      code = "provider_rejected";
-      exitCode = EXIT.rejected;
-      message = `calendar provider rejected the request: ${messageOf(error)}`;
-      hint = "nothing was stored; the message is the provider's";
-    } else if (error instanceof NeedsReauth) {
-      code = "rejected";
-      exitCode = EXIT.rejected;
-      message = messageOf(error);
-      hint = "run `life account add google` and pick the same Google account to sign in again";
-    } else if (error instanceof CatalogUnavailable) {
-      code = "catalog_unavailable";
-      exitCode = EXIT.catalog;
-      message = `catalog unavailable: ${messageOf(error)}`;
-      hint = "nothing was stored; retry later, or run `life doctor` (`add` never waits on a catalog: it creates the title and warns)";
-    } else if (error instanceof CatalogUnconfigured) {
-      code = "rejected";
-      exitCode = EXIT.rejected;
-      message = `catalog not configured: ${error.variable} is not set in the root .env`;
-      hint = `put ${error.variable} in ${ENV_FILE}; until then \`add --no-lookup\` creates a title without a catalog and \`refresh\` links it once the key exists`;
-    } else if (error instanceof HttpError) {
-      code = "rejected";
-      exitCode = EXIT.rejected;
-      message = `catalog refused the request: ${messageOf(error)}`;
-      hint = "nothing was stored; the message is the source's (a wrong id, a bad key)";
-    } else if (isDatabaseError(error)) {
-      code = "db_unavailable";
-      exitCode = EXIT.database;
-      message = `database unavailable: ${messageOf(error)}`;
-      const db = this.#db;
-      hint = db?.url
-        ? `read LIFE_DATABASE_URL from ${db.source}; tried ${describeUrl(db.url)}; run \`life doctor\``
-        : `LIFE_DATABASE_URL is not set; set it in the environment or in ${ENV_FILE}, or pass --db <url>; run \`life doctor\``;
+    } else if (error instanceof ApiError) {
+      code = error.code === "invalid_request" ? "rejected" : error.code === "catalog_unconfigured" || error.code === "needs_reauth" ? "rejected" : error.code;
+      exitCode = ["api_unavailable", "db_unavailable", "provider_unavailable", "catalog_unavailable"].includes(code) ? EXIT.database : EXIT.rejected;
+      message = error.code === "catalog_unavailable" ? `catalog unavailable: ${error.message}` : error.message;
+      if (code === "rejected" && isNotFound([message], this.#args)) code = "not_found";
+      switch (error.code) {
+        case "catalog_unavailable":
+        case "provider_unavailable":
+          hint = "retry later with the same --key for a write, or run `life doctor`";
+          break;
+        case "catalog_unconfigured":
+          hint = `configure the catalog on the API server (${ENV_FILE}); add --no-lookup creates a title without a catalog`;
+          break;
+        case "db_unavailable":
+          hint = "run `life doctor`; check LIFE_DATABASE_URL on the API server";
+          break;
+        case "api_unavailable":
+          hint = "start `bun run api`; check LIFE_API_URL and LIFE_API_TOKEN; a lost write response is not proof of failure";
+          break;
+        case "unauthorized":
+          hint = "set LIFE_API_TOKEN to the API server's token";
+          break;
+        case "needs_reauth":
+          hint = "run `life account add google` and pick the same account to sign in again";
+          break;
+        default:
+          hint = hintsFor(this.#commandDef, [message]).join("; ") || undefined;
+      }
     } else if (isInternalError(error)) {
       code = "internal";
       exitCode = EXIT.rejected;
@@ -4558,7 +4088,6 @@ class Session {
 
     if (this.#verbose) {
       if (error instanceof Error && error.stack) io.stderr.write(`${error.stack}\n`);
-      for (const line of sqlDetails(error)) io.stderr.write(`life: sql: ${line}\n`);
       const cause = (error as { cause?: unknown })?.cause;
       if (cause instanceof Error && cause.stack) io.stderr.write(`caused by: ${cause.stack}\n`);
     }
@@ -4567,7 +4096,7 @@ class Session {
       ok: false,
       command: this.#command || (layer ? layerName(layer) : ""),
       exitCode,
-      error: { code, message, issues: [message], ...(hint ? { hint } : {}) },
+      error: { code, message, issues: error instanceof ApiError && error.issues?.length ? error.issues : [message], ...(hint ? { hint } : {}) },
       ...(this.#warnings.length ? { warnings: this.#warnings } : {}),
     };
     if (this.#json) io.stdout.write(`${JSON.stringify(envelope, null, 2)}\n`);
@@ -4738,16 +4267,16 @@ type Projects = Map<string, Project>;
 type Calendars = Map<string, Calendar>;
 type Accounts = Map<string, Account>;
 
-async function projectIndex(tools: Tools): Promise<Projects> {
-  return indexProjects(await tools.store.read((tx) => tx.all("project", { includeDeleted: true })));
+async function projectIndex(tools: ToolsClient): Promise<Projects> {
+  return indexProjects((await tools.indexes()).projects);
 }
 
-async function calendarIndex(tools: Tools): Promise<Calendars> {
-  return new Map((await tools.store.read((tx) => tx.all("calendar", { includeDeleted: true }))).map((calendar) => [calendar.id, calendar]));
+async function calendarIndex(tools: ToolsClient): Promise<Calendars> {
+  return new Map(((await tools.indexes()).calendars).map((calendar) => [calendar.id, calendar]));
 }
 
-async function accountIndex(tools: Tools): Promise<Accounts> {
-  return new Map((await tools.store.read((tx) => tx.all("account", { includeDeleted: true }))).map((account) => [account.id, account]));
+async function accountIndex(tools: ToolsClient): Promise<Accounts> {
+  return new Map(((await tools.indexes()).accounts).map((account) => [account.id, account]));
 }
 
 /** Rows into aligned columns, two spaces apart; columns empty in every row are dropped. */
@@ -4834,7 +4363,7 @@ function receiptText(receipt: AnyReceipt, index: Projects, tz: string, hint?: st
   return lines.join("\n");
 }
 
-async function taskDetail(task: Task, index: Projects, tools: Tools): Promise<string> {
+async function taskDetail(task: Task, index: Projects, tools: ToolsClient): Promise<string> {
   const project = index.get(task.projectId);
   const section = task.sectionId ? await tools.section.get(task.sectionId) : null;
   const field = (name: string, value: string | undefined | null): string[] => (value ? [`${name.padEnd(11)}${value}`] : []);

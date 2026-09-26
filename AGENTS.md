@@ -1,8 +1,8 @@
 # Life-OS
 
-Current scope is the local file-backed milestone in docs/vision/LOCAL-FIRST-SLICE.md. Preserve the approved Perspective and Plan behavior. The longer-term architecture is in docs/vision/VISION.md; it does not authorize implementing every planned service now.
+Current scope is the tools package, life CLI, and shared tools API described below. The Health web app and its local file-backed milestone have been removed. The longer-term architecture is in docs/vision/VISION.md; it does not authorize implementing every planned service now.
 
-Run from this repository with Bun. The web app uses Next.js on Node. Use `bun run typecheck`, `bun run test`, `bun run check:data`, and `bun run build` for relevant checks. Do not restore legacy code or read legacy environment values just because their files remain.
+Run from this repository with Bun. The API and CLI run on Node directly from TypeScript, without a separate build step. Use `bun run typecheck` and `bun run test` for relevant checks. Do not restore legacy code or read legacy environment values just because their files remain.
 
 Personal runtime data belongs in the ignored `.local/` directory. Do not commit credentials, runtime snapshots, test screenshots containing personal content, or build output. No deployment or source-control push is authorized by a request to develop locally.
 
@@ -11,3 +11,7 @@ The attached Life vault is separate and shared, not isolated by a code branch or
 ## Tools package and life CLI
 
 `packages/tools` is the authorized todo-list milestone per `docs/vision/HANDS.md`. The `life` CLI (see `skills/todo/SKILL.md`) is the way agents act on the list: adding, changing, scheduling, completing, or reading tasks. `LIFE_DATABASE_URL` lives in the root `.env`. The calendar piece of `HANDS.md` is specced (D44, D55 to D66) and its implementation brief is the "The calendar" section of `packages/tools/README.md`; build only what that brief describes. The leisure library is specced in `docs/vision/LEISURE.md` (D67 to D101) and its implementation brief is the "The library" section of `packages/tools/README.md`; the first cut named there is authorized (September 12, 2026), the second cut is not. Catalog keys (`LIFE_TMDB_KEY`, `LIFE_IGDB_CLIENT_ID`, `LIFE_IGDB_CLIENT_SECRET`) live in the root `.env`; tests never touch the network.
+
+## Shared tools API
+
+The September 17 API milestone is authorized by the user; see `docs/vision/API.md` and `packages/tools/API.md`. All existing tools functionality is exposed through the Hono API. The `life` CLI consumes HTTP and must not regain direct database or provider access. `Tools` remains the server-side business layer. Use established libraries for routing, validation, OpenAPI, and transport. `bun run api` starts the local Node API on port 4319. Database and provider credentials belong to the API server; clients use `LIFE_API_URL` and `LIFE_API_TOKEN`. Tests use fake providers and disposable database schemas, with CLI tests going through loopback HTTP. This authorization does not include deployment or deferred product features.
