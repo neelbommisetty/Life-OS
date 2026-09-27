@@ -1,6 +1,8 @@
 # Life-OS — Current Vision
 
-Status: Current planning direction, adopted September 5, 2026. This document replaces the August planning set as the basis for further design. It describes intent and boundaries; proposed technology and build order remain revisable. The authorized implementation is the tools package and [shared tools API](API.md); the broader architecture below is not its implementation checklist. The Health web prototype has been removed.
+Status: Current planning direction, adopted September 5, 2026; architecture reconciled September 26. This document replaces the August planning set as the basis for further design. It describes intent and boundaries; proposed technology and build order remain revisable. Current implementation includes the tools package, [shared tools API](API.md), and [web todo/calendar slices](../../apps/web/README.md). The broader vision is not an implementation checklist. The Health web prototype has been removed.
+
+The canonical [architecture](../ARCHITECTURE.md) defines the agent, skill, CLI, web, connector, permission, and credential boundaries. It takes precedence over earlier technology suggestions in this planning set.
 
 ## What Life-OS is for
 
@@ -13,6 +15,8 @@ The environment should grow as Neel discovers what is useful. A complete design 
 ## Codex and the vault stay central
 
 Codex remains the primary conversational input and executor of Neel's existing vault workflows and skills. The Life Obsidian vault remains active, canonical durable knowledge, governed by its current root and folder-local instructions.
+
+The AI agent layer has a root orchestrator and multiple independent agents. They perform authorized actions through skills and the CLI under separate identities and grants. The root initially has full application-data visibility through its own configurable read policy; write permissions, administration, and approval remain separate. Independent agents keep their own limits and can act on schedules/triggers Neel configures. The first version uses the existing Codex runtime with API-enforced permissions; stronger runtime isolation and narrower root visibility can follow later. The web accepts user inputs and presents requested outputs. Skills guide execution but do not grant access. Request dispatch and result publication are explicit integration work, not an automatic consequence of saving a request.
 
 The incremental addition is publishing selected, structured information from those workflows into a database that powers separately maintained application code. The application makes that information useful through custom views and direct interactions.
 
@@ -76,7 +80,7 @@ Book and game libraries can include reviews, feelings, excitement, and possible 
 
 ### Tasks and calendar
 
-The initial task surface mirrors Todoist, which remains the execution authority under the existing workflows. Neel ultimately wants task ownership in his own system. That is a future migration with an explicit transition, not an assumption introduced by displaying tasks.
+The implemented task surface uses native Life-OS tasks. Todoist remains the execution authority for the existing vault workflows; these are separate datasets until an explicit connector and ownership transition are implemented. Displaying or importing Todoist tasks must not silently merge the two authorities.
 
 Calendar initially uses Google Calendar underneath. Life-OS may offer scheduling interactions and eventually own scheduling itself. Calendar ownership changes likewise require a deliberate transition.
 
@@ -108,14 +112,14 @@ Life-OS should own the concepts and contracts used by its experiences. Codex, To
 
 | Capability | Stable Life-OS boundary | Initial provider | Possible future provider |
 |---|---|---|---|
-| Tasks | Task records and supported task operations | Todoist adapter, with Todoist authoritative | Native Life-OS task service; optional Todoist mirror |
+| Tasks | Task records and supported task operations | Native Life-OS task service exists; Todoist remains authority for existing vault execution workflows | Explicit Todoist connector and ownership transition; optional mirror |
 | Scheduling | Event records and supported scheduling operations | Google Calendar adapter, with Google authoritative | Native Life-OS scheduling service; optional Google mirror |
 | Interpretation and workflow execution | Defined workflow inputs, permitted operations, publication outputs, and run receipts | Codex using existing vault workflows | Dedicated agents implementing the same workflow contracts |
 | Durable knowledge | Source identities, links, and selected publication records | Existing Life vault and its governed workflows | The vault can remain in place even if the executor changes |
 
 The website talks to Life-OS services rather than depending directly on provider-specific records. Local identities map to external identifiers, so a task's identity in the application does not have to change when its provider changes. Supported writes route to the current authority; a display mirror is not a second independent master.
 
-During the first phase, a task edited in Life-OS would be written through to Todoist and reflected back in the local view, with pending or failed changes represented honestly. Once task ownership migrates, the same user-facing operation would write to the native task service, and Todoist could become an optional downstream mirror. Calendar follows the same ownership pattern. Conflict handling and the exact cutover are designed before enabling those transitions.
+The earlier proposed first phase used a Todoist-backed task view; current code already has native Life-OS tasks. A future Todoist connector must explicitly define mapping, duplication handling, and write ownership before enabling two-way writes. Neither this architecture nor a new display changes the existing vault's Todoist authority. Calendar writes follow the existing Google-backed contract. Conflict handling and any ownership cutover are designed before enabling transitions.
 
 For intelligence, the publication API is the first useful boundary, but it is not the whole replacement contract. Future agents also need to know what evidence they may read, which workflow they are running, what actions are authorized, how corrections work, and how completion or failure is reported. Describe those contracts as each workflow is integrated, while leaving its current execution in Codex.
 
@@ -123,19 +127,19 @@ The publishing CLI should be a client of that stable service contract. A future 
 
 Portability does not mean identical judgment or an effortless swap. A replacement executor must demonstrate equivalent handling of representative updates, corrections, failures, and authorization boundaries before it receives write authority. Where a workflow writes to the vault, use one authorized executor at a time; changing the executor does not automatically change the vault's role.
 
-This allows staged evolution: custom experiences over existing providers first, then replacement of a particular provider or workflow when useful. Native task ownership, native scheduling, and dedicated agents are independent future choices, not one all-or-nothing migration.
+This allows staged evolution: custom experiences over existing providers first, then replacement of a particular provider or workflow when useful. Migrating existing Todoist workflows to native tasks, introducing native scheduling, and changing agent executors are independent future choices, not one all-or-nothing migration.
 
-## Proposed technical shape
+## Technical shape
 
-The current proposal is a private code repository outside the vault, a modular Next.js website and API hosted on Vercel, and shared PostgreSQL and authentication through Supabase. These are proposed implementation choices, not irrevocable product requirements. The privacy and hosting configuration of the existing repository has not been verified.
+The current implementation uses React/Vite in `apps/web`, a Node/Hono API and `Tools` in `packages/tools`, PostgreSQL, and an HTTP-based `life` CLI. Preserve this foundation. The earlier Next.js/Vercel/Supabase suggestion is superseded by the [September 26 architecture](../ARCHITECTURE.md); no framework migration is required.
 
-One repository could contain `apps/web`, `packages/data`, `packages/cli`, and `skills/publish`. Different experiences do not require separate deployments. Shared data and navigation should keep them connected while allowing each experience to evolve independently.
+The target is an always-on private application accessible from Neel's devices and maintainable by one developer. Connector contracts expose credential references, reads, write actions, and permissions regardless of local, VPS, or managed execution. Identity services, OAuth management, and secure storage are selected to support that model; particular vendors are not adopted by the vision. Different experiences do not require separate deployments.
 
-The code repository is the primary project folder. The vault can be attached as a secondary folder while remaining separate. Project attachment is not yet verified. Project instructions should explicitly require reading applicable vault rules before any vault work; isolation of the code checkout does not isolate a shared vault.
+The code repository and Life vault remain separate. Read current root and folder-local vault instructions before vault work; isolation of the code checkout does not isolate the shared vault.
 
 ## Current implementation
 
-The tools package provides tasks, calendars, and the first leisure-library cut through the [shared tools API](API.md) and HTTP-based `life` CLI. The former Health web app, sample data, and local snapshot workflow have been removed. Future web interfaces and the publishing bridge require separate scope and authorization.
+The tools package provides tasks, calendars, and the first leisure-library cut through the [shared tools API](API.md) and HTTP-based `life` CLI. The web has `/todo` and `/calendar` slices using that API. The former Health web app, sample data, and local snapshot workflow have been removed. General connector permissions, user login, secure-store migration, web-to-agent dispatch, and result publication remain target architecture. Additional features require separate implementation scope.
 
 ## Principles to carry forward
 
