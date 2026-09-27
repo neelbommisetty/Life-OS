@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 
 // The website is an HTTP client, never a database/provider client. Only the
-// operations used by the todo slice are exposed by its same-origin bridge.
+// operations used by implemented slices are exposed by its same-origin bridge.
 const operations = new Set([
   "task.list",
   "task.get",
@@ -29,6 +29,15 @@ const operations = new Set([
   "filter.run",
   "views.label",
   "views.search",
+  "account.list",
+  "calendar.list",
+  "calendar.sync",
+  "views.week",
+  "event.get",
+  "event.add",
+  "event.update",
+  "event.delete",
+  "event.respond",
 ]);
 export type BridgeOptions = {
   url: string;
@@ -91,7 +100,7 @@ export function createBridge(options: BridgeOptions) {
       return c.json(
         {
           ok: false,
-          error: { code: "not_found", message: "Unknown todo operation." },
+          error: { code: "not_found", message: "Unknown website operation." },
         },
         404,
       );

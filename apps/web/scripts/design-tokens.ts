@@ -48,12 +48,22 @@ const data = {
       source: "apps/web/src/ui.tsx",
       widths: ["28rem", "40rem"],
       primitive: "Radix Dialog",
+      returnFocus:
+        "Trigger when available; mobile navigation toggle when trigger is in the closed drawer",
     },
     Menu: { source: "apps/web/src/ui.tsx", primitive: "Radix Dropdown Menu" },
     Shell: {
       source: "apps/web/src/Shell.tsx",
       slots: ["sidebar", "children"],
       props: ["title", "description"],
+      navigation: ["/todo", "/calendar"],
+      mobileFocusTargets: [
+        "links",
+        "buttons",
+        "inputs",
+        "selects",
+        "textareas",
+      ],
     },
   },
 };

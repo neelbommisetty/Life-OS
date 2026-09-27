@@ -22,6 +22,7 @@ Reuse these foundations when another slice is authorized. Changes to this establ
 | Shared styles | `apps/web/src/theme.css` | Base elements, controls, page headings, badges, dialogs, menus, feedback and focus |
 | Shared frame | `apps/web/src/Shell.tsx`, `shell.css` | Navigation slots, identity, breadcrumb, mobile focus containment and responsive frame |
 | React primitives | `apps/web/src/ui.tsx` | Button, IconButton, Badge, Modal, Menu, MenuItem |
+| Calendar slice | `apps/web/src/CalendarApp.tsx`, `EventEditor.tsx`, `calendar.css` | Date picker, calendar grid, agenda, event forms and sync states |
 | Task slice | `apps/web/src/todo.css` | Task rows, grouping, board, editor and task-specific states |
 | Machine-readable export | `docs/DESIGN.json` | Generated token values and component contracts, never an independent theme |
 | Working specimens | `apps/web/design-system.html` | Development-only catalog using the real components; no API or personal records |
@@ -120,13 +121,13 @@ Badges are static metadata. Interactive filters require buttons or links with se
 
 ### Dialogs and menus
 
-Use `Modal`, `Menu` and `MenuItem` from `ui.tsx`. These wrap Radix primitives with keyboard interaction, titles, focus containment and Escape dismissal. Dialog widths are 28rem or 40rem (`wide`), with 16px viewport gutters and internal scrolling. Menus constrain height to the available viewport. Destructive menu items pair their label with semantic color.
+Use `Modal`, `Menu` and `MenuItem` from `ui.tsx`. These wrap Radix primitives with keyboard interaction, titles, focus containment and Escape dismissal. Dialogs return focus to their trigger; when that trigger is in the closed mobile drawer, they return focus to the navigation toggle. Dialog widths are 28rem or 40rem (`wide`), with 16px viewport gutters and internal scrolling. Menus constrain height to the available viewport. Destructive menu items pair their label with semantic color.
 
 Dialogs suit task detail editing and consequential decisions. Prefer inline disclosure for optional form fields. Never invent a second overlay stack in a slice.
 
 ### Shell and navigation
 
-`Shell` accepts `sidebar`, `children`, `title` and `description`. Reuse it for implemented slices only. Navigation exposes the current page with `aria-current`, and the phone trigger exposes expanded state. Open mobile navigation moves focus inside, contains Tab, closes on Escape or scrim activation, locks document scrolling, and restores focus to its trigger. Hidden navigation and background work are inert when appropriate. A visible in-drawer close action is always available.
+`Shell` accepts `sidebar`, `children`, `title` and `description`. Reuse it for implemented slices only. The shared app navigation links Tasks and Calendar; only implemented slices are shown. Navigation exposes the current page with `aria-current`, and the phone trigger exposes expanded state. Open mobile navigation moves focus inside, contains Tab, closes on Escape or scrim activation, locks document scrolling, and restores focus to its trigger. Hidden navigation and background work are inert when appropriate. A visible in-drawer close action is always available.
 
 ### Feedback
 
@@ -141,3 +142,15 @@ Add a token when it expresses a reusable role, not every observed number. Extrac
 For changes, run `bun run typecheck`, `bun run test`, `bun run web:build` and `bun run --cwd apps/web design:check`. Inspect the catalog and disposable `/todo` fixture at phone and desktop sizes. Check keyboard focus, reduced motion, large text, long content, empty/error states, list/board layouts and native form submission. Browser mutation checks must use `bun run --cwd apps/web test:preview`, never personal records. Save artifacts in ignored `.local/`.
 
 The [review report](reviews/todo-design-review.md) records baseline findings, changes and verified limits.
+
+## Calendar slice
+
+`/calendar` follows the same finalized ocean-blue palette and bundled fonts. FullCalendar owns grid geometry and overlap layout; `calendar.css` maps its styles to Life-OS tokens. Provider calendar colors appear as small identification marks and event borders, always alongside calendar names in details/agenda. Event backgrounds and text use shared readable roles. Busy/free, invitations, and cancellations carry textual cues.
+
+The main workspace expands to the available width. On phones the initial view is Day; Week and Month scroll inside the calendar region without widening the document, reveal the selected date, and show a scroll hint. Search and timezone controls use a phone disclosure. Agenda offers a wrapping list alternative. The desktop mini date picker uses compact 30px cells with 2px separation, one Tab stop and arrow-key navigation; phones use a native date field. Main actions retain the shared 44px targets. The drawer focus loop includes calendar checkboxes. Event titles precede time/location metadata and use the shared small-text token; outside-month dates retain readable contrast.
+
+New event forms show title, calendar, all-day and dates first. A native Event options disclosure contains optional scheduling fields and preserves values when collapsed. Existing event forms start expanded. Recurring scope precedes the fields it governs. The action footer stays visible while the editor scrolls, and submission errors receive focus.
+
+Event creation and editing use the shared Modal and native labeled fields. There is no natural-language input. Drag/resize opens the same form before saving. Recurring edits require an explicit scope, deletion requires an in-form confirmation, and errors remain visible with the entered data. The calendar source copy can be stale: sync failures display an explicit warning, never an empty-state claim.
+
+Verify both `/todo` and `/calendar` against the disposable preview. Calendar checks include overlapping events, exclusive all-day ends, named timezones and DST, read-only calendars, recurrence scopes, failed sync, keyboard editing, and phone navigation.

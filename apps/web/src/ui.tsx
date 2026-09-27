@@ -26,9 +26,20 @@ export function Modal({
           className={`modal ${wide ? "wide" : ""}`}
           aria-describedby={undefined}
           onCloseAutoFocus={(event) => {
-            if (returnFocus.current?.isConnected) {
+            if (
+              returnFocus.current?.isConnected &&
+              !returnFocus.current.closest("[inert], [hidden]")
+            ) {
               event.preventDefault();
               returnFocus.current.focus();
+            } else {
+              const navigation = document.querySelector<HTMLElement>(
+                '[aria-controls="workspace-navigation"]',
+              );
+              if (navigation?.getClientRects().length) {
+                event.preventDefault();
+                navigation.focus();
+              }
             }
           }}
         >

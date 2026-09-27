@@ -17,7 +17,10 @@ export const api = createClient({
   timezone,
   timeoutMs: 35_000,
 });
-export const context = (version?: number, key = crypto.randomUUID()): Ctx => ({
+export const context = (
+  version?: number,
+  key: string = crypto.randomUUID(),
+): Ctx => ({
   actor: "neel",
   key,
   ...(version ? { ifVersion: version } : {}),

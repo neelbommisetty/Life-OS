@@ -74,6 +74,89 @@ for (const input of [
   { title: "A thought for later", priority: 4 },
 ])
   take(await env.client.task.add({ ...input, status: "accepted" }, ctx()));
+const demoZone = "America/Los_Angeles";
+const { DateTime } = await import("luxon");
+const at = (day: string, time: string) => ({
+  at: DateTime.fromISO(`${day}T${time}`, { zone: demoZone }).toUTC().toISO()!,
+  timezone: demoZone,
+});
+await env.seedCalendar([
+  {
+    id: "daily-focus",
+    title: "A little room to focus",
+    start: at(today, "09:00"),
+    end: at(today, "10:30"),
+    repeat: { rrule: "FREQ=DAILY;COUNT=12", exdates: [] },
+    location: "At home",
+    notes: "Synthetic calendar fixture.",
+  },
+  {
+    id: "lunch",
+    title: "Lunch with Alex",
+    start: at(today, "12:00"),
+    end: at(today, "13:00"),
+    location: "The corner café",
+  },
+  {
+    id: "overlap",
+    title: "Catch up with the team",
+    start: at(today, "09:45"),
+    end: at(today, "10:15"),
+  },
+  {
+    id: "weekend",
+    title: "A weekend away",
+    start: { date: addDays(today, 1) },
+    end: { date: addDays(today, 3) },
+  },
+  {
+    id: "invitation",
+    title: "Design conversation",
+    start: at(today, "15:00"),
+    end: at(today, "16:00"),
+    organizer: { email: "alex@example.com", name: "Alex", self: false },
+    attendees: [
+      {
+        email: "demo@example.com",
+        name: "Demo",
+        response: "needsAction",
+        self: true,
+        optional: false,
+      },
+    ],
+    myResponse: "needsAction",
+    conferencing: { kind: "Meet", url: "https://meet.google.com/example" },
+  },
+]);
+await env.seedCalendar(
+  [
+    {
+      id: "reading",
+      title: "Quiet reading hour",
+      start: at(addDays(today, 2), "16:00"),
+      end: at(addDays(today, 2), "17:00"),
+      busy: false,
+    },
+  ],
+  { id: "shared", name: "Family", primary: false, color: "#ae8244" },
+);
+await env.seedCalendar(
+  [
+    {
+      id: "holiday",
+      title: "Community day",
+      start: { date: addDays(today, 3) },
+      end: { date: addDays(today, 4) },
+    },
+  ],
+  {
+    id: "holidays",
+    name: "Holidays",
+    primary: false,
+    writable: false,
+    color: "#8b79a8",
+  },
+);
 const web = spawn(process.execPath, ["server/index.ts", "--production"], {
   cwd: fileURLToPath(new URL("../", import.meta.url)),
   env: {

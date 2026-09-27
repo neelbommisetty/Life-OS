@@ -8,7 +8,7 @@ const headers = {
   "content-type": "application/json",
   "sec-fetch-site": "same-origin",
 };
-test("same-origin bridge forwards only todo operations, keeps credentials server-side and preserves rejection receipts", async () => {
+test("same-origin bridge forwards only implemented operations, keeps credentials server-side and preserves rejection receipts", async () => {
   let calls = 0;
   const fetcher: typeof fetch = async (url, init) => {
     calls++;
@@ -54,7 +54,7 @@ test("same-origin bridge forwards only todo operations, keeps credentials server
     "export",
     "system.migrate",
     "account.add",
-    "event.add",
+    "event.move",
     "__proto__",
   ])
     assert.equal((await post(op)).status, 404);

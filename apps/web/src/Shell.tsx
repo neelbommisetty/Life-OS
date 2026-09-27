@@ -1,5 +1,5 @@
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
-import { Check, PanelLeftOpen, X } from "lucide-react";
+import { Check, CalendarDays, PanelLeftOpen, X } from "lucide-react";
 import { IconButton } from "./ui";
 const mobileSnapshot = () => window.matchMedia("(max-width: 680px)").matches;
 function subscribeMobile(notify: () => void) {
@@ -36,7 +36,7 @@ export function Shell({
       if (event.key !== "Tab") return;
       const focusable = Array.from(
         sidebarRef.current?.querySelectorAll<HTMLElement>(
-          'a[href],button:not(:disabled),[tabindex="0"]',
+          'a[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),[tabindex="0"]',
         ) ?? [],
       );
       const first = focusable[0];
@@ -96,13 +96,28 @@ export function Shell({
         </a>
         <div className="workspace-switch">
           <span className="workspace-icon">
-            <Check size={17} />
+            {title === "Calendar" ? (
+              <CalendarDays size={17} />
+            ) : (
+              <Check size={17} />
+            )}
           </span>
           <span>
             {title}
             <small>{description}</small>
           </span>
         </div>
+        <nav className="slice-nav" aria-label="Workspace apps">
+          <a href="/todo" aria-current={title === "Tasks" ? "page" : undefined}>
+            <Check size={16} /> Tasks
+          </a>
+          <a
+            href="/calendar"
+            aria-current={title === "Calendar" ? "page" : undefined}
+          >
+            <CalendarDays size={16} /> Calendar
+          </a>
+        </nav>
         {sidebar}
         <div className="sidebar-bottom">
           <span className="avatar" aria-hidden="true">

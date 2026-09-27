@@ -97,6 +97,16 @@ export function App() {
   const projects = data?.projects.map((p) => p.project) ?? [];
   const sections = data?.projects.flatMap((p) => p.sections) ?? [];
   const tasks = data?.tasks ?? [];
+  const linkedTaskOpened = useRef(false);
+  useEffect(() => {
+    if (!data || linkedTaskOpened.current) return;
+    const id = new URLSearchParams(location.search).get("task");
+    if (!id) return;
+    linkedTaskOpened.current = true;
+    const task = data.tasks.find((task) => task.id === id && !task.deletedAt);
+    if (task) setDraft({ task });
+    else setError("This task is no longer available.");
+  }, [data]);
   const project = projects.find((p) => view === `project:${p.id}`);
   const inbox = projects.find((p) => p.system);
   const label = data?.labels.find((l) => view === `label:${l.id}`);

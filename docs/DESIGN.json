@@ -139,7 +139,8 @@
         "28rem",
         "40rem"
       ],
-      "primitive": "Radix Dialog"
+      "primitive": "Radix Dialog",
+      "returnFocus": "Trigger when available; mobile navigation toggle when trigger is in the closed drawer"
     },
     "Menu": {
       "source": "apps/web/src/ui.tsx",
@@ -154,6 +155,17 @@
       "props": [
         "title",
         "description"
+      ],
+      "navigation": [
+        "/todo",
+        "/calendar"
+      ],
+      "mobileFocusTargets": [
+        "links",
+        "buttons",
+        "inputs",
+        "selects",
+        "textareas"
       ]
     }
   }

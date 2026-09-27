@@ -295,6 +295,11 @@ test("occurrence refs round-trip and reject what is not one", () => {
   assert.equal(occurrenceRef("e_abc1234567", { at: "2026-09-10T16:00:00Z", timezone: LA }), "e_abc1234567@2026-09-10T16:00:00Z");
   assert.equal(occurrenceRef("e_abc1234567", { date: "2026-09-10" }), "e_abc1234567@2026-09-10");
   assert.equal(occurrenceRef("e_abc1234567", "2026-09-10"), "e_abc1234567@2026-09-10");
+  for (const at of ["2026-09-10T16:00:00.000Z", "2026-09-10T09:00:00-07:00"]) {
+    const ref = occurrenceRef("e_abc1234567", { at, timezone: LA });
+    assert.equal(ref, "e_abc1234567@2026-09-10T16:00:00Z");
+    assert.ok(parseOccurrenceRef(ref));
+  }
   assert.deepEqual(parseOccurrenceRef("e_abc1234567@2026-09-10T16:00:00Z"), { eventId: "e_abc1234567", originalStart: "2026-09-10T16:00:00Z" });
   assert.deepEqual(parseOccurrenceRef("e_abc1234567@2026-09-10"), { eventId: "e_abc1234567", originalStart: "2026-09-10" });
   for (const bad of ["e_abc1234567", "@2026-09-10", "e_abc1234567@", "e_abc1234567@tomorrow", "e_abc1234567@2026-09-10T16:00Z", "e_abc1234567@2026-02-30"]) {

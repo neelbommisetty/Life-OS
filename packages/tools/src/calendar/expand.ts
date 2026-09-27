@@ -56,7 +56,9 @@ export type ExpandOptions = {
 /** `<eventId>@<originalStart>` where originalStart is the `at` instant or the date. */
 export function occurrenceRef(eventId: string, originalStart: When | string): string {
   const key = typeof originalStart === "string" ? originalStart : whenKey(originalStart);
-  return `${eventId}@${key}`;
+  // Provider/API timestamps may carry offsets or milliseconds. Emit the
+  // canonical UTC spelling accepted by parseOccurrenceRef and occurrenceOf.
+  return `${eventId}@${normalizeKey(key)}`;
 }
 
 /** Splits an occurrence ref; null for anything that is not `<id>@<instant|date>`. */

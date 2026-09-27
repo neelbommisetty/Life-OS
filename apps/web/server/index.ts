@@ -27,6 +27,8 @@ staticApp.use("/assets/*", serveStatic({ root: root + "dist" }));
 staticApp.get("/favicon.svg", serveStatic({ path: root + "dist/favicon.svg" }));
 staticApp.get("/todo", serveStatic({ path: root + "dist/index.html" }));
 staticApp.get("/todo/*", serveStatic({ path: root + "dist/index.html" }));
+staticApp.get("/calendar", serveStatic({ path: root + "dist/index.html" }));
+staticApp.get("/calendar/*", serveStatic({ path: root + "dist/index.html" }));
 const staticHandler = getRequestListener(staticApp.fetch);
 const server = createServer((req, res) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
