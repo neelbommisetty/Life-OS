@@ -1,5 +1,7 @@
 # Human and agent authentication
 
+Build authorization: approved as part of the [authentication, connectors and agent-layer plan](../plans/2026-09-27-auth-connectors-agents.md), confirmed by Neel September 27. Implementation has not started. [STATUS.md](../STATUS.md#scope-register) tracks delivery separately from approval.
+
 Design baseline, September 26, 2026. This specifies the authentication work required by [Life-OS architecture](ARCHITECTURE.md). It is not implemented, and does not authorize creating accounts, issuing credentials, or migrating personal secrets. Defaults below are concrete design choices for review, not existing behavior.
 
 ## Decision
@@ -215,7 +217,7 @@ The implementation is acceptable only when these cases pass against disposable d
 - Reusing an action key with different parameters is rejected; receipt replay rechecks read permissions. Expired approval, late revocation, worker failure, and provider uncertainty have distinct recorded outcomes.
 - Recursive dispatch, oversized results, and repeated calls cannot bypass workflow budgets or resource limits.
 
-The authentication contract is specified here, with the adversarial findings and accepted initial limitations recorded in [the review](SECURITY-REVIEW.md). Deployment still needs the host's secure storage and request/scheduled dispatch bindings. Strong runtime isolation and trusted context reset are deferred hardening, not initial release gates. No services have been provisioned and no authentication code has changed.
+The authentication contract is specified here, with the adversarial findings and accepted initial limitations recorded in [the review](../reviews/SECURITY-REVIEW.md). Deployment still needs the host's secure storage and request/scheduled dispatch bindings. Strong runtime isolation and trusted context reset are deferred hardening, not initial release gates. No services have been provisioned and no authentication code has changed.
 
 ## Implementation references
 

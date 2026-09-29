@@ -1,8 +1,10 @@
 # Shared tools API
 
+See [STATUS.md](../STATUS.md) for current delivery and the separate target-authentication work.
+
 Authorized September 17, 2026: expose all existing tools functionality through an API and migrate the `life` CLI to use that API. Prefer established libraries over new infrastructure.
 
-This document describes the implemented API milestone. The [September 26 architecture](../ARCHITECTURE.md) defines the target agent-through-skill-and-CLI execution model, web input/output surface, and permissioned connectors independent of execution location. Per-caller authorization, web-to-agent dispatch, and managed credential custody are future changes, not capabilities implied by the current bearer token.
+This document describes the implemented API milestone. The [September 26 architecture](../architecture/ARCHITECTURE.md) defines the target agent-through-skill-and-CLI execution model, web input/output surface, and permissioned connectors independent of execution location. Per-caller authorization, web-to-agent dispatch, and managed credential custody are future changes, not capabilities implied by the current bearer token.
 
 Life-OS's database holds authoritative tool state. The API is the access boundary for interfaces. The server owns business rules, transactions, provider integrations, credentials, migrations, and diagnostics. The CLI owns shell arguments, interactive questions, local import/export files, and presentation. Web, iOS, and future interfaces can use the same HTTP operations without database or provider credentials.
 

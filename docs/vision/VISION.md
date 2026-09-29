@@ -1,8 +1,10 @@
 # Life-OS — Current Vision
 
-Status: Current planning direction, adopted September 5, 2026; architecture reconciled September 26. This document replaces the August planning set as the basis for further design. It describes intent and boundaries; proposed technology and build order remain revisable. Current implementation includes the tools package, [shared tools API](API.md), and [web todo/calendar slices](../../apps/web/README.md). The broader vision is not an implementation checklist. The Health web prototype has been removed.
+For actual capabilities, build approvals and active work, read [STATUS.md](../STATUS.md). This document owns ambition and direction.
 
-The canonical [architecture](../ARCHITECTURE.md) defines the agent, skill, CLI, web, connector, permission, and credential boundaries. It takes precedence over earlier technology suggestions in this planning set.
+Status: Current planning direction, adopted September 5, 2026; architecture reconciled September 26. This document replaces the August planning set as the basis for further design. It describes intent and boundaries; proposed technology and build order remain revisable. Current implementation includes the tools package, [shared tools API](../specs/API.md), and [web todo/calendar slices](../../apps/web/README.md). The broader vision is not an implementation checklist. The Health web prototype has been removed.
+
+The canonical [architecture](../architecture/ARCHITECTURE.md) is entirely unimplemented. It defines the intended agent, skill, CLI, web, connector, permission, and credential boundaries. It takes precedence over earlier technology suggestions in this planning set.
 
 ## What Life-OS is for
 
@@ -16,7 +18,7 @@ The environment should grow as Neel discovers what is useful. A complete design 
 
 Codex remains the primary conversational input and executor of Neel's existing vault workflows and skills. The Life Obsidian vault remains active, canonical durable knowledge, governed by its current root and folder-local instructions.
 
-The AI agent layer has a root orchestrator and multiple independent agents. They perform authorized actions through skills and the CLI under separate identities and grants. The root initially has full application-data visibility through its own configurable read policy; write permissions, administration, and approval remain separate. Independent agents keep their own limits and can act on schedules/triggers Neel configures. The first version uses the existing Codex runtime with API-enforced permissions; stronger runtime isolation and narrower root visibility can follow later. The web accepts user inputs and presents requested outputs. Skills guide execution but do not grant access. Request dispatch and result publication are explicit integration work, not an automatic consequence of saving a request.
+The proposed AI agent layer would have a root orchestrator and multiple independent agents. The rest of this paragraph describes intended behavior, not current capabilities. They perform authorized actions through skills and the CLI under separate identities and grants. The root initially has full application-data visibility through its own configurable read policy; write permissions, administration, and approval remain separate. Independent agents keep their own limits and can act on schedules/triggers Neel configures. The first version uses the existing Codex runtime with API-enforced permissions; stronger runtime isolation and narrower root visibility can follow later. The web accepts user inputs and presents requested outputs. Skills guide execution but do not grant access. Request dispatch and result publication are explicit integration work, not an automatic consequence of saving a request.
 
 The incremental addition is publishing selected, structured information from those workflows into a database that powers separately maintained application code. The application makes that information useful through custom views and direct interactions.
 
@@ -131,7 +133,7 @@ This allows staged evolution: custom experiences over existing providers first, 
 
 ## Technical shape
 
-The current implementation uses React/Vite in `apps/web`, a Node/Hono API and `Tools` in `packages/tools`, PostgreSQL, and an HTTP-based `life` CLI. Preserve this foundation. The earlier Next.js/Vercel/Supabase suggestion is superseded by the [September 26 architecture](../ARCHITECTURE.md); no framework migration is required.
+The current implementation uses React/Vite in `apps/web`, a Node/Hono API and `Tools` in `packages/tools`, PostgreSQL, and an HTTP-based `life` CLI. Preserve this foundation. The earlier Next.js/Vercel/Supabase suggestion is superseded by the [September 26 architecture](../architecture/ARCHITECTURE.md); no framework migration is required.
 
 The target is an always-on private application accessible from Neel's devices and maintainable by one developer. Connector contracts expose credential references, reads, write actions, and permissions regardless of local, VPS, or managed execution. Identity services, OAuth management, and secure storage are selected to support that model; particular vendors are not adopted by the vision. Different experiences do not require separate deployments.
 
@@ -139,7 +141,7 @@ The code repository and Life vault remain separate. Read current root and folder
 
 ## Current implementation
 
-The tools package provides tasks, calendars, and the first leisure-library cut through the [shared tools API](API.md) and HTTP-based `life` CLI. The web has `/todo` and `/calendar` slices using that API. The former Health web app, sample data, and local snapshot workflow have been removed. General connector permissions, user login, secure-store migration, web-to-agent dispatch, and result publication remain target architecture. Additional features require separate implementation scope.
+The tools package provides tasks, calendars, and the first leisure-library cut through the [shared tools API](../specs/API.md) and HTTP-based `life` CLI. The web has `/todo` and `/calendar` slices using that API. The former Health web app, sample data, and local snapshot workflow have been removed. General connector permissions, user login, secure-store migration, web-to-agent dispatch, and result publication remain target architecture. Additional features require separate implementation scope.
 
 ## Principles to carry forward
 

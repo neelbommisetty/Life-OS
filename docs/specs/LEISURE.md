@@ -1,6 +1,6 @@
 # Leisure: the library and the diary
 
-Working design, September 12, 2026. Status: first altitude agreed September 12 (D67 to D101); details level drafted the same day, revised after an adversarial review, and carried into the implementation brief in `packages/tools/README.md` ("The library"), itself revised after a second adversarial review against the code. Where the brief is more precise than this document, the brief wins. Nothing here is authorized for implementation. This is the piece Neel described as "something like Letterboxd, Goodreads" for movies, TV shows, games, and books. It follows the hands precedent in [HANDS.md](HANDS.md): a Life-OS-owned record set with one contract that the app, the `life` CLI, Codex, and future agents all use. The Leisure home (Perspective and Plan) sits on top of it later, the way the Health home sits on top of records in [Current Vision](VISION.md).
+Working design, September 12, 2026. Status: first altitude agreed September 12 (D67 to D101); details level drafted the same day, revised after an adversarial review, and carried into the implementation brief in `packages/tools/README.md` ("The library"), itself revised after a second adversarial review against the code. Where the brief is more precise than this document, the brief wins. The first cut in that brief was authorized September 12 and is implemented; the second cut remains deferred. See [current scope](../STATUS.md#scope-register). This specification does not authorize work beyond that first cut. This is the piece Neel described as "something like Letterboxd, Goodreads" for movies, TV shows, games, and books. It follows the hands precedent in [HANDS.md](HANDS.md): a Life-OS-owned record set with one contract that the app, the `life` CLI, Codex, and future agents all use. The Leisure home (Perspective and Plan) sits on top of it later, the way the Health home sits on top of records in [Current Vision](../vision/VISION.md).
 
 D-numbering continues from D66 in [HANDS.md](HANDS.md). Each decision is **confirmed** (Neel said it) or **proposed** (a working position until he confirms or corrects).
 
@@ -50,7 +50,7 @@ A title has five facets (D90). Each is a separate part of the record, with its o
 - A **title** is one work in one medium: a movie, a TV show, a game, or a book. A show is one title; seasons and episodes are progress on it, not separate titles.
 - A **book** carries a format that Neel cares about: `audiobook`, `physical`, or `kindle` (D77). A backlog book can name the format he wants it in; a diary entry records the format it was actually read in. An audiobook is a book with a format, not a separate medium.
 - Progress and ownership are independent. Buying does not start; finishing does not un-own. "Curious" is noticed, not wanted (D99). "Want to buy" is progress backlog with ownership none; "have it, haven't started" is progress backlog with any other ownership.
-- A **diary entry** is dated and typed, and is the only way progress or ownership changes. Dates are when the experience happened, distinct from when it was recorded, matching [DATA-AND-VIEWS.md](DATA-AND-VIEWS.md).
+- A **diary entry** is dated and typed, and is the only way progress or ownership changes. Dates are when the experience happened, distinct from when it was recorded, matching [DATA-AND-VIEWS.md](../architecture/DATA-AND-VIEWS.md).
 - A **series** is an info fact, not a record: a title knows its series and position, and the library can answer "what is next" in any medium (D87).
 - The current queue is the `now` view and the backlog is a status (D83). Named lists for themed sets are deferred (D96).
 - Every id is Life-OS's own, prefixed by kind, never provider-derived, as with the hands.
@@ -83,7 +83,7 @@ None at the first altitude. The details level below has its own.
 
 ## The details level
 
-Drafted September 12, 2026, after the first altitude closed; revised the same day after an adversarial review. Everything below is proposed until Neel confirms it. It mirrors the todo-list section of [HANDS.md](HANDS.md) and reuses its contract rules, CLI conventions, and stack unchanged.
+Drafted September 12, 2026, after the first altitude closed; revised the same day after an adversarial review. The approved first-cut subset is fixed by the implementation brief and recorded in [current scope](../STATUS.md#scope-register); second-cut details remain proposals. It mirrors the todo-list section of [HANDS.md](HANDS.md) and reuses its contract rules, CLI conventions, and stack unchanged.
 
 ### Records
 

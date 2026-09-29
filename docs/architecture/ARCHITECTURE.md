@@ -1,12 +1,16 @@
 # Life-OS architecture
 
-Codified September 26, 2026. These are the agreed architectural boundaries for one developer and one owner. They guide future implementation; they do not authorize deployment, provider consent, credential migration, or every feature described here. Current implementation scope remains in [AGENTS.md](../AGENTS.md).
+**Build scope: approved for authentication, connectors and the agent layer, confirmed September 27. Implementation status: entirely unimplemented.** See the [approved build plan](../plans/2026-09-27-auth-connectors-agents.md). This is the target architecture, not a description of the running system. Existing tools, API, CLI and web features are a separate baseline that a future implementation may reuse. For that baseline, build approvals and active work, read [STATUS.md](../STATUS.md).
 
-Design status: in review, revised after [adversarial review](SECURITY-REVIEW.md) and Neel's subsequent scope decisions. The [human and agent authentication contract](AUTHENTICATION.md) specifies enrollment, verification, permissions, credential lifecycle, and acceptance criteria. Hosting/secret-store binding and request/scheduled dispatch remain open. Strong runtime isolation is deferred; it is not an initial release gate.
+The models, diagram and responsibilities below specify intended behavior. Present-tense statements describe the design, not delivered capabilities.
+
+Codified September 26, 2026. These are the agreed architectural boundaries for one developer and one owner. They guide future implementation; they do not authorize deployment, provider consent, credential migration, or every feature described here. Current implementation scope remains in [AGENTS.md](../../AGENTS.md).
+
+Design status: current design baseline with open implementation bindings, revised after [adversarial review](../reviews/SECURITY-REVIEW.md) and Neel's subsequent scope decisions. The [human and agent authentication contract](AUTHENTICATION.md) specifies enrollment, verification, permissions, credential lifecycle, and acceptance criteria. Hosting/secret-store binding and request/scheduled dispatch remain open. Strong runtime isolation is deferred; it is not an initial release gate.
 
 ## Core model
 
-Life-OS has an AI agent execution layer and a user-facing web layer, backed by one shared API and permissioned connectors.
+The target design calls for an AI agent execution layer and a user-facing web layer, backed by one shared API and permissioned connectors.
 
 - **A root orchestrator coordinates multiple independent agents.** Each agent acts through skills and the CLI with its own identity and permissions. The root plans and delegates; independent agents execute authorized work and publish results. Codex is the current execution environment.
 - **The web accepts user inputs and presents user-requested outputs.** It collects requests and decisions, shows progress and results, and supports direct user interactions such as the existing task and calendar forms.
@@ -92,7 +96,7 @@ A connector definition declares a provider, authentication methods, typed read o
 
 An example Gmail connection may allow reading and searching messages while denying sending and deletion. Catalog connectors fit the same model: IGDB and TMDB use application credentials; the current Open Library implementation requires none. Public access does not bypass Life-OS's operation policy.
 
-Share connection and permission handling while preserving domain-specific operations and results. Calendar events, messages, tasks, and catalog titles do not need one universal data schema. Extend the existing [calendar adapter](../packages/tools/src/calendar/adapter.ts) and [catalog adapter](../packages/tools/src/media/catalog/adapter.ts) patterns.
+Share connection and permission handling while preserving domain-specific operations and results. Calendar events, messages, tasks, and catalog titles do not need one universal data schema. Extend the existing [calendar adapter](../../packages/tools/src/calendar/adapter.ts) and [catalog adapter](../../packages/tools/src/media/catalog/adapter.ts) patterns.
 
 For one developer, this is a small typed contract, explicit operation registration, connection metadata, and shared checks. A plugin marketplace, dynamic code loader, general policy language, or deployment framework is not required.
 
@@ -167,25 +171,27 @@ Preserve current validation, version checks, idempotency, and receipts. Add the 
 
 Start with on-demand refresh. When a feature needs background refresh, use a bounded scheduled command with overlap prevention and persisted sync state. Add a durable queue only when demonstrated needs justify it. Keep HTTPS, private database access, backups, restoration checks, and sanitized failure reporting as deployment basics.
 
-## Current implementation and next slice
+## Existing baseline and approved build
 
-Already implemented: the shared API, HTTP CLI, native task/calendar/library domain code, Google Calendar and catalog adapters, and web `/todo` and `/calendar`. The current local API uses one bearer token; application secrets and some provider tokens still use environment/file storage. These are the migration baseline, not claims that the target model already exists.
+The architecture described in this document has not been implemented.
 
-Not yet implemented: the general permissioned connector model, per-caller identity, secure-store migration, web-to-agent request dispatch, and result publication flow described here.
+The separate existing baseline contains the shared API, HTTP CLI, native task/calendar/library domain code, Google Calendar and catalog adapters, and web `/todo` and `/calendar`. The local API uses one bearer token; application secrets and some provider tokens still use environment/file storage. These components are available for reuse; their existence does not represent delivery of this architecture.
 
-The next architectural proof is one complete workflow using synthetic data: user request, explicitly invoked agent following a skill, permitted read through CLI/API/connector, and a published output visible in the web. Verify root visibility, specialist API denials, another caller, an expired connection, and a failed execution. Verify approval/uncertain-outcome handling before external writes. Use fake providers and disposable schemas for mutation checks. Owner-configured independent schedules/triggers are part of the intended behavior; add the first one using existing scheduling infrastructure when that workflow needs it. Strong runtime isolation, remote connector execution, broad background sync, arbitrary field selectors, and multiple simultaneous runs per runtime remain deferred.
+Architecture implementation remains wholly future work, including the root/independent-agent model, per-caller identity and permissions, general connector model, secure credential custody, request dispatch, and result publication.
+
+The approved build includes a first architectural proof using synthetic data: user request, explicitly invoked agent following a skill, permitted read through CLI/API/connector, and a published output visible in the web. Verify root visibility, specialist API denials, another caller, an expired connection, and a failed execution. Verify approval/uncertain-outcome handling before external writes. Use fake providers and disposable schemas for mutation checks. Owner-configured independent schedules/triggers are part of the intended behavior; add the first one using existing scheduling infrastructure when that workflow needs it. Strong runtime isolation, remote connector execution, broad background sync, arbitrary field selectors, and multiple simultaneous runs per runtime remain deferred.
 
 Clerk is the baseline implementation for the specified [authentication contract](AUTHENTICATION.md), with compatibility and cost verified before provisioning. Nango for managed connector authorization and the host's secret facility remain candidates. Select those based on the working slice, compatibility, total cost, and maintenance. Do not require a stack rewrite, separate secrets service, general job system, or new AI runtime upfront.
 
-Remaining initial choices are hosting/ingress and secure storage/recovery, identity/broker compatibility and cost, request/scheduled dispatch in the existing runtime, and the first connector's permissions and data-ownership behavior. Resolve and verify these before calling the initial design deployment-ready. Strong runtime isolation and trusted context reset belong to a later phase. Implementation, personal-account connection, and deployment remain separately scoped work.
+Remaining initial choices are hosting/ingress and secure storage/recovery, identity/broker compatibility and cost, request/scheduled dispatch in the existing runtime, and the first connector's permissions and data-ownership behavior. Resolve and verify these before calling the initial design deployment-ready. Strong runtime isolation and trusted context reset belong to a later phase. Implementation of authentication, connectors and the agent layer is approved in the [build plan](../plans/2026-09-27-auth-connectors-agents.md). Actual personal-account connection, live secret migration and deployment remain separately scoped operational work.
 
 ## Related documents
 
-- [Product vision](vision/VISION.md): purpose and longer-term experiences.
+- [Product vision](../vision/VISION.md): purpose and longer-term experiences.
 - [Human and agent authentication](AUTHENTICATION.md): concrete enrollment, verification, authorization, revocation, and recovery design.
-- [Adversarial design review](SECURITY-REVIEW.md): findings, design corrections, and remaining implementation gates.
-- [Current API milestone](vision/API.md) and [API contract](../packages/tools/API.md): implemented HTTP boundary.
-- [Tools implementation brief](../packages/tools/README.md): current domain and provider behavior.
-- [Web implementation](../apps/web/README.md) and [design system](DESIGN.md): current UI and extension rules.
+- [Adversarial design review](../reviews/SECURITY-REVIEW.md): findings, design corrections, and remaining implementation gates.
+- [Current API milestone](../specs/API.md) and [API contract](../../packages/tools/API.md): implemented HTTP boundary.
+- [Tools implementation brief](../../packages/tools/README.md): current domain and provider behavior.
+- [Web implementation](../../apps/web/README.md) and [design system](../DESIGN.md): current UI and extension rules.
 
 Candidate connector implementation references: [Nango authorization](https://nango.dev/platform/auth) and [Nango request proxy](https://nango.dev/platform/request-proxy). Product support and plans must be verified at implementation time. Identity implementation references are in [the authentication design](AUTHENTICATION.md).

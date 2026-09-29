@@ -6,7 +6,7 @@ Found nine actionable gaps: six high, two medium, and one low. The design now sp
 
 ## Owner decisions after review
 
-The [confirmed initial scope](AUTHENTICATION.md#confirmed-initial-scope) supersedes earlier recommendations that made runtime isolation a first-release prerequisite. The root initially has full application-data visibility under a configurable read policy, independent agents may act on owner-configured schedules/triggers within standing permissions, and the existing Codex runtime remains. API checks still apply, but they do not isolate shared files, tools, credentials, or conversations. Strong runtime isolation and trusted context reset are deferred. These choices do not grant agent administration, self-approval, or unrestricted writes, and do not authorize deployment or personal-account setup.
+The [confirmed initial scope](../architecture/AUTHENTICATION.md#confirmed-initial-scope) supersedes earlier recommendations that made runtime isolation a first-release prerequisite. The root initially has full application-data visibility under a configurable read policy, independent agents may act on owner-configured schedules/triggers within standing permissions, and the existing Codex runtime remains. API checks still apply, but they do not isolate shared files, tools, credentials, or conversations. Strong runtime isolation and trusted context reset are deferred. These choices do not grant agent administration, self-approval, or unrestricted writes, and do not authorize deployment or personal-account setup.
 
 ## Method and assumptions
 
@@ -22,7 +22,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** a restricted mail agent reads an allowed message, copies it into a public catalog search or another tool's request, or sends its bearer key to an attacker-selected API origin. It can also leak through shared transcripts without calling Life-OS result publication.
 
-**Disposition:** accepted residual risk in the first version; stronger mitigation deferred. [Runtime trust and data leaving the system](AUTHENTICATION.md#runtime-trust-and-data-leaving-the-system) separates initial API checks from later tool/filesystem/network isolation. Approved credential destinations, secret handling, and Life-OS output checks remain required, but shared runtime access and alternate tools can bypass the API boundary. This is not a claim of end-to-end isolation.
+**Disposition:** accepted residual risk in the first version; stronger mitigation deferred. [Runtime trust and data leaving the system](../architecture/AUTHENTICATION.md#runtime-trust-and-data-leaving-the-system) separates initial API checks from later tool/filesystem/network isolation. Approved credential destinations, secret handling, and Life-OS output checks remain required, but shared runtime access and alternate tools can bypass the API boundary. This is not a claim of end-to-end isolation.
 
 **Acceptance:** verify initial Life-OS API destination/output checks. In the later isolation phase, attempt direct network/provider/MCP/browser access, sibling messaging, API-origin overrides, and copying private text into a permitted public query. Those runtime tests must pass before claiming strong agent isolation; they are not first-version launch gates under the owner's decision.
 
@@ -32,7 +32,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** an agent infers a hidden message body through search/count queries, changes a record's eligibility label, or publishes private text as a supposedly public summary with an incomplete source list.
 
-**Fix:** [per-agent data access](AUTHENTICATION.md#per-agent-data-access) now constrains queryable as well as returned fields, requires current authoritative membership and source/destination checks, and derives restrictions from trusted metadata. Generated text conservatively inherits all input restrictions; only trusted deterministic projections narrow disclosure. Start with supported fixed profiles, not a universal field-policy editor.
+**Fix:** [per-agent data access](../architecture/AUTHENTICATION.md#per-agent-data-access) now constrains queryable as well as returned fields, requires current authoritative membership and source/destination checks, and derives restrictions from trusted metadata. Generated text conservatively inherits all input restrictions; only trusted deterministic projections narrow disclosure. Start with supported fixed profiles, not a universal field-policy editor.
 
 **Acceptance:** probe hidden fields through filters/sorts/counts, move records across permission boundaries, falsify source labels, and publish mixed-source summaries to a less-privileged recipient. Unsupported filtering must deny access.
 
@@ -42,7 +42,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** submit another connection ID, replay a completion, reconnect a different external account under existing grants, or replay a signed recovery webhook after local disablement.
 
-**Fix:** [connecting and reconnecting accounts](ARCHITECTURE.md#connecting-and-reconnecting-accounts) specifies server-owned pending attempts, provider-library protocol checks, backend verification, explicit account confirmation, stable identity, connection generations, and persistent local disablement. Webhooks authenticate payloads and reconcile current state; they cannot authorize work. Nango administration credentials never become agent tools.
+**Fix:** [connecting and reconnecting accounts](../architecture/ARCHITECTURE.md#connecting-and-reconnecting-accounts) specifies server-owned pending attempts, provider-library protocol checks, backend verification, explicit account confirmation, stable identity, connection generations, and persistent local disablement. Webhooks authenticate payloads and reconcile current state; they cannot authorize work. Nango administration credentials never become agent tools.
 
 **Acceptance:** test swapped accounts/environments/integrations, expired and duplicate completions, wider consent, forged/reordered webhooks, and reconnect after local disablement. Old-generation approvals and dispatches must fail.
 
@@ -52,7 +52,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** malicious output renders active content or tracking resources in the owner session, substitutes a friendly summary for a harmful payload, or reaches a privileged endpoint with only a frontend verification check. Clerk's documented automatic factor downgrade makes checking the required factor important.
 
-**Fix:** [owner login](AUTHENTICATION.md#owner-bootstrap-and-login) requires backend-verified recent second-factor state with no silent downgrade. The [browser and approval boundary](AUTHENTICATION.md#browser-and-approval-boundary) defines route/origin/CSRF protections, safe rendering, no automatic remote embeds, CSP/framing controls, and immutable backend-derived approval displays.
+**Fix:** [owner login](../architecture/AUTHENTICATION.md#owner-bootstrap-and-login) requires backend-verified recent second-factor state with no silent downgrade. The [browser and approval boundary](../architecture/AUTHENTICATION.md#browser-and-approval-boundary) defines route/origin/CSRF protections, safe rendering, no automatic remote embeds, CSP/framing controls, and immutable backend-derived approval displays.
 
 **Acceptance:** submit raw HTML, hostile links/images, cross-origin mutations, mixed credentials, missing factors, and changed approval payloads. The displayed action and executable action must be identical.
 
@@ -62,7 +62,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** drop the run ID to seek standing access, switch to another assignment while retaining private context, or let an old worker continue after lease reassignment.
 
-**Fix:** [agent coordination](AUTHENTICATION.md#root-orchestrator-and-independent-agents) requires active API run binding, lease generations checked on actions/results, and one active run per credential initially. It no longer promises exactly-once execution or context isolation from a lease. A trusted supervisor that destroys old contexts and controls reset is deferred with runtime isolation; carryover through the shared runtime remains an accepted limitation.
+**Fix:** [agent coordination](../architecture/AUTHENTICATION.md#root-orchestrator-and-independent-agents) requires active API run binding, lease generations checked on actions/results, and one active run per credential initially. It no longer promises exactly-once execution or context isolation from a lease. A trusted supervisor that destroys old contexts and controls reset is deferred with runtime isolation; carryover through the shared runtime remains an accepted limitation.
 
 **Acceptance:** test missing/swapped API run IDs, stale lease generations, concurrent claims, and inactive-run operations. Crash recovery must reconcile effects before replay. Supervisor control-path and context-reset tests apply when the later isolated runtime is introduced.
 
@@ -72,7 +72,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** reuse a key with changed input or another agent, recover a sensitive cached receipt after losing read permission, replay expired approval as a fresh action, or retry after provider success followed by a backend crash.
 
-**Fix:** [standing permissions and requests](AUTHENTICATION.md#standing-permissions-and-individual-requests) now explicitly requires additional durable authorization/dispatch records, exact normalized payload and connection-generation binding, atomic approval consumption, authorized receipt retrieval, and retention that cannot turn an old key into a new action. Unknown external outcomes require provider-supported reconciliation or manual resolution.
+**Fix:** [standing permissions and requests](../architecture/AUTHENTICATION.md#standing-permissions-and-individual-requests) now explicitly requires additional durable authorization/dispatch records, exact normalized payload and connection-generation binding, atomic approval consumption, authorized receipt retrieval, and retention that cannot turn an old key into a new action. Unknown external outcomes require provider-supported reconciliation or manual resolution.
 
 **Acceptance:** inject crashes before/after provider success, race duplicate requests, change payloads/defaults, expire approval, reduce read access, and reuse a key after cleanup. None may cause an unapproved new effect or disclose an unauthorized receipt.
 
@@ -84,7 +84,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** a queued remote action uses an old authorization snapshot after revocation, or a disabled connection's imported data remains accessible through a cache endpoint.
 
-**Fix:** [dispatch authorization](AUTHENTICATION.md#standing-permissions-and-individual-requests) serializes local state changes against the final claim and requires remote executors to claim current stored operations. Revocation cannot retract an already claimed external call; that race is explicit. [Data ownership and reliability](ARCHITECTURE.md#data-ownership-and-reliability) denies new agent reads of disabled connections, including retained copies, while distinguishing transient outages from disablement.
+**Fix:** [dispatch authorization](../architecture/AUTHENTICATION.md#standing-permissions-and-individual-requests) serializes local state changes against the final claim and requires remote executors to claim current stored operations. Revocation cannot retract an already claimed external call; that race is explicit. [Data ownership and reliability](../architecture/ARCHITECTURE.md#data-ownership-and-reliability) denies new agent reads of disabled connections, including retained copies, while distinguishing transient outages from disablement.
 
 **Acceptance:** revoke/cancel before and after final dispatch claim, return a delayed response after policy reduction, and request cached data after connection disablement. Record in-flight uncertainty honestly rather than promising cancellation.
 
@@ -94,7 +94,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Attack:** the root repeatedly creates individually valid child runs, or an agent loops on allowed reads and large results, exhausting cost, memory, or provider/identity quotas.
 
-**Fix:** [workflow limits](AUTHENTICATION.md#standing-permissions-and-individual-requests) require finite cumulative budgets, concurrency/runtime/result limits, bounded requests/pages/timeouts, and rate limits using the existing backend/database. Children cannot reset their budget by delegating again.
+**Fix:** [workflow limits](../architecture/AUTHENTICATION.md#standing-permissions-and-individual-requests) require finite cumulative budgets, concurrency/runtime/result limits, bounded requests/pages/timeouts, and rate limits using the existing backend/database. Children cannot reset their budget by delegating again.
 
 **Acceptance:** test recursive delegation, parallel budget consumption, repeated valid calls, oversized results, and identity-service throttling. Stop at the configured bound and surface a reviewable failure.
 
@@ -104,7 +104,7 @@ Read the current TypeScript/React/Hono package configuration and existing API/br
 
 **Evidence before correction:** the vision said, “The initial task surface mirrors Todoist,” while its provider table and architecture correctly described existing native Life-OS tasks.
 
-**Impact and fix:** this could lead a later implementation to write to the wrong authority or assume an existing two-way mapping. The [task vision](vision/VISION.md#tasks-and-calendar) now consistently distinguishes native application tasks from Todoist-owned vault workflows and makes any reconciliation an explicit future transition. Checked the provider table and implementation summary for agreement.
+**Impact and fix:** this could lead a later implementation to write to the wrong authority or assume an existing two-way mapping. The [task vision](../vision/VISION.md#tasks-and-calendar) now consistently distinguishes native application tasks from Todoist-owned vault workflows and makes any reconciliation an explicit future transition. Checked the provider table and implementation summary for agreement.
 
 ## Remaining implementation gates
 

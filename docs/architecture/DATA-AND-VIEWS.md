@@ -1,6 +1,8 @@
 # Life-OS — data and adaptive views
 
-Working architecture, September 5, 2026. This explains how to implement the behavior discussed in [Current Vision](VISION.md). It is a proposed contract, not a database migration or an implemented integration.
+Status: proposed architecture; not implemented or approved as a build milestone. See [STATUS.md](../STATUS.md).
+
+Working architecture, September 5, 2026. This explains how to implement the behavior discussed in [Current Vision](../vision/VISION.md). It is a proposed contract, not a database migration or an implemented integration.
 
 ## Three inputs to a page
 
@@ -25,7 +27,7 @@ The first schema can stay small while retaining useful distinctions:
 
 Source references retain the source identity and location, provider version or update time when available, when last checked, and coverage/failure state. An observation's measurement date, a source's update date, and the time Life-OS last checked it are separate concepts.
 
-The vault retains durable knowledge under its current rules. Publishing creates an application-facing representation of selected content. Todoist remains task authority and Google Calendar remains calendar authority until their ownership explicitly migrates.
+The vault retains durable knowledge under its current rules. Publishing creates an application-facing representation of selected content. Life-OS owns its native tasks; Todoist remains authoritative for Todoist-connected tasks and existing vault execution. Cross-system mappings and two-way ownership require explicit design. Google Calendar remains authoritative for its external events. See [data ownership](ARCHITECTURE.md#data-ownership-and-reliability).
 
 ## Focus plan
 

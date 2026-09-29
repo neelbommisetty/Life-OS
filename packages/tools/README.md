@@ -1,8 +1,8 @@
 # @life-os/tools
 
-The todo list, calendar, and leisure core of Life-OS, exposed through the shared HTTP API and the `life` CLI. The product spec is `docs/vision/HANDS.md` at the repository root; read it first. This file is the implementation brief: conventions, module map, and the fixed interfaces that let the modules be built independently.
+The todo list, calendar, and leisure core of Life-OS, exposed through the shared HTTP API and the `life` CLI. The product spec is `docs/specs/HANDS.md` at the repository root; read it first. This file is the implementation brief: conventions, module map, and the fixed interfaces that let the modules be built independently.
 
-See [API setup and contract](API.md) for the current transport boundary. The API server owns database/provider access; `life` is its HTTP client.
+See [current state and approved scope](../../docs/STATUS.md) for milestone status. See [API setup and contract](API.md) for the current transport boundary. The API server owns database/provider access; `life` is its HTTP client.
 
 ## Conventions
 
@@ -31,7 +31,7 @@ Done: `src/contract.ts` (schemas, inputs, receipt and log types), `src/filter.ts
 | `src/tasks.ts` | task operations, batch, import | core, organize (for reference resolution and Inbox) |
 | `src/views.ts` | today, upcoming, label, filter, search, trash | tasks, organize, filter |
 | `src/tools.ts` | the `Tools` facade and `Tools.open()` | all of the above |
-| `src/cli.ts`, `bin/life.js` | the `life` CLI | tools |
+| `src/cli.ts`, `bin/life.js` | the `life` CLI | HTTP client; API owns `Tools` |
 | `../../skills/todo/SKILL.md` | guidance for Codex and agents | the CLI |
 
 Each module has a matching `*.test.ts`.
@@ -213,7 +213,7 @@ Human output is plain aligned text: one line per task with id, status, title, du
 
 ## The calendar
 
-The calendar spec is the "The calendar" section of `docs/vision/HANDS.md` (D44, D55 to D66); read it first. This part of the brief fixes how it lands in this package. Everything above still applies: `core.mutate` for every write, the store's lock and snapshot rules, the receipt and log shapes, the CLI envelope and ergonomics. The calendar adds three record kinds, one provider adapter, a sync engine, and a handful of views. Nothing in the todo modules changes except the `today` view, which grows a schedule.
+The calendar spec is the "The calendar" section of `docs/specs/HANDS.md` (D44, D55 to D66); read it first. This part of the brief fixes how it lands in this package. Everything above still applies: `core.mutate` for every write, the store's lock and snapshot rules, the receipt and log shapes, the CLI envelope and ergonomics. The calendar adds three record kinds, one provider adapter, a sync engine, and a handful of views. Nothing in the todo modules changes except the `today` view, which grows a schedule.
 
 ### Conventions that change or extend
 
@@ -455,7 +455,7 @@ Human output for `today` and `week`: the day's all-day line, then one line per t
 
 ## The library
 
-The library spec is `docs/vision/LEISURE.md` (D67 to D101); read it first. This part of the brief fixes how it lands in this package. Everything above still applies: `core.mutate` for every write, the store's lock and snapshot rules, the receipt and log shapes, the CLI envelope and ergonomics. The library adds one record kind, one catalog adapter per medium, and a handful of views. No todo or calendar operation changes; `contract`, `core`, `store`, `tools`, and `cli` are extended as the module map says.
+The library spec is `docs/specs/LEISURE.md` (D67 to D101); read it first. This part of the brief fixes how it lands in this package. Everything above still applies: `core.mutate` for every write, the store's lock and snapshot rules, the receipt and log shapes, the CLI envelope and ergonomics. The library adds one record kind, one catalog adapter per medium, and a handful of views. No todo or calendar operation changes; `contract`, `core`, `store`, `tools`, and `cli` are extended as the module map says.
 
 First cut (D101): titles and entries, derivation, catalog lookup for all four media (TMDB, Open Library, IGDB), `year` and `time` views, `merge`, entry corrections, the four medium groups and `life media`, the skill. Second cut: `worth-getting`, `import`, named lists, the Google Books description fallback.
 

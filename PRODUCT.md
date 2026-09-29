@@ -1,5 +1,7 @@
 # Product
 
+For implemented behavior, approved scope and active work, start with [current state](docs/STATUS.md). This document describes product intent.
+
 ## Register
 
 product

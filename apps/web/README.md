@@ -2,6 +2,8 @@
 
 The shared Life-OS web shell includes `/todo` and `/calendar`. Tasks have Todoist-style interactions, using Life-OS colors and typography. The task slice talks exclusively to the existing Tools HTTP API; it has no database or provider access.
 
+See [current state and approved scope](../../docs/STATUS.md) for delivery status and future-slice boundaries.
+
 ## Run
 
 From the repository root:

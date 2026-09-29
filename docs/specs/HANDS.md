@@ -1,8 +1,10 @@
 # Hands: the todo list and calendar core
 
-Working design, September 6, 2026; calendar section added September 9. Status: todo list and calendar spec agreed and both implemented in `packages/tools` (library, `life` CLI, and `skills/todo` and `skills/calendar`). The calendar's Google adapter is built; iCloud is next. This is the details level for the piece Neel calls **hands**: an agnostic, Life-OS-owned todo list, and later a calendar, with one contract that Codex, future agents, the app, and Neel from a shell all use to populate, read, update, and act. It is orthogonal to the Health and life-area experiences in [Current Vision](VISION.md); those interface with it later. It is not fancy and not published as a product: one hosted database, one repository, and that is enough.
+Working design, September 6, 2026; calendar section added September 9. Status: todo list and calendar spec agreed and both implemented in `packages/tools` (library, `life` CLI, and `skills/todo` and `skills/calendar`). The calendar's Google adapter is built; iCloud remains deferred with no build approval recorded in the current scope. This is the details level for the piece Neel calls **hands**: an agnostic, Life-OS-owned todo list, and later a calendar, with one contract that Codex, future agents, the app, and Neel from a shell all use to populate, read, update, and act. It is orthogonal to the Health and life-area experiences in [Current Vision](../vision/VISION.md); those interface with it later. It is not fancy and not published as a product: one hosted database, one repository, and that is enough.
 
-D-numbering continues from D36 in the [August dump](legacy/2026-08-28/raw-dump.md). Each decision is marked **confirmed** (Neel said it) or **proposed** (a working position until he confirms or corrects).
+D-numbering continues from D36 in the [August dump](../vision/legacy/2026-08-28/raw-dump.md). Each decision is marked **confirmed** (Neel said it) or **proposed** (a working position until he confirms or corrects).
+
+Current approval and delivery are tracked in [STATUS.md](../STATUS.md). Confirmed decisions and later proposals below do not expand the approved implementation brief.
 
 ## Why hands first
 
@@ -15,7 +17,7 @@ Perspective and the area homes are the part of Life-OS that sees. Hands are the 
 | The todo list | One canonical list shaped like Todoist's model: Inbox, nested projects, sections, tasks with sub-tasks, comments, labels, filters. Owned by Life-OS. |
 | The calendar | One schedule over connected Google calendars, iCloud next, with dated tasks shown beside events. The provider is the source; Life-OS keeps a synced copy and writes through. |
 | The contract | The operations every client uses, with the rules that make them safe to call from anywhere. |
-| The library | The contract as importable code over one hosted database. The CLI and the app both call it directly. |
+| The library | Server-side domain code over PostgreSQL. The API calls it; the CLI and web consume HTTP, as specified by the [API milestone](API.md). |
 | The CLI | A client of the contract for a shell: Codex, agents, and Neel. |
 | The skills | Guidance that tells Codex or an agent when and how to use the CLI. Enforcement stays in code. |
 | Interfacing, later | Phone surfaces, Todoist import and mirror, agent gates, reminders. |
