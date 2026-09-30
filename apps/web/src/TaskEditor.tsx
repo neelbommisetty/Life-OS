@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import {
   CalendarDays,
+  Clock,
   Flag,
   Hash,
   Plus,
@@ -46,6 +47,7 @@ export function TaskEditor({
   );
   const [date, setDate] = useState(task?.due?.date ?? draft.due ?? "");
   const [time, setTime] = useState(task?.due?.time ?? "");
+  const [duration, setDuration] = useState(task?.duration?.toString() ?? "");
   const [priority, setPriority] = useState(task?.priority ?? 4);
   const [labels, setLabels] = useState(
     task?.labels.join(", ") ?? draft.labels?.join(", ") ?? "",
@@ -82,6 +84,7 @@ export function TaskEditor({
         .filter(Boolean),
       repeat: repeat || null,
       deadline: deadline || null,
+      duration: duration === "" ? null : Number(duration),
     };
     const payload = JSON.stringify({
       input,
@@ -106,6 +109,7 @@ export function TaskEditor({
           await api.task.add(
             {
               ...input,
+              duration: input.duration ?? undefined,
               repeat: repeat || undefined,
               project,
               section: section || undefined,
@@ -221,7 +225,7 @@ export function TaskEditor({
         >
           <summary>
             Task options{" "}
-            <span className="muted">Priority, labels, repeat and deadline</span>
+            <span className="muted">Time, duration, priority and more</span>
           </summary>
           <div className="field-grid">
             <label>
@@ -234,6 +238,24 @@ export function TaskEditor({
                 disabled={!date}
                 onChange={(e) => setTime(e.target.value)}
               />
+            </label>
+            <label>
+              <span>
+                <Clock size={15} /> Duration (minutes)
+              </span>
+              <input
+                type="number"
+                min={1}
+                max={43200}
+                step={1}
+                value={duration}
+                onChange={(e) => setDuration(e.target.value)}
+                aria-describedby="duration-hint"
+              />
+              <small id="duration-hint" className="muted">
+                Optional estimate. With a due date and time, sets the calendar
+                block length. Clear to remove.
+              </small>
             </label>
             <label>
               <span>

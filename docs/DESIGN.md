@@ -108,7 +108,7 @@ import { Button, IconButton } from "./ui";
 
 Use native labeled inputs/selects/textareas. Shared CSS supplies border, target size, invalid and focus states. Placeholder text provides an example, not a label. Use `aria-describedby` for persistent hints or field errors and `aria-invalid` on an invalid field. Error text must explain a recovery action, not rely only on red. Native browser controls remain the baseline; no additional form library is needed.
 
-Quick capture presents title, description, due date and project. Optional time, priority, labels, recurrence and deadline live in an accessible native disclosure. Existing task details begin expanded; hiding options never clears values. Visible hints explain label formatting and the difference between a planned due date and a final deadline.
+Quick capture presents title, description, due date and project. Optional time, duration, priority, labels, recurrence and deadline live in an accessible native disclosure. Duration uses a labeled native number input in whole minutes, with an optional-estimate hint explaining the calendar block and clearing behavior. Existing task details begin expanded; hiding options never clears values. Visible hints explain label formatting and the difference between a planned due date and a final deadline.
 
 ### Badges and record rows
 

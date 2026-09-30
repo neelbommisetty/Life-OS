@@ -32,6 +32,7 @@ const section = take(
 for (const input of [
   {
     title: "Review the homepage direction",
+    duration: 45,
     notes: "A final look at the layout, type, and little details.",
     project: work.id,
     section: section.id,

@@ -27,7 +27,8 @@ bun run web:start    # serve the production build at the same URL
 ## Task workflows
 
 - Inbox, Today (committed due/overdue tasks), Upcoming, All tasks, review of proposed tasks, Completed, and Trash.
-- Add and edit titles, descriptions, due dates/times, priority, labels, deadlines, and daily/weekly/monthly/yearly recurrence. Existing custom recurrence rules are preserved.
+- Add and edit titles, descriptions, due dates/times, duration estimates, priority, labels, deadlines, and daily/weekly/monthly/yearly recurrence. Existing custom recurrence rules are preserved.
+- Task options includes an optional duration in whole minutes (1–43,200). Clear it to remove the estimate. Estimates appear in list and board metadata and can be saved without scheduling the task.
 - Complete and reopen tasks; choose what happens to subtasks. Recurrence advances through the existing API.
 - Projects and project sections; edit/archive projects; move tasks between projects/sections; list and board layouts.
 - Search titles, descriptions, and comments through the API; label views include inherited project labels; save and run filters using the API's query grammar.
@@ -43,7 +44,7 @@ The board groups by project sections or view date groups. Drag-and-drop ordering
 Open `/calendar` for a Fantastical-inspired layout using the current Tools calendar API. This is explicit form entry, with no natural-language parsing or AI service.
 
 - Day, week, month, and 30-day agenda views; mini month navigation, Today, calendar visibility filters, and search within the displayed date range.
-- Existing connected calendars, read-only calendars, and scheduled tasks. Task items open their existing task editor in `/todo`.
+- Existing connected calendars, read-only calendars, and scheduled tasks. Task items open their existing task editor in `/todo`. Timed tasks with a duration span that many elapsed minutes in the grid; agendas show the estimate. Date-only tasks remain all-day entries, and timed tasks without an estimate keep the default display length. This display does not create provider events or alter free-slot calculations.
 - Timed and all-day events, multi-day spans, display/event timezones, floating times, location, notes, busy/free status, and daily/weekly/monthly/yearly recurrence. Existing custom rules are preserved.
 - Event creation, editing, and confirmed deletion. Recurring changes require a choice of this occurrence, following occurrences, or the entire series, using the API's scope contract.
 - Dragging/resizing opens an editor for review; only Save writes the change. Keyboard users can edit the same times through event details.

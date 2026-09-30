@@ -29,6 +29,7 @@ import { api, timezone } from "./data";
 import { EventEditor } from "./EventEditor";
 import {
   calendarTime,
+  taskCalendarTime,
   dateIn,
   draftFor,
   draftFromSelection,
@@ -157,16 +158,10 @@ export default function CalendarApp() {
   const events: EventInput[] = Array.from(unique.values()).map((entry) => {
     if (entry.kind === "task") {
       const task = entry.task;
-      const start = task.due!.time
-        ? DateTime.fromISO(`${task.due!.date}T${task.due!.time}`, {
-            zone: task.due!.timezone ?? zone,
-          }).toISO()!
-        : task.due!.date;
       return {
         id: task.id,
         title: task.title,
-        start,
-        allDay: !task.due!.time,
+        ...taskCalendarTime(task, zone),
         editable: false,
         classNames: ["schedule-task"],
         extendedProps: { entry },
@@ -951,6 +946,9 @@ function Agenda({
                     </strong>
                     <small>
                       {event ? calendar?.name : "Task"}
+                      {entry.kind === "task" && entry.task.duration !== undefined
+                        ? ` · ${entry.task.duration} min`
+                        : ""}
                       {event?.repeat || event?.masterId ? (
                         <Repeat2 size={12} />
                       ) : null}

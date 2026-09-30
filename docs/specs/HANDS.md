@@ -48,7 +48,7 @@ A task's effective life areas are its own labels plus its project's labels, so a
 - `due` is when Neel plans to do it: a date, with an optional time that requires a timezone. A date stays a date.
 - `deadline` is when it must be done by. A date only. Independent of `due` (D51).
 - `repeat` is an RRULE subset: daily, weekly with days, monthly, yearly, each with an interval. A repeating task needs a due date.
-- `duration` is minutes.
+- `duration` is optional whole minutes (1–43,200). The web task editor can set or clear this estimate independently of a due date. Task lists and calendar agendas show the estimate; timed task blocks use that many elapsed minutes, including across midnight or daylight-saving transitions. Date-only tasks remain all-day entries. This is calendar presentation, not a provider event or a change to free-slot calculations.
 
 ### Lifecycle
 

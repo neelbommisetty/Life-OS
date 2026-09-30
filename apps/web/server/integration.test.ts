@@ -46,6 +46,36 @@ test("website → bridge → real HTTP API → disposable database: complete tas
       create,
     ]);
     assert.equal(added.ok, true);
+    // Duration travels through the same bridge/API/persistence path as the editor.
+    const scheduled = await call("task.add", [
+      {
+        title: "Duration round trip",
+        due: { date: "2026-09-29", time: "09:00", timezone: "America/Los_Angeles" },
+        duration: 45,
+      },
+      ctx(),
+    ]);
+    assert.equal(scheduled.ok, true);
+    assert.equal((await call("task.get", [scheduled.id])).duration, 45);
+    const schedule = await call("views.week", [{ from: "2026-09-29", days: 1, fresh: false }]);
+    assert.equal(schedule.days[0].timed.find((entry: any) => entry.kind === "task" && entry.task.id === scheduled.id).task.duration, 45);
+    const durationKey = { ...ctx(), ifVersion: scheduled.version };
+    const resized = await call("task.update", [scheduled.id, { duration: 90 }, durationKey]);
+    assert.equal(resized.record.duration, 90);
+    assert.equal((await call("task.update", [scheduled.id, { duration: 90 }, durationKey])).version, resized.version);
+    assert.equal((await call("task.update", [scheduled.id, { duration: 30 }, { ...ctx(), ifVersion: scheduled.version }])).ok, false);
+    const cleared = await call("task.update", [scheduled.id, { duration: null }, { ...ctx(), ifVersion: resized.version }]);
+    assert.equal(cleared.ok, true);
+    assert.equal((await call("task.get", [scheduled.id])).duration, undefined);
+    const estimate = await call("task.add", [{ title: "Unscheduled estimate", duration: 20 }, ctx()]);
+    assert.equal(estimate.record.due, null);
+    assert.equal(estimate.record.duration, 20);
+    for (const duration of [0, -1, 1.5, 43201]) {
+      const rejected = await call("task.update", [scheduled.id, { duration }, ctx()]);
+      assert.equal(rejected.ok, false);
+      assert.equal(rejected.outcome, "rejected");
+    }
+    assert.equal((await call("task.get", [scheduled.id])).duration, undefined);
     assert.equal(
       (
         await call("task.add", [

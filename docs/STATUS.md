@@ -1,6 +1,6 @@
 # Current state and build scope
 
-Last reconciled: September 27, 2026, against `main` at `eac52ad75` plus this documentation reorganization. This is a repository implementation snapshot, not a live service-health report. Refresh it when scope or delivery changes.
+Last reconciled: September 29, 2026, for task-duration delivery on `codex/task-duration`; the broader inventory retains the September 27 baseline. This is a repository implementation snapshot, not a live service-health report. Refresh it when scope or delivery changes.
 
 **Authentication, connectors and agent layer: approved to build; entirely unimplemented.** The capabilities listed below are the existing product baseline. They do not mean the target architecture is partially delivered. Neel confirmed both the implementation state and the build scope on September 27. The [approved plan](plans/2026-09-27-auth-connectors-agents.md) records the work.
 
@@ -12,7 +12,7 @@ Life-OS currently has a local tools backend, an HTTP CLI, and a web app with tas
 | --- | --- | --- |
 | Domain tools | Native tasks, projects, sections, labels, filters; calendar accounts, sync, events and recurrence; movie/TV/game/book library and diary, catalog lookup and first-cut views. | [Tools brief](../packages/tools/README.md), [Tools facade](../packages/tools/src/tools.ts). Leisure second-cut features remain excluded. |
 | API and CLI | Node/Hono API, PostgreSQL, explicit operations, OpenAPI, receipts and version checks; `life` consumes HTTP. | [API contract](../packages/tools/API.md), [operation registry](../packages/tools/src/api/operations.ts), [CLI](../packages/tools/src/cli.ts). Database and providers stay server-side. |
-| Web | Shared ocean-blue shell; `/todo` task workspace and `/calendar` calendar/agenda workspace with explicit event forms. | [Web guide](../apps/web/README.md), [route entry](../apps/web/src/main.tsx). Project management within `/todo` exists; a separate `/projects` slice does not. |
+| Web | Shared ocean-blue shell; `/todo` task workspace and `/calendar` calendar/agenda workspace with explicit event forms. Task duration can be created, edited and cleared; lists/agendas show estimates and timed calendar blocks use them. | [Web guide](../apps/web/README.md), [duration verification](plans/2026-09-29-task-duration.md), [route entry](../apps/web/src/main.tsx). Project management within `/todo` exists; a separate `/projects` slice does not. |
 | Provider adapters | Google Calendar; TMDB, IGDB and Open Library catalogs. | [Calendar adapter](../packages/tools/src/calendar/google/index.ts), [catalog code](../packages/tools/src/media/catalog). Implemented adapters do not establish current account access or provider health. |
 | Authentication | Local single-user bearer token; the web bridge keeps it server-side. | [API auth middleware](../packages/tools/src/api/app.ts), [web bridge](../apps/web/server/bridge.ts). No owner login, distinct agent credentials, or per-agent policy enforcement yet. |
 | Runtime and delivery | Local run/build commands; API defaults to port 4319, web to 4320, both on loopback. | [Root scripts](../package.json), [web runbook](../apps/web/README.md#run). Hosting is deferred. No live processes, credentials, personal data or external provider health were checked for this snapshot. |
@@ -40,7 +40,7 @@ Approval and delivery are different columns. **Approved** applies only to the ci
 
 ## Active work and queue
 
-**In progress:** no product implementation is recorded as active in this checkout at reconciliation. The documentation reorganization is complete. This is not a claim about every other conversation or machine.
+**In progress:** none in this checkout. [Task duration from editor to calendar](plans/2026-09-29-task-duration.md) is complete, developed on `codex/task-duration` for integration into `main`, implemented by Codex for Neel under the September 29 request to build one bounded feature and subsequent explicit request to commit and push to `main`. No deployment performed.
 
 **Approved and not started:** [authentication, connectors and the agent layer](plans/2026-09-27-auth-connectors-agents.md). Owner: Neel; implementing agent and checkout assigned when work starts. The plan records phases, acceptance checks and remaining decisions.
 
@@ -51,6 +51,8 @@ Approval and delivery are different columns. **Approved** applies only to the ci
 When work starts, replace the relevant queue entry with a link to a [plan](plans/README.md), owner, branch/worktree, start/update date, remaining work, blocker (if any), and next action. When it finishes, move the result into the implementation and evidence sections.
 
 ## Verification evidence
+
+September 29 task-duration checks: typecheck, production web build and design export check passed; 636 tools tests passed in `bun run test`, and all 16 web tests passed on the focused rerun after correcting a test to inspect domain-rejection receipts (HTTP 200) rather than expect HTTP 400. Desktop and 390px phone browser checks used disposable data and verified creation, reopening, editing, clearing, native fractional-minute validation and a 2–3:30 PM calendar block. See the [completion record](plans/2026-09-29-task-duration.md).
 
 The implementation inventory was checked against source files, package scripts, existing implementation guides and Git history. The documentation reorganization and subsequent scope corrections were checked for local Markdown links/anchors, stale moved-path references and whitespace, including new files. Application tests and personal runtime checks were not run for these documentation-only changes.
 

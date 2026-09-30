@@ -4,6 +4,7 @@ import type {
   EventAdd,
   EventUpdate,
   When,
+  Task,
 } from "../../../packages/tools/src/contract.ts";
 import type { Occurrence } from "../../../packages/tools/src/calendar/expand.ts";
 import type {
@@ -11,6 +12,21 @@ import type {
   ScheduleEntry,
 } from "../../../packages/tools/src/calendar/schedule.ts";
 export type { Calendar, Occurrence, Day, ScheduleEntry };
+/** Duration is elapsed minutes; date-only tasks remain all-day estimates. */
+export function taskCalendarTime(task: Pick<Task, "due" | "duration">, zone: string) {
+  if (!task.due) throw new Error("A calendar task needs a due date");
+  if (!task.due.time) return { start: task.due.date, allDay: true };
+  const start = DateTime.fromISO(`${task.due.date}T${task.due.time}`, {
+    zone: task.due.timezone ?? zone,
+  });
+  return {
+    start: start.toISO()!,
+    ...(task.duration !== undefined
+      ? { end: start.plus({ minutes: task.duration }).toISO()! }
+      : {}),
+    allDay: false,
+  };
+}
 export type CalendarView =
   "timeGridDay" | "timeGridWeek" | "dayGridMonth" | "agenda";
 export type EventDraft = {

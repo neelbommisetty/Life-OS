@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   calendarTime,
+  taskCalendarTime,
   draftFor,
   draftFromSelection,
   filterDays,
@@ -15,6 +16,24 @@ import {
   type Occurrence,
 } from "./calendar-model.ts";
 const zone = "America/Los_Angeles";
+test("task calendar duration uses elapsed minutes in the task timezone, including DST and midnight", () => {
+  const timed = (date: string, time: string, duration?: number) =>
+    taskCalendarTime({ due: { date, time, timezone: zone }, duration }, "UTC");
+  assert.deepEqual(timed("2026-09-29", "09:00", 45), {
+    start: "2026-09-29T09:00:00.000-07:00",
+    end: "2026-09-29T09:45:00.000-07:00",
+    allDay: false,
+  });
+  assert.equal(timed("2026-09-29", "23:30", 90).end, "2026-09-30T01:00:00.000-07:00");
+  assert.equal(timed("2026-03-08", "01:30", 120).end, "2026-03-08T04:30:00.000-07:00");
+  assert.equal(timed("2026-11-01", "00:30", 120).end, "2026-11-01T01:30:00.000-08:00");
+  assert.equal(timed("2026-09-29", "09:00").end, undefined);
+  assert.deepEqual(taskCalendarTime({ due: { date: "2026-09-29" }, duration: 45 }, zone), {
+    start: "2026-09-29", allDay: true,
+  });
+  assert.equal(taskCalendarTime({ due: { date: "2026-09-29", time: "09:00" }, duration: 30 }, "UTC").end,
+    "2026-09-29T09:30:00.000Z");
+});
 const base = () => ({
   ...draftFor("2026-09-25", zone, "c_example"),
   title: "Example",

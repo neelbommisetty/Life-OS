@@ -5,6 +5,7 @@ Use this folder for bounded implementation work once a concrete slice is being p
 | Plan | Approval | Implementation |
 | --- | --- | --- |
 | [Authentication, connectors and agent layer](2026-09-27-auth-connectors-agents.md) | In scope; confirmed September 27 | Not started |
+| [Task duration from editor to calendar](2026-09-29-task-duration.md) | September 29 request; existing todo/calendar scope | Complete locally |
 
 A plan can be proposed before approval. Label it clearly and record the actual approval source before treating it as approved. Design approval, build approval, personal-account setup and deployment are distinct scopes; reuse existing authorization when it already covers the work.
 

@@ -5,6 +5,7 @@ import {
   Search,
   Inbox,
   CalendarDays,
+  Clock,
   CalendarRange,
   ListTodo,
   CheckCheck,
@@ -1059,6 +1060,13 @@ function TaskRow({
               {dateLabel(task.due.date, today)}
               {task.due.time && ` · ${task.due.time}`}
               {task.repeat && <Repeat2 size={12} />}
+            </span>
+          )}
+          {task.duration !== undefined && (
+            <span>
+              <Clock size={12} aria-hidden="true" />
+              <span className="sr-only">Duration </span>
+              {task.duration} min
             </span>
           )}
           {task.deadline && (
